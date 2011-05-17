@@ -185,17 +185,16 @@ static int omap_dss_probe(struct platform_device *pdev)
 
 	/* keep clocks enabled to prevent context saves/restores during init */
 	dss_clk_enable(DSS_CLK_ICK | DSS_CLK_FCK);
+	r = dispc_init_platform_driver();
+	if (r) {
+		DSSERR("Failed to initialize dispc platform driver\n");
+		goto err_dispc;
+	}
 
 	r = rfbi_init_platform_driver();
 	if (r) {
 		DSSERR("Failed to initialize rfbi platform driver\n");
 		goto err_rfbi;
-	}
-
-	r = dispc_init_platform_driver();
-	if (r) {
-		DSSERR("Failed to initialize dispc platform driver\n");
-		goto err_dispc;
 	}
 
 	r = venc_init_platform_driver();
