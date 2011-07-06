@@ -1,0 +1,11 @@
+/dts-v1/;
+
+/memreserve/ 0x9D000000 0x03000000; /* Frame buffer */
+/memreserve/ 0xB0000000 0x10000000; /* Top 256MB is unaccessable */
+
+/include/ "skeleton.dtsi"
+
+/ {
+	model = "TI OMAP4 PandaBoard";
+	compatible = "ti,omap4-panda", "ti,omap4430";
+};
