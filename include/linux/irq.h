@@ -797,6 +797,17 @@ extern unsigned int irq_domain_map(struct irq_domain *domain,
 				   irq_hw_number_t hwirq);
 extern void irq_domain_unmap(struct irq_domain *domain, irq_hw_number_t hw);
 
+struct of_device_id;
+#ifdef CONFIG_OF
+extern void irq_domain_add_simple(struct device_node *controller, int irq_base);
+extern void irq_domain_generate_simple(const struct of_device_id *match,
+					u64 phys_base, unsigned int irq_start);
+#else
+static inline void irq_domain_generate_simple(const struct of_device_id *match,
+					u64 phys_base, unsigned int irq_start) { }
+#endif
+
+
 #endif /* !CONFIG_S390 */
 
 #endif /* _LINUX_IRQ_H */
