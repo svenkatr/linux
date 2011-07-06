@@ -591,6 +591,11 @@ static void __init omap3_beagle_init(void)
 	beagle_opp_init();
 }
 
+static const char *omap3_beagle_dt_match[] __initdata = {
+	"ti,omap3-beagle",
+	NULL
+};
+
 MACHINE_START(OMAP3_BEAGLE, "OMAP3 Beagle Board")
 	/* Maintainer: Syed Mohammed Khasim - http://beagleboard.org */
 	.boot_params	= 0x80000100,
@@ -600,4 +605,5 @@ MACHINE_START(OMAP3_BEAGLE, "OMAP3 Beagle Board")
 	.init_irq	= omap3_beagle_init_irq,
 	.init_machine	= omap3_beagle_init,
 	.timer		= &omap_timer,
+	.dt_compat	= omap3_beagle_dt_match,
 MACHINE_END

@@ -1,0 +1,7 @@
+/dts-v1/;
+/include/ "skeleton.dtsi"
+
+/ {
+	model = "TI OMAP3 BeagleBoard";
+	compatible = "ti,omap3-beagle";
+};
