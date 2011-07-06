@@ -698,6 +698,11 @@ static void __init igep_init(void)
 	}
 }
 
+static const char *igep2_dt_compat[] __initdata = {
+	"ISEE,igep-v2",
+	NULL
+};
+
 MACHINE_START(IGEP0020, "IGEP v2 board")
 	.boot_params	= 0x80000100,
 	.reserve	= omap_reserve,
@@ -706,7 +711,13 @@ MACHINE_START(IGEP0020, "IGEP v2 board")
 	.init_irq	= omap_init_irq,
 	.init_machine	= igep_init,
 	.timer		= &omap_timer,
+	.dt_compat	= igep2_dt_compat,
 MACHINE_END
+
+static const char *igep3_dt_compat[] __initdata = {
+	"ISEE,igep-v3",
+	NULL
+};
 
 MACHINE_START(IGEP0030, "IGEP OMAP3 module")
 	.boot_params	= 0x80000100,
@@ -716,4 +727,5 @@ MACHINE_START(IGEP0030, "IGEP OMAP3 module")
 	.init_irq	= omap_init_irq,
 	.init_machine	= igep_init,
 	.timer		= &omap_timer,
+	.dt_compat	= &igep3_dt_compat,
 MACHINE_END
