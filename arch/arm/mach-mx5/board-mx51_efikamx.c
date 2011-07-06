@@ -283,6 +283,11 @@ static struct sys_timer mx51_efikamx_timer = {
 	.init = mx51_efikamx_timer_init,
 };
 
+static const char *mx51_efikamx_dt_match[] __initdata = {
+	"genesi,efikamx",
+	NULL
+};
+
 MACHINE_START(MX51_EFIKAMX, "Genesi EfikaMX nettop")
 	/* Maintainer: Amit Kucheria <amit.kucheria@linaro.org> */
 	.boot_params = MX51_PHYS_OFFSET + 0x100,
@@ -291,4 +296,5 @@ MACHINE_START(MX51_EFIKAMX, "Genesi EfikaMX nettop")
 	.init_irq = mx51_init_irq,
 	.timer = &mx51_efikamx_timer,
 	.init_machine = mx51_efikamx_init,
+	.dt_compat = mx51_efikamx_dt_match,
 MACHINE_END

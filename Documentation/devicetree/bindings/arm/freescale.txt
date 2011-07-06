@@ -1,0 +1,7 @@
+mx51 "Babbage" evalutation board
+Required root node properties:
+    - compatible = "fsl,mx51-babbage", "fsl,mx51";
+
+mx53 "Loco" evaluation board
+Required root node properties:
+    - compatible = "fsl,mx53-loco", "fsl,mx53";
