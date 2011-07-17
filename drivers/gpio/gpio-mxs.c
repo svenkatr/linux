@@ -27,6 +27,7 @@
 #include <linux/gpio.h>
 #include <linux/platform_device.h>
 #include <linux/slab.h>
+#include <linux/basic_mmio_gpio.h>
 #include <mach/mxs.h>
 
 #define MXS_SET		0x4
@@ -52,60 +53,18 @@ struct mxs_gpio_port {
 	void __iomem *base;
 	int id;
 	int irq;
-	int irq_high;
 	int virtual_irq_start;
-	struct gpio_chip chip;
+	struct bgpio_chip bgc;
 };
 
 /* Note: This driver assumes 32 GPIOs are handled in one register */
-
-static void clear_gpio_irqstatus(struct mxs_gpio_port *port, u32 index)
-{
-	writel(1 << index, port->base + PINCTRL_IRQSTAT(port->id) + MXS_CLR);
-}
-
-static void set_gpio_irqenable(struct mxs_gpio_port *port, u32 index,
-				int enable)
-{
-	if (enable) {
-		writel(1 << index,
-			port->base + PINCTRL_IRQEN(port->id) + MXS_SET);
-		writel(1 << index,
-			port->base + PINCTRL_PIN2IRQ(port->id) + MXS_SET);
-	} else {
-		writel(1 << index,
-			port->base + PINCTRL_IRQEN(port->id) + MXS_CLR);
-	}
-}
-
-static void mxs_gpio_ack_irq(struct irq_data *d)
-{
-	struct mxs_gpio_port *port = irq_data_get_irq_chip_data(d);
-	u32 gpio = irq_to_gpio(d->irq);
-	clear_gpio_irqstatus(port, gpio & 0x1f);
-}
-
-static void mxs_gpio_mask_irq(struct irq_data *d)
-{
-	struct mxs_gpio_port *port = irq_data_get_irq_chip_data(d);
-	u32 gpio = irq_to_gpio(d->irq);
-	set_gpio_irqenable(port, gpio & 0x1f, 0);
-}
-
-static void mxs_gpio_unmask_irq(struct irq_data *d)
-{
-	struct mxs_gpio_port *port = irq_data_get_irq_chip_data(d);
-	u32 gpio = irq_to_gpio(d->irq);
-	set_gpio_irqenable(port, gpio & 0x1f, 1);
-}
-
-static int mxs_gpio_get(struct gpio_chip *chip, unsigned offset);
 
 static int mxs_gpio_set_irq_type(struct irq_data *d, unsigned int type)
 {
 	u32 gpio = irq_to_gpio(d->irq);
 	u32 pin_mask = 1 << (gpio & 31);
-	struct mxs_gpio_port *port = irq_data_get_irq_chip_data(d);
+	struct irq_chip_generic *gc = irq_data_get_irq_chip_data(d);
+	struct mxs_gpio_port *port = gc->private;
 	void __iomem *pin_addr;
 	int edge;
 
@@ -140,7 +99,8 @@ static int mxs_gpio_set_irq_type(struct irq_data *d, unsigned int type)
 	else
 		writel(pin_mask, pin_addr + MXS_CLR);
 
-	clear_gpio_irqstatus(port, gpio & 0x1f);
+	writel(1 << (gpio & 0x1f),
+	       port->base + PINCTRL_IRQSTAT(port->id) + MXS_CLR);
 
 	return 0;
 }
@@ -175,87 +135,45 @@ static void mxs_gpio_irq_handler(u32 irq, struct irq_desc *desc)
  */
 static int mxs_gpio_set_wake_irq(struct irq_data *d, unsigned int enable)
 {
-	u32 gpio = irq_to_gpio(d->irq);
-	u32 gpio_idx = gpio & 0x1f;
-	struct mxs_gpio_port *port = irq_data_get_irq_chip_data(d);
+	struct irq_chip_generic *gc = irq_data_get_irq_chip_data(d);
+	struct mxs_gpio_port *port = gc->private;
 
-	if (enable) {
-		if (port->irq_high && (gpio_idx >= 16))
-			enable_irq_wake(port->irq_high);
-		else
-			enable_irq_wake(port->irq);
-	} else {
-		if (port->irq_high && (gpio_idx >= 16))
-			disable_irq_wake(port->irq_high);
-		else
-			disable_irq_wake(port->irq);
-	}
+	if (enable)
+		enable_irq_wake(port->irq);
+	else
+		disable_irq_wake(port->irq);
 
 	return 0;
 }
 
-static struct irq_chip gpio_irq_chip = {
-	.name = "mxs gpio",
-	.irq_ack = mxs_gpio_ack_irq,
-	.irq_mask = mxs_gpio_mask_irq,
-	.irq_unmask = mxs_gpio_unmask_irq,
-	.irq_set_type = mxs_gpio_set_irq_type,
-	.irq_set_wake = mxs_gpio_set_wake_irq,
-};
-
-static void mxs_set_gpio_direction(struct gpio_chip *chip, unsigned offset,
-				int dir)
+static void __init mxs_gpio_init_gc(struct mxs_gpio_port *port)
 {
-	struct mxs_gpio_port *port =
-		container_of(chip, struct mxs_gpio_port, chip);
-	void __iomem *pin_addr = port->base + PINCTRL_DOE(port->id);
+	struct irq_chip_generic *gc;
+	struct irq_chip_type *ct;
 
-	if (dir)
-		writel(1 << offset, pin_addr + MXS_SET);
-	else
-		writel(1 << offset, pin_addr + MXS_CLR);
+	gc = irq_alloc_generic_chip("gpio-mxs", 1, port->virtual_irq_start,
+				    port->base, handle_level_irq);
+	gc->private = port;
+
+	ct = gc->chip_types;
+	ct->chip.irq_ack = irq_gc_ack,
+	ct->chip.irq_mask = irq_gc_mask_clr_bit;
+	ct->chip.irq_unmask = irq_gc_mask_set_bit;
+	ct->chip.irq_set_type = mxs_gpio_set_irq_type;
+	ct->chip.irq_set_wake = mxs_gpio_set_wake_irq,
+	ct->regs.ack = PINCTRL_IRQSTAT(port->id) + MXS_CLR;
+	ct->regs.mask = PINCTRL_IRQEN(port->id);
+
+	irq_setup_generic_chip(gc, IRQ_MSK(32), 0, IRQ_NOREQUEST, 0);
 }
 
-static int mxs_gpio_get(struct gpio_chip *chip, unsigned offset)
+static int mxs_gpio_to_irq(struct gpio_chip *gc, unsigned offset)
 {
+	struct bgpio_chip *bgc = to_bgpio_chip(gc);
 	struct mxs_gpio_port *port =
-		container_of(chip, struct mxs_gpio_port, chip);
-
-	return (readl(port->base + PINCTRL_DIN(port->id)) >> offset) & 1;
-}
-
-static void mxs_gpio_set(struct gpio_chip *chip, unsigned offset, int value)
-{
-	struct mxs_gpio_port *port =
-		container_of(chip, struct mxs_gpio_port, chip);
-	void __iomem *pin_addr = port->base + PINCTRL_DOUT(port->id);
-
-	if (value)
-		writel(1 << offset, pin_addr + MXS_SET);
-	else
-		writel(1 << offset, pin_addr + MXS_CLR);
-}
-
-static int mxs_gpio_to_irq(struct gpio_chip *chip, unsigned offset)
-{
-	struct mxs_gpio_port *port =
-		container_of(chip, struct mxs_gpio_port, chip);
+		container_of(bgc, struct mxs_gpio_port, bgc);
 
 	return port->virtual_irq_start + offset;
-}
-
-static int mxs_gpio_direction_input(struct gpio_chip *chip, unsigned offset)
-{
-	mxs_set_gpio_direction(chip, offset, 0);
-	return 0;
-}
-
-static int mxs_gpio_direction_output(struct gpio_chip *chip,
-				     unsigned offset, int value)
-{
-	mxs_gpio_set(chip, offset, value);
-	mxs_set_gpio_direction(chip, offset, 1);
-	return 0;
 }
 
 static int __devinit mxs_gpio_probe(struct platform_device *pdev)
@@ -263,7 +181,7 @@ static int __devinit mxs_gpio_probe(struct platform_device *pdev)
 	static void __iomem *base;
 	struct mxs_gpio_port *port;
 	struct resource *iores = NULL;
-	int err, i;
+	int err;
 
 	port = kzalloc(sizeof(struct mxs_gpio_port), GFP_KERNEL);
 	if (!port)
@@ -303,40 +221,41 @@ static int __devinit mxs_gpio_probe(struct platform_device *pdev)
 		goto out_iounmap;
 	}
 
-	/* disable the interrupt and clear the status */
-	writel(0, port->base + PINCTRL_PIN2IRQ(port->id));
+	/*
+	 * select the pin interrupt functionality but initially
+	 * disable the interrupts
+	 */
+	writel(~0U, port->base + PINCTRL_PIN2IRQ(port->id));
 	writel(0, port->base + PINCTRL_IRQEN(port->id));
 
 	/* clear address has to be used to clear IRQSTAT bits */
 	writel(~0U, port->base + PINCTRL_IRQSTAT(port->id) + MXS_CLR);
 
-	for (i = port->virtual_irq_start;
-		i < port->virtual_irq_start + 32; i++) {
-		irq_set_chip_and_handler(i, &gpio_irq_chip,
-					 handle_level_irq);
-		set_irq_flags(i, IRQF_VALID);
-		irq_set_chip_data(i, port);
-	}
+	/* gpio-mxs can be a generic irq chip */
+	mxs_gpio_init_gc(port);
 
 	/* setup one handler for each entry */
 	irq_set_chained_handler(port->irq, mxs_gpio_irq_handler);
 	irq_set_handler_data(port->irq, port);
 
-	/* register gpio chip */
-	port->chip.direction_input = mxs_gpio_direction_input;
-	port->chip.direction_output = mxs_gpio_direction_output;
-	port->chip.get = mxs_gpio_get;
-	port->chip.set = mxs_gpio_set;
-	port->chip.to_irq = mxs_gpio_to_irq;
-	port->chip.base = port->id * 32;
-	port->chip.ngpio = 32;
-
-	err = gpiochip_add(&port->chip);
+	err = bgpio_init(&port->bgc, &pdev->dev, 4,
+			 port->base + PINCTRL_DIN(port->id),
+			 port->base + PINCTRL_DOUT(port->id), NULL,
+			 port->base + PINCTRL_DOE(port->id), NULL, false);
 	if (err)
 		goto out_iounmap;
 
+	port->bgc.gc.to_irq = mxs_gpio_to_irq;
+	port->bgc.gc.base = port->id * 32;
+
+	err = gpiochip_add(&port->bgc.gc);
+	if (err)
+		goto out_bgpio_remove;
+
 	return 0;
 
+out_bgpio_remove:
+	bgpio_remove(&port->bgc);
 out_iounmap:
 	if (iores)
 		iounmap(port->base);
