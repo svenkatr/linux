@@ -918,6 +918,12 @@ void __init setup_arch(char **cmdline_p)
 	cpu_init();
 	tcm_init();
 
+#ifdef CONFIG_ZONE_DMA
+	if (mdesc->dma_zone_size) {
+		extern unsigned long arm_dma_zone_size;
+		arm_dma_zone_size = mdesc->dma_zone_size;
+	}
+#endif
 #ifdef CONFIG_MULTI_IRQ_HANDLER
 	handle_arch_irq = mdesc->handle_irq;
 #endif
@@ -979,6 +985,10 @@ static const char *hwcap_str[] = {
 	"neon",
 	"vfpv3",
 	"vfpv3d16",
+	"tls",
+	"vfpv4",
+	"idiva",
+	"idivt",
 	NULL
 };
 
