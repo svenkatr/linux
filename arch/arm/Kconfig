@@ -321,7 +321,7 @@ config ARCH_CLPS711X
 
 config ARCH_CNS3XXX
 	bool "Cavium Networks CNS3XXX family"
-	select CPU_V6
+	select CPU_V6K
 	select GENERIC_CLOCKEVENTS
 	select ARM_GIC
 	select MIGHT_HAVE_PCI
@@ -336,6 +336,19 @@ config ARCH_GEMINI
 	select ARCH_USES_GETTIMEOFFSET
 	help
 	  Support for the Cortina Systems Gemini family SoCs
+
+config ARCH_PRIMA2
+	bool "CSR SiRFSoC PRIMA2 ARM Cortex A9 Platform"
+	select CPU_V7
+	select GENERIC_TIME
+	select NO_IOPORT
+	select GENERIC_CLOCKEVENTS
+	select CLKDEV_LOOKUP
+	select GENERIC_IRQ_CHIP
+	select USE_OF
+	select ZONE_DMA
+	help
+          Support for CSR SiRFSoC ARM Cortex A9 Platform
 
 config ARCH_EBSA110
 	bool "EBSA-110"
@@ -376,6 +389,7 @@ config ARCH_MXC
 	select ARCH_REQUIRE_GPIOLIB
 	select CLKDEV_LOOKUP
 	select CLKSRC_MMIO
+	select GENERIC_IRQ_CHIP
 	select HAVE_SCHED_CLOCK
 	help
 	  Support for Freescale MXC/iMX-based family of processors
@@ -490,14 +504,6 @@ config ARCH_KIRKWOOD
 	  Support for the following Marvell Kirkwood series SoCs:
 	  88F6180, 88F6192 and 88F6281.
 
-config ARCH_LOKI
-	bool "Marvell Loki (88RC8480)"
-	select CPU_FEROCEON
-	select GENERIC_CLOCKEVENTS
-	select PLAT_ORION
-	help
-	  Support for the Marvell Loki (88RC8480) SoC.
-
 config ARCH_LPC32XX
 	bool "NXP LPC32XX"
 	select CLKSRC_MMIO
@@ -591,7 +597,6 @@ config ARCH_TEGRA
 	select GENERIC_GPIO
 	select HAVE_CLK
 	select HAVE_SCHED_CLOCK
-	select ARCH_HAS_BARRIERS if CACHE_L2X0
 	select ARCH_HAS_CPUFREQ
 	help
 	  This enables support for NVIDIA Tegra based systems (Tegra APX,
@@ -618,6 +623,8 @@ config ARCH_PXA
 	select TICK_ONESHOT
 	select PLAT_PXA
 	select SPARSE_IRQ
+	select AUTO_ZRELADDR
+	select MULTI_IRQ_HANDLER
 	help
 	  Support for Intel/Marvell's PXA2xx/PXA3xx processor line.
 
@@ -852,6 +859,7 @@ config ARCH_OMAP
 	select HAVE_CLK
 	select ARCH_REQUIRE_GPIOLIB
 	select ARCH_HAS_CPUFREQ
+	select CLKSRC_MMIO
 	select GENERIC_CLOCKEVENTS
 	select HAVE_SCHED_CLOCK
 	select ARCH_HAS_HOLES_MEMORYMODEL
@@ -879,6 +887,19 @@ config ARCH_VT8500
 	select HAVE_PWM
 	help
 	  Support for VIA/WonderMedia VT8500/WM85xx System-on-Chip.
+
+config ARCH_ZYNQ
+	bool "Xilinx Zynq ARM Cortex A9 Platform"
+	select CPU_V7
+	select GENERIC_TIME
+	select GENERIC_CLOCKEVENTS
+	select CLKDEV_LOOKUP
+	select ARM_GIC
+	select ARM_AMBA
+	select ICST
+	select USE_OF
+	help
+	  Support for Xilinx Zynq ARM Cortex A9 Platform
 endchoice
 
 #
@@ -924,8 +945,6 @@ source "arch/arm/mach-kirkwood/Kconfig"
 
 source "arch/arm/mach-ks8695/Kconfig"
 
-source "arch/arm/mach-loki/Kconfig"
-
 source "arch/arm/mach-lpc32xx/Kconfig"
 
 source "arch/arm/mach-msm/Kconfig"
@@ -969,7 +988,6 @@ source "arch/arm/plat-spear/Kconfig"
 source "arch/arm/plat-tcc/Kconfig"
 
 if ARCH_S3C2410
-source "arch/arm/mach-s3c2400/Kconfig"
 source "arch/arm/mach-s3c2410/Kconfig"
 source "arch/arm/mach-s3c2412/Kconfig"
 source "arch/arm/mach-s3c2416/Kconfig"
