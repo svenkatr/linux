@@ -1752,6 +1752,25 @@ config ZBOOT_ROM_MMCIF
 	  which in turn loads the rest the kernel image to RAM using the
 	  MMCIF hardware block.
 
+config ARM_APPENDED_DTB
+	bool "Use appended device tree blob to zImage"
+	depends on OF && !ZBOOT_ROM
+	help
+	  With this option, the boot code will look for a device tree binary
+	  (dtb) appended to zImage
+	  (e.g. cat zImage <filename>.dtb > zImage_w_dtb).
+
+config ARM_ATAG_DTB_COMPAT
+	bool "Supplement the appended DTB with traditional ATAG information"
+	depends on ARM_APPENDED_DTB
+	help
+	  Some old bootloaders can't be updated to a DTB capable one, yet
+	  they provide ATAGs with memory configuration, the ramdisk address,
+	  the kernel cmdline string, etc.  To allow a device tree enabled
+	  kernel to be used with such bootloaders, this option allows
+	  zImage to extract the information from the ATAG list and store it
+	  at run time into the appended DTB.
+
 config CMDLINE
 	string "Default kernel command string"
 	default ""
