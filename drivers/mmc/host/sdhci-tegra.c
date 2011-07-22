@@ -18,8 +18,10 @@
 #include <linux/clk.h>
 #include <linux/io.h>
 #include <linux/gpio.h>
+#include <linux/of_gpio.h>
 #include <linux/mmc/card.h>
 #include <linux/mmc/host.h>
+#include <linux/slab.h>
 
 #include <mach/gpio.h>
 #include <mach/sdhci.h>
@@ -216,6 +218,33 @@ out:
 	return rc;
 }
 
+static int tegra_sdhci_pltfm_dt_init(struct sdhci_host *host,
+				     struct sdhci_pltfm_data *pdata)
+{
+	struct platform_device *pdev = to_platform_device(mmc_dev(host->mmc));
+	struct tegra_sdhci_platform_data *plat;
+
+	if (pdev->dev.platform_data) {
+		dev_err(&pdev->dev, "%s: platform_data not NULL; aborting\n",
+			__func__);
+		return -ENODEV;
+	}
+
+	plat = kzalloc(sizeof(*plat), GFP_KERNEL);
+	if (!plat)
+		return -ENOMEM;
+	pdev->dev.platform_data = plat;
+
+	plat->cd_gpio = of_get_gpio(pdev->dev.of_node, 0);
+	plat->wp_gpio = of_get_gpio(pdev->dev.of_node, 1);
+	plat->power_gpio = of_get_gpio(pdev->dev.of_node, 2);
+
+	dev_info(&pdev->dev, "using gpios cd=%i, wp=%i power=%i\n",
+		plat->cd_gpio, plat->wp_gpio, plat->power_gpio);
+
+	return tegra_sdhci_pltfm_init(host, pdata);
+}
+
 static void tegra_sdhci_pltfm_exit(struct sdhci_host *host)
 {
 	struct sdhci_pltfm_host *pltfm_host = sdhci_priv(host);
@@ -244,6 +273,16 @@ static void tegra_sdhci_pltfm_exit(struct sdhci_host *host)
 	clk_put(pltfm_host->clk);
 }
 
+static void tegra_sdhci_pltfm_dt_exit(struct sdhci_host *host)
+{
+	struct platform_device *pdev = to_platform_device(mmc_dev(host->mmc));
+
+	tegra_sdhci_pltfm_exit(host);
+
+	kfree(pdev->dev.platform_data);
+	pdev->dev.platform_data = NULL;
+}
+
 static struct sdhci_ops tegra_sdhci_ops = {
 	.get_ro     = tegra_sdhci_get_ro,
 	.read_l     = tegra_sdhci_readl,
@@ -260,4 +299,14 @@ struct sdhci_pltfm_data sdhci_tegra_pdata = {
 	.ops  = &tegra_sdhci_ops,
 	.init = tegra_sdhci_pltfm_init,
 	.exit = tegra_sdhci_pltfm_exit,
+};
+
+struct sdhci_pltfm_data sdhci_tegra_dt_pdata = {
+	.quirks = SDHCI_QUIRK_BROKEN_TIMEOUT_VAL |
+		  SDHCI_QUIRK_SINGLE_POWER_WRITE |
+		  SDHCI_QUIRK_NO_HISPD_BIT |
+		  SDHCI_QUIRK_BROKEN_ADMA_ZEROLEN_DESC,
+	.ops  = &tegra_sdhci_ops,
+	.init = tegra_sdhci_pltfm_dt_init,
+	.exit = tegra_sdhci_pltfm_dt_exit,
 };

@@ -35,6 +35,16 @@ typedef	void (*irq_flow_handler_t)(unsigned int irq,
 					    struct irq_desc *desc);
 typedef	void (*irq_preflow_handler_t)(struct irq_data *data);
 
+/* This type is the placeholder for a hardware interrupt number. It has to
+ * be big enough to enclose whatever representation is used by a given
+ * platform.
+ */
+#ifndef _IRQ_HW_NUMBER_T
+#define _IRQ_HW_NUMBER_T
+typedef unsigned long irq_hw_number_t;
+#endif
+
+
 /*
  * IRQ line status.
  *
@@ -113,14 +123,18 @@ enum {
 };
 
 struct msi_desc;
+struct irq_domain;
 
 /**
  * struct irq_data - per irq and irq chip data passed down to chip functions
  * @irq:		interrupt number
+ * @hwirq:		hardware interrupt number, local to the interrupt domain
  * @node:		node index useful for balancing
  * @state_use_accessors: status information for irq chip functions.
  *			Use accessor functions to deal with it
  * @chip:		low level interrupt hardware access
+ * @domain:		Interrupt translation domain; responsible for mapping
+ *			between hwirq number and linux irq number.
  * @handler_data:	per-IRQ data for the irq_chip methods
  * @chip_data:		platform-specific per-chip private data for the chip
  *			methods, to allow shared chip implementations
@@ -133,9 +147,11 @@ struct msi_desc;
  */
 struct irq_data {
 	unsigned int		irq;
+	irq_hw_number_t		hwirq;
 	unsigned int		node;
 	unsigned int		state_use_accessors;
 	struct irq_chip		*chip;
+	struct irq_domain	*domain;
 	void			*handler_data;
 	void			*chip_data;
 	struct msi_desc		*msi_desc;
@@ -716,6 +732,82 @@ static inline void irq_gc_unlock(struct irq_chip_generic *gc) { }
 #endif
 
 #endif /* CONFIG_GENERIC_HARDIRQS */
+
+/*
+ * irq-domain - IRQ translation domains
+ *
+ * Translation infrastructure between hw and linux irq numbers.
+ */
+struct device_node;
+
+/**
+ * struct irq_domain_ops - Methods for irq_domain objects
+ * @to_irq: (optional) given a local hardware irq number, return the linux
+ *          irq number.  If to_irq is not implemented, then the irq_domain
+ *          will use this translation: irq = (domain->irq_base + hwirq)
+ * @dt_translate: Given a device tree node and interrupt specifier, decode
+ *                the hardware irq number and linux irq type value.
+ */
+struct irq_domain_ops {
+	unsigned int (*to_irq)(struct irq_domain *d, irq_hw_number_t hwirq);
+
+#ifdef CONFIG_OF
+	int (*dt_translate)(struct irq_domain *d, struct device_node *node,
+			    const u32 *intspec, unsigned int intsize,
+			    irq_hw_number_t *out_hwirq, unsigned int *out_type);
+#endif
+};
+
+/**
+ * struct irq_domain - Hardware interrupt number translation object
+ * @list: Element in global irq_domain list.
+ * @irq_base: Start of irq_desc range assigned to the irq_domain.  The creator
+ *            of the irq_domain is responsible for allocating the array of
+ *            irq_desc structures.
+ * @ops: pointer to irq_domain methods
+ * @priv: private data pointer for use by owner.  Not touched by irq_domain
+ *        core code.
+ * @of_node: (optional) Pointer to device tree nodes associated with the
+ *           irq_domain.  Used when decoding device tree interrupt specifiers.
+ */
+struct irq_domain {
+	struct list_head list;
+	unsigned int irq_base;
+	const struct irq_domain_ops *ops;
+	void *priv;
+
+	struct device_node *of_node;
+};
+
+/**
+ * irq_domain_to_irq() - Translate from a hardware irq to a linux irq number
+ *
+ * Returns the linux irq number associated with a hardware irq.  By default,
+ * the mapping is irq == domain->irq_base + hwirq, but this mapping can
+ * be overridden if the irq_domain implements a .to_irq() hook.
+ */
+static inline unsigned int irq_domain_to_irq(struct irq_domain *d,
+					     irq_hw_number_t hwirq)
+{
+	return d->ops->to_irq ? d->ops->to_irq(d, hwirq) : d->irq_base + hwirq;
+}
+
+extern void irq_domain_add(struct irq_domain *domain);
+extern void irq_domain_del(struct irq_domain *domain);
+extern unsigned int irq_domain_map(struct irq_domain *domain,
+				   irq_hw_number_t hwirq);
+extern void irq_domain_unmap(struct irq_domain *domain, irq_hw_number_t hw);
+
+struct of_device_id;
+#ifdef CONFIG_OF
+extern void irq_domain_add_simple(struct device_node *controller, int irq_base);
+extern void irq_domain_generate_simple(const struct of_device_id *match,
+					u64 phys_base, unsigned int irq_start);
+#else
+static inline void irq_domain_generate_simple(const struct of_device_id *match,
+					u64 phys_base, unsigned int irq_start) { }
+#endif
+
 
 #endif /* !CONFIG_S390 */
 

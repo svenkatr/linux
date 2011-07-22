@@ -1,0 +1,9 @@
+Samsung Exynos4 S5PV310 SoC based SMDKV310 eval board
+
+    SMDKV310 eval board is based on S5PV310 SoC which belongs to
+    Samsung's Exynos4 family of application processors.
+
+Required root node properties:
+    - compatible = "samsung,smdkv310","samsung,s5pv310"
+        (a) "samsung,smdkv310" - for Samsung's SMDKV310 eval board.
+        (b) "samsung,s5pv310"  - for boards based on S5PV310 SoC.

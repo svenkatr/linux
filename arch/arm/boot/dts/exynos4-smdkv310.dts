@@ -1,0 +1,11 @@
+/dts-v1/;
+/include/ "skeleton.dtsi"
+
+/ {
+	model = "Samsung Exynos4 SMDKV310 eval board";
+	compatible = "samsung,smdkv310", "samsung,s5pv310";
+
+	memory {
+		reg = <0x40000000 0x08000000>;
+	};
+};

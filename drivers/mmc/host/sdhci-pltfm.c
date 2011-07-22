@@ -49,10 +49,30 @@ static struct sdhci_ops sdhci_pltfm_ops = {
  * Device probing/removal                                                    *
  *                                                                           *
 \*****************************************************************************/
+#if defined(CONFIG_OF)
+#include <linux/of_device.h>
+static const struct of_device_id sdhci_dt_ids[] = {
+	{ .compatible = "nvidia,tegra20-sdhci", .data = &sdhci_tegra_dt_pdata },
+	{ }
+};
+MODULE_DEVICE_TABLE(platform, sdhci_dt_ids);
+
+static const struct of_device_id *sdhci_get_of_device_id(struct platform_device *pdev)
+{
+	return of_match_device(sdhci_dt_ids, &pdev->dev);
+}
+#else
+#define sdhci_dt_ids NULL
+static inline struct of_device_id *sdhci_get_of_device_id(struct platform_device *pdev)
+{
+	return NULL;
+}
+#endif
 
 static int __devinit sdhci_pltfm_probe(struct platform_device *pdev)
 {
 	const struct platform_device_id *platid = platform_get_device_id(pdev);
+	const struct of_device_id *dtid = sdhci_get_of_device_id(pdev);
 	struct sdhci_pltfm_data *pdata;
 	struct sdhci_host *host;
 	struct sdhci_pltfm_host *pltfm_host;
@@ -61,6 +81,8 @@ static int __devinit sdhci_pltfm_probe(struct platform_device *pdev)
 
 	if (platid && platid->driver_data)
 		pdata = (void *)platid->driver_data;
+	else if (dtid && dtid->data)
+		pdata = dtid->data;
 	else
 		pdata = pdev->dev.platform_data;
 
@@ -140,11 +162,20 @@ err:
 
 static int __devexit sdhci_pltfm_remove(struct platform_device *pdev)
 {
-	struct sdhci_pltfm_data *pdata = pdev->dev.platform_data;
+	const struct platform_device_id *platid = platform_get_device_id(pdev);
+	const struct of_device_id *dtid = sdhci_get_of_device_id(pdev);
+	struct sdhci_pltfm_data *pdata;
 	struct sdhci_host *host = platform_get_drvdata(pdev);
 	struct resource *iomem = platform_get_resource(pdev, IORESOURCE_MEM, 0);
 	int dead;
 	u32 scratch;
+
+	if (platid && platid->driver_data)
+		pdata = (void *)platid->driver_data;
+	else if (dtid && dtid->data)
+		pdata = dtid->data;
+	else
+		pdata = pdev->dev.platform_data;
 
 	dead = 0;
 	scratch = readl(host->ioaddr + SDHCI_INT_STATUS);
@@ -203,6 +234,7 @@ static struct platform_driver sdhci_pltfm_driver = {
 	.driver = {
 		.name	= "sdhci",
 		.owner	= THIS_MODULE,
+		.of_match_table = sdhci_dt_ids,
 	},
 	.probe		= sdhci_pltfm_probe,
 	.remove		= __devexit_p(sdhci_pltfm_remove),

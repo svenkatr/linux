@@ -45,6 +45,7 @@ extern atomic_t ppc_n_lost_interrupts;
  * be big enough to enclose whatever representation is used by a given
  * platform.
  */
+#define _IRQ_HW_NUMBER_T
 typedef unsigned long irq_hw_number_t;
 
 /* Interrupt controller "host" data structure. This could be defined as a

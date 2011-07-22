@@ -233,6 +233,11 @@ static void __init smdkv310_machine_init(void)
 	platform_add_devices(smdkv310_devices, ARRAY_SIZE(smdkv310_devices));
 }
 
+static char const *smdkv310_dt_compat[] __initdata = {
+	"samsung,smdkv310",
+	NULL
+};
+
 MACHINE_START(SMDKV310, "SMDKV310")
 	/* Maintainer: Kukjin Kim <kgene.kim@samsung.com> */
 	/* Maintainer: Changhwan Youn <chaos.youn@samsung.com> */
@@ -241,4 +246,5 @@ MACHINE_START(SMDKV310, "SMDKV310")
 	.map_io		= smdkv310_map_io,
 	.init_machine	= smdkv310_machine_init,
 	.timer		= &exynos4_timer,
+	.dt_compat	= smdkv310_dt_compat,
 MACHINE_END

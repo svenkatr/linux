@@ -1,0 +1,10 @@
+/dts-v1/;
+/include/ "skeleton.dtsi"
+
+/ {
+	model = "ARM Versatile Express";
+	compatible = "arm,vexpress";
+	memory {
+		reg = <0x60000000 0x40000000>;
+	};
+};
