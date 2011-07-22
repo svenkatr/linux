@@ -193,10 +193,17 @@ static struct gpio_led eukrea_mbimxsd_leds[] = {
 	},
 };
 
-static const struct gpio_led_platform_data
-		eukrea_mbimxsd_led_info __initconst = {
+static struct gpio_led_platform_data eukrea_mbimxsd_led_info = {
 	.leds		= eukrea_mbimxsd_leds,
 	.num_leds	= ARRAY_SIZE(eukrea_mbimxsd_leds),
+};
+
+static struct platform_device eukrea_mbimxsd_leds_gpio = {
+	.name	= "leds-gpio",
+	.id	= -1,
+	.dev	= {
+		.platform_data	= &eukrea_mbimxsd_led_info,
+	},
 };
 
 static struct gpio_keys_button eukrea_mbimxsd_gpio_buttons[] = {
@@ -216,6 +223,7 @@ static const struct gpio_keys_platform_data
 };
 
 static struct platform_device *platform_devices[] __initdata = {
+	&eukrea_mbimxsd_leds_gpio,
 	&eukrea_mbimxsd_lcd_powerdev,
 };
 
@@ -291,6 +299,5 @@ void __init eukrea_mbimxsd35_baseboard_init(void)
 				ARRAY_SIZE(eukrea_mbimxsd_i2c_devices));
 
 	platform_add_devices(platform_devices, ARRAY_SIZE(platform_devices));
-	gpio_led_register_device(-1, &eukrea_mbimxsd_led_info);
 	imx_add_gpio_keys(&eukrea_mbimxsd_button_data);
 }

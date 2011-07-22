@@ -376,7 +376,7 @@ static struct i2c_board_info __initdata h2_i2c_board_info[] = {
 static void __init h2_init_irq(void)
 {
 	omap1_init_common_hw();
-	omap1_init_irq();
+	omap_init_irq();
 }
 
 static struct omap_usb_config h2_usb_config __initdata = {
@@ -466,5 +466,5 @@ MACHINE_START(OMAP_H2, "TI-H2")
 	.reserve	= omap_reserve,
 	.init_irq	= h2_init_irq,
 	.init_machine	= h2_init,
-	.timer		= &omap1_timer,
+	.timer		= &omap_timer,
 MACHINE_END

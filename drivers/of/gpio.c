@@ -21,9 +21,8 @@
 #include <linux/slab.h>
 
 /**
- * of_get_named_gpio_flags() - Get a GPIO number and flags to use with GPIO API
+ * of_get_gpio_flags - Get a GPIO number and flags to use with GPIO API
  * @np:		device node to get GPIO from
- * @propname:	property name containing gpio specifier(s)
  * @index:	index of the GPIO
  * @flags:	a flags pointer to fill in
  *
@@ -31,8 +30,8 @@
  * value on the error condition. If @flags is not NULL the function also fills
  * in flags for the GPIO.
  */
-int of_get_named_gpio_flags(struct device_node *np, const char *propname,
-                           int index, enum of_gpio_flags *flags)
+int of_get_gpio_flags(struct device_node *np, int index,
+		      enum of_gpio_flags *flags)
 {
 	int ret;
 	struct device_node *gpio_np;
@@ -41,7 +40,7 @@ int of_get_named_gpio_flags(struct device_node *np, const char *propname,
 	const void *gpio_spec;
 	const __be32 *gpio_cells;
 
-	ret = of_parse_phandles_with_args(np, propname, "#gpio-cells", index,
+	ret = of_parse_phandles_with_args(np, "gpios", "#gpio-cells", index,
 					  &gpio_np, &gpio_spec);
 	if (ret) {
 		pr_debug("%s: can't parse gpios property\n", __func__);
@@ -80,7 +79,7 @@ err0:
 	pr_debug("%s exited with status %d\n", __func__, ret);
 	return ret;
 }
-EXPORT_SYMBOL(of_get_named_gpio_flags);
+EXPORT_SYMBOL(of_get_gpio_flags);
 
 /**
  * of_gpio_count - Count GPIOs for a device

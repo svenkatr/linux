@@ -292,7 +292,7 @@ static void __init innovator_init_smc91x(void)
 static void __init innovator_init_irq(void)
 {
 	omap1_init_common_hw();
-	omap1_init_irq();
+	omap_init_irq();
 }
 
 #ifdef CONFIG_ARCH_OMAP15XX
@@ -464,5 +464,5 @@ MACHINE_START(OMAP_INNOVATOR, "TI-Innovator")
 	.reserve	= omap_reserve,
 	.init_irq	= innovator_init_irq,
 	.init_machine	= innovator_init,
-	.timer		= &omap1_timer,
+	.timer		= &omap_timer,
 MACHINE_END

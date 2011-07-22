@@ -41,4 +41,5 @@ void __init mx28_map_io(void)
 void __init mx28_init_irq(void)
 {
 	icoll_init_irq();
+	mx28_register_gpios();
 }

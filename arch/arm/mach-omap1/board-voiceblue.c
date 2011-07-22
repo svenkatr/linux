@@ -162,7 +162,7 @@ static struct omap_board_config_kernel voiceblue_config[] = {
 static void __init voiceblue_init_irq(void)
 {
 	omap1_init_common_hw();
-	omap1_init_irq();
+	omap_init_irq();
 }
 
 static void __init voiceblue_map_io(void)
@@ -306,5 +306,5 @@ MACHINE_START(VOICEBLUE, "VoiceBlue OMAP5910")
 	.reserve	= omap_reserve,
 	.init_irq	= voiceblue_init_irq,
 	.init_machine	= voiceblue_init,
-	.timer		= &omap1_timer,
+	.timer		= &omap_timer,
 MACHINE_END

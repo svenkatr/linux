@@ -12,7 +12,6 @@
 #include <linux/pci.h>
 #include <linux/slab.h>
 #include <linux/mbus.h>
-#include <video/vga.h>
 #include <asm/irq.h>
 #include <asm/mach/pci.h>
 #include <plat/pcie.h>
@@ -272,8 +271,6 @@ static void __init add_pcie_port(int index, unsigned long base)
 
 void __init kirkwood_pcie_init(unsigned int portmask)
 {
-	vga_base = KIRKWOOD_PCIE_MEM_PHYS_BASE;
-
 	if (portmask & KW_PCIE0)
 		add_pcie_port(0, PCIE_VIRT_BASE);
 

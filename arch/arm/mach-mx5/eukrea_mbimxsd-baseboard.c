@@ -74,7 +74,7 @@ static iomux_v3_cfg_t eukrea_mbimxsd_pads[] = {
 #define GPIO_LED1	IMX_GPIO_NR(3, 30)
 #define GPIO_SWITCH1	IMX_GPIO_NR(3, 31)
 
-static const struct gpio_led eukrea_mbimxsd_leds[] __initconst = {
+static struct gpio_led eukrea_mbimxsd_leds[] = {
 	{
 		.name			= "led1",
 		.default_trigger	= "heartbeat",
@@ -83,10 +83,17 @@ static const struct gpio_led eukrea_mbimxsd_leds[] __initconst = {
 	},
 };
 
-static const struct gpio_led_platform_data
-		eukrea_mbimxsd_led_info __initconst = {
+static struct gpio_led_platform_data eukrea_mbimxsd_led_info = {
 	.leds		= eukrea_mbimxsd_leds,
 	.num_leds	= ARRAY_SIZE(eukrea_mbimxsd_leds),
+};
+
+static struct platform_device eukrea_mbimxsd_leds_gpio = {
+	.name	= "leds-gpio",
+	.id	= -1,
+	.dev	= {
+		.platform_data	= &eukrea_mbimxsd_led_info,
+	},
 };
 
 static struct gpio_keys_button eukrea_mbimxsd_gpio_buttons[] = {
@@ -103,6 +110,10 @@ static const struct gpio_keys_platform_data
 		eukrea_mbimxsd_button_data __initconst = {
 	.buttons	= eukrea_mbimxsd_gpio_buttons,
 	.nbuttons	= ARRAY_SIZE(eukrea_mbimxsd_gpio_buttons),
+};
+
+static struct platform_device *platform_devices[] __initdata = {
+	&eukrea_mbimxsd_leds_gpio,
 };
 
 static const struct imxuart_platform_data uart_pdata __initconst = {
@@ -143,6 +154,6 @@ void __init eukrea_mbimxsd51_baseboard_init(void)
 	i2c_register_board_info(0, eukrea_mbimxsd_i2c_devices,
 				ARRAY_SIZE(eukrea_mbimxsd_i2c_devices));
 
-	gpio_led_register_device(-1, &eukrea_mbimxsd_led_info);
+	platform_add_devices(platform_devices, ARRAY_SIZE(platform_devices));
 	imx_add_gpio_keys(&eukrea_mbimxsd_button_data);
 }

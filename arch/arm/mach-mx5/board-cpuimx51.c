@@ -43,6 +43,10 @@
 #define CPUIMX51_QUARTB_GPIO	IMX_GPIO_NR(3, 25)
 #define CPUIMX51_QUARTC_GPIO	IMX_GPIO_NR(3, 26)
 #define CPUIMX51_QUARTD_GPIO	IMX_GPIO_NR(3, 27)
+#define CPUIMX51_QUARTA_IRQ	(MXC_INTERNAL_IRQS + CPUIMX51_QUARTA_GPIO)
+#define CPUIMX51_QUARTB_IRQ	(MXC_INTERNAL_IRQS + CPUIMX51_QUARTB_GPIO)
+#define CPUIMX51_QUARTC_IRQ	(MXC_INTERNAL_IRQS + CPUIMX51_QUARTC_GPIO)
+#define CPUIMX51_QUARTD_IRQ	(MXC_INTERNAL_IRQS + CPUIMX51_QUARTD_GPIO)
 #define CPUIMX51_QUART_XTAL	14745600
 #define CPUIMX51_QUART_REGSHIFT	17
 
@@ -57,7 +61,7 @@
 static struct plat_serial8250_port serial_platform_data[] = {
 	{
 		.mapbase = (unsigned long)(MX51_CS1_BASE_ADDR + 0x400000),
-		.irq = gpio_to_irq(CPUIMX51_QUARTA_GPIO),
+		.irq = CPUIMX51_QUARTA_IRQ,
 		.irqflags = IRQF_TRIGGER_HIGH,
 		.uartclk = CPUIMX51_QUART_XTAL,
 		.regshift = CPUIMX51_QUART_REGSHIFT,
@@ -65,7 +69,7 @@ static struct plat_serial8250_port serial_platform_data[] = {
 		.flags = UPF_BOOT_AUTOCONF | UPF_SKIP_TEST | UPF_IOREMAP,
 	}, {
 		.mapbase = (unsigned long)(MX51_CS1_BASE_ADDR + 0x800000),
-		.irq = gpio_to_irq(CPUIMX51_QUARTB_GPIO),
+		.irq = CPUIMX51_QUARTB_IRQ,
 		.irqflags = IRQF_TRIGGER_HIGH,
 		.uartclk = CPUIMX51_QUART_XTAL,
 		.regshift = CPUIMX51_QUART_REGSHIFT,
@@ -73,7 +77,7 @@ static struct plat_serial8250_port serial_platform_data[] = {
 		.flags = UPF_BOOT_AUTOCONF | UPF_SKIP_TEST | UPF_IOREMAP,
 	}, {
 		.mapbase = (unsigned long)(MX51_CS1_BASE_ADDR + 0x1000000),
-		.irq = gpio_to_irq(CPUIMX51_QUARTC_GPIO),
+		.irq = CPUIMX51_QUARTC_IRQ,
 		.irqflags = IRQF_TRIGGER_HIGH,
 		.uartclk = CPUIMX51_QUART_XTAL,
 		.regshift = CPUIMX51_QUART_REGSHIFT,
@@ -81,7 +85,7 @@ static struct plat_serial8250_port serial_platform_data[] = {
 		.flags = UPF_BOOT_AUTOCONF | UPF_SKIP_TEST | UPF_IOREMAP,
 	}, {
 		.mapbase = (unsigned long)(MX51_CS1_BASE_ADDR + 0x2000000),
-		.irq = irq_to_gpio(CPUIMX51_QUARTD_GPIO),
+		.irq = CPUIMX51_QUARTD_IRQ,
 		.irqflags = IRQF_TRIGGER_HIGH,
 		.uartclk = CPUIMX51_QUART_XTAL,
 		.regshift = CPUIMX51_QUART_REGSHIFT,
@@ -241,8 +245,6 @@ __setup("otg_mode=", eukrea_cpuimx51_otg_mode);
  */
 static void __init eukrea_cpuimx51_init(void)
 {
-	imx51_soc_init();
-
 	mxc_iomux_v3_setup_multiple_pads(eukrea_cpuimx51_pads,
 					ARRAY_SIZE(eukrea_cpuimx51_pads));
 

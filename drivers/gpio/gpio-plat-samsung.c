@@ -1,4 +1,5 @@
-/*
+/* arch/arm/plat-samsung/gpiolib.c
+ *
  * Copyright 2008 Openmoko, Inc.
  * Copyright 2008 Simtec Electronics
  *      Ben Dooks <ben@simtec.co.uk>

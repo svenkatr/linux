@@ -49,12 +49,14 @@ struct sdma_script_start_addrs {
  * struct sdma_platform_data - platform specific data for SDMA engine
  *
  * @sdma_version	The version of this SDMA engine
- * @fw_name		The firmware name
+ * @cpu_name		used to generate the firmware name
+ * @to_version		CPU Tape out version
  * @script_addrs	SDMA scripts addresses in SDMA ROM
  */
 struct sdma_platform_data {
 	int sdma_version;
-	char *fw_name;
+	char *cpu_name;
+	int to_version;
 	struct sdma_script_start_addrs *script_addrs;
 };
 

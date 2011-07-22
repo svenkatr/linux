@@ -135,8 +135,7 @@ static int imxdma_control(struct dma_chan *chan, enum dma_ctrl_cmd cmd,
 		if (ret)
 			return ret;
 
-		imx_dma_config_burstlen(imxdmac->imxdma_channel,
-				imxdmac->watermark_level * imxdmac->word_size);
+		imx_dma_config_burstlen(imxdmac->imxdma_channel, imxdmac->watermark_level);
 
 		return 0;
 	default:

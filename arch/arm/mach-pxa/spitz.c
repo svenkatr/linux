@@ -984,7 +984,6 @@ MACHINE_START(SPITZ, "SHARP Spitz")
 	.fixup		= spitz_fixup,
 	.map_io		= pxa27x_map_io,
 	.init_irq	= pxa27x_init_irq,
-	.handle_irq	= pxa27x_handle_irq,
 	.init_machine	= spitz_init,
 	.timer		= &pxa_timer,
 MACHINE_END
@@ -995,7 +994,6 @@ MACHINE_START(BORZOI, "SHARP Borzoi")
 	.fixup		= spitz_fixup,
 	.map_io		= pxa27x_map_io,
 	.init_irq	= pxa27x_init_irq,
-	.handle_irq	= pxa27x_handle_irq,
 	.init_machine	= spitz_init,
 	.timer		= &pxa_timer,
 MACHINE_END
@@ -1006,7 +1004,6 @@ MACHINE_START(AKITA, "SHARP Akita")
 	.fixup		= spitz_fixup,
 	.map_io		= pxa27x_map_io,
 	.init_irq	= pxa27x_init_irq,
-	.handle_irq	= pxa27x_handle_irq,
 	.init_machine	= spitz_init,
 	.timer		= &pxa_timer,
 MACHINE_END

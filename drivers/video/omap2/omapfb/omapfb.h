@@ -73,15 +73,6 @@ struct omapfb_info {
 	bool mirror;
 };
 
-struct omapfb_display_data {
-	struct omapfb2_device *fbdev;
-	struct omap_dss_device *dssdev;
-	u8 bpp_override;
-	enum omapfb_update_mode update_mode;
-	bool auto_update_work_enabled;
-	struct delayed_work auto_update_work;
-};
-
 struct omapfb2_device {
 	struct device *dev;
 	struct mutex  mtx;
@@ -95,13 +86,17 @@ struct omapfb2_device {
 	struct omapfb2_mem_region regions[10];
 
 	unsigned num_displays;
-	struct omapfb_display_data displays[10];
+	struct omap_dss_device *displays[10];
 	unsigned num_overlays;
 	struct omap_overlay *overlays[10];
 	unsigned num_managers;
 	struct omap_overlay_manager *managers[10];
 
-	struct workqueue_struct *auto_update_wq;
+	unsigned num_bpp_overrides;
+	struct {
+		struct omap_dss_device *dssdev;
+		u8 bpp;
+	} bpp_overrides[10];
 };
 
 struct omapfb_colormode {
@@ -133,13 +128,6 @@ int dss_mode_to_fb_mode(enum omap_color_mode dssmode,
 int omapfb_setup_overlay(struct fb_info *fbi, struct omap_overlay *ovl,
 		u16 posx, u16 posy, u16 outw, u16 outh);
 
-void omapfb_start_auto_update(struct omapfb2_device *fbdev,
-		struct omap_dss_device *display);
-void omapfb_stop_auto_update(struct omapfb2_device *fbdev,
-		struct omap_dss_device *display);
-int omapfb_get_update_mode(struct fb_info *fbi, enum omapfb_update_mode *mode);
-int omapfb_set_update_mode(struct fb_info *fbi, enum omapfb_update_mode mode);
-
 /* find the display connected to this fb, if any */
 static inline struct omap_dss_device *fb2display(struct fb_info *fbi)
 {
@@ -153,19 +141,6 @@ static inline struct omap_dss_device *fb2display(struct fb_info *fbi)
 	}
 
 	return NULL;
-}
-
-static inline struct omapfb_display_data *get_display_data(
-		struct omapfb2_device *fbdev, struct omap_dss_device *dssdev)
-{
-	int i;
-
-	for (i = 0; i < fbdev->num_displays; ++i)
-		if (fbdev->displays[i].dssdev == dssdev)
-			return &fbdev->displays[i];
-
-	/* This should never happen */
-	BUG();
 }
 
 static inline void omapfb_lock(struct omapfb2_device *fbdev)

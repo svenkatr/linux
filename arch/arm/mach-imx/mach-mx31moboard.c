@@ -425,7 +425,7 @@ static int __init moboard_usbh2_init(void)
 	return 0;
 }
 
-static const struct gpio_led mx31moboard_leds[] __initconst = {
+static struct gpio_led mx31moboard_leds[] = {
 	{
 		.name	= "coreboard-led-0:red:running",
 		.default_trigger = "heartbeat",
@@ -442,9 +442,17 @@ static const struct gpio_led mx31moboard_leds[] __initconst = {
 	},
 };
 
-static const struct gpio_led_platform_data mx31moboard_led_pdata __initconst = {
+static struct gpio_led_platform_data mx31moboard_led_pdata = {
 	.num_leds	= ARRAY_SIZE(mx31moboard_leds),
 	.leds		= mx31moboard_leds,
+};
+
+static struct platform_device mx31moboard_leds_device = {
+	.name	= "leds-gpio",
+	.id	= -1,
+	.dev	= {
+		.platform_data = &mx31moboard_led_pdata,
+	},
 };
 
 static const struct ipu_platform_data mx3_ipu_data __initconst = {
@@ -453,6 +461,7 @@ static const struct ipu_platform_data mx3_ipu_data __initconst = {
 
 static struct platform_device *devices[] __initdata = {
 	&mx31moboard_flash,
+	&mx31moboard_leds_device,
 };
 
 static struct mx3_camera_pdata camera_pdata __initdata = {
@@ -498,13 +507,10 @@ core_param(mx31moboard_baseboard, mx31moboard_baseboard, int, 0444);
  */
 static void __init mx31moboard_init(void)
 {
-	imx31_soc_init();
-
 	mxc_iomux_setup_multiple_pins(moboard_pins, ARRAY_SIZE(moboard_pins),
 		"moboard");
 
 	platform_add_devices(devices, ARRAY_SIZE(devices));
-	gpio_led_register_device(-1, &mx31moboard_led_pdata);
 
 	imx31_add_imx_uart0(&uart0_pdata);
 	imx31_add_imx_uart4(&uart4_pdata);

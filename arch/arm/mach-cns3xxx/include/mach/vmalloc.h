@@ -8,4 +8,4 @@
  * published by the Free Software Foundation.
  */
 
-#define VMALLOC_END		0xd8000000UL
+#define VMALLOC_END		0xd8000000

@@ -41,4 +41,5 @@ void __init mx23_map_io(void)
 void __init mx23_init_irq(void)
 {
 	icoll_init_irq();
+	mx23_register_gpios();
 }
