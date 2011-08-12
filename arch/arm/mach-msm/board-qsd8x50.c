@@ -198,6 +198,7 @@ MACHINE_START(QSD8X50_SURF, "QCT QSD8X50 SURF")
 	.init_irq = qsd8x50_init_irq,
 	.init_machine = qsd8x50_init,
 	.timer = &msm_timer,
+	.nr_irqs 	= NR_IRQS,
 MACHINE_END
 
 MACHINE_START(QSD8X50A_ST1_5, "QCT QSD8X50A ST1.5")
@@ -206,4 +207,5 @@ MACHINE_START(QSD8X50A_ST1_5, "QCT QSD8X50A ST1.5")
 	.init_irq = qsd8x50_init_irq,
 	.init_machine = qsd8x50_init,
 	.timer = &msm_timer,
+	.nr_irqs 	= NR_IRQS,
 MACHINE_END

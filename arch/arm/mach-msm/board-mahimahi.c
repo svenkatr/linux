@@ -80,4 +80,5 @@ MACHINE_START(MAHIMAHI, "mahimahi")
 	.init_irq	= msm_init_irq,
 	.init_machine	= mahimahi_init,
 	.timer		= &msm_timer,
+	.nr_irqs 	= NR_IRQS,
 MACHINE_END

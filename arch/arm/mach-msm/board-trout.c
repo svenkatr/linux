@@ -99,4 +99,5 @@ MACHINE_START(TROUT, "HTC Dream")
 	.init_irq	= trout_init_irq,
 	.init_machine	= trout_init,
 	.timer		= &msm_timer,
+	.nr_irqs 	= NR_IRQS,
 MACHINE_END

@@ -111,4 +111,5 @@ MACHINE_START(SAPPHIRE, "sapphire")
 	.init_irq       = sapphire_init_irq,
 	.init_machine   = sapphire_init,
 	.timer          = &msm_timer,
+	.nr_irqs 	= NR_IRQS,
 MACHINE_END

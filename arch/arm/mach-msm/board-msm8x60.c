@@ -69,6 +69,7 @@ MACHINE_START(MSM8X60_RUMI3, "QCT MSM8X60 RUMI3")
 	.init_irq = msm8x60_init_irq,
 	.init_machine = msm8x60_init,
 	.timer = &msm_timer,
+	.nr_irqs 	= NR_IRQS,
 MACHINE_END
 
 MACHINE_START(MSM8X60_SURF, "QCT MSM8X60 SURF")
@@ -76,6 +77,7 @@ MACHINE_START(MSM8X60_SURF, "QCT MSM8X60 SURF")
 	.init_irq = msm8x60_init_irq,
 	.init_machine = msm8x60_init,
 	.timer = &msm_timer,
+	.nr_irqs 	= NR_IRQS,
 MACHINE_END
 
 MACHINE_START(MSM8X60_SIM, "QCT MSM8X60 SIMULATOR")
@@ -83,6 +85,7 @@ MACHINE_START(MSM8X60_SIM, "QCT MSM8X60 SIMULATOR")
 	.init_irq = msm8x60_init_irq,
 	.init_machine = msm8x60_init,
 	.timer = &msm_timer,
+	.nr_irqs 	= NR_IRQS,
 MACHINE_END
 
 MACHINE_START(MSM8X60_FFA, "QCT MSM8X60 FFA")
@@ -90,4 +93,5 @@ MACHINE_START(MSM8X60_FFA, "QCT MSM8X60 FFA")
 	.init_irq = msm8x60_init_irq,
 	.init_machine = msm8x60_init,
 	.timer = &msm_timer,
+	.nr_irqs 	= NR_IRQS,
 MACHINE_END

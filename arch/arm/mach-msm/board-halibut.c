@@ -99,4 +99,5 @@ MACHINE_START(HALIBUT, "Halibut Board (QCT SURF7200A)")
 	.init_irq	= halibut_init_irq,
 	.init_machine	= halibut_init,
 	.timer		= &msm_timer,
+	.nr_irqs 	= NR_IRQS,
 MACHINE_END

@@ -80,6 +80,7 @@ MACHINE_START(MSM8960_SIM, "QCT MSM8960 SIMULATOR")
 	.init_irq = msm8960_init_irq,
 	.timer = &msm_timer,
 	.init_machine = msm8960_sim_init,
+	.nr_irqs 	= NR_IRQS,
 MACHINE_END
 
 MACHINE_START(MSM8960_RUMI3, "QCT MSM8960 RUMI3")
@@ -87,5 +88,6 @@ MACHINE_START(MSM8960_RUMI3, "QCT MSM8960 RUMI3")
 	.init_irq = msm8960_init_irq,
 	.timer = &msm_timer,
 	.init_machine = msm8960_rumi3_init,
+	.nr_irqs 	= NR_IRQS,
 MACHINE_END
 
