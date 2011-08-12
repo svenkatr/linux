@@ -20,7 +20,7 @@
 #include <linux/sched.h>
 #include <asm/mach/time.h>
 #include <asm/sched_clock.h>
-
+#include <mach/irqs.h>
 #include <plat/mtu.h>
 
 void __iomem *mtu_base; /* Assigned by machine code */
