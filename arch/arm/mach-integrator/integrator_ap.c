@@ -35,6 +35,7 @@
 
 #include <mach/hardware.h>
 #include <mach/platform.h>
+#include <mach/irqs.h>
 #include <asm/hardware/arm_timer.h>
 #include <asm/irq.h>
 #include <asm/setup.h>

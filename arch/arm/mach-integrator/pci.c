@@ -25,6 +25,7 @@
 #include <linux/pci.h>
 #include <linux/interrupt.h>
 #include <linux/init.h>
+#include <mach/irqs.h>
 
 #include <asm/irq.h>
 #include <asm/system.h>
