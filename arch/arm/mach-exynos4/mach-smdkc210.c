@@ -27,7 +27,7 @@
 #include <plat/sdhci.h>
 #include <plat/iic.h>
 #include <plat/pd.h>
-
+#include <mach/irqs.h>
 #include <mach/map.h>
 
 /* Following are default values for UCON, ULCON and UFCON UART registers */

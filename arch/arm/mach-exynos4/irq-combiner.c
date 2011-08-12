@@ -15,6 +15,7 @@
 #include <linux/io.h>
 
 #include <asm/mach/irq.h>
+#include <mach/irqs.h>
 
 #define COMBINER_ENABLE_SET	0x0
 #define COMBINER_ENABLE_CLEAR	0x4

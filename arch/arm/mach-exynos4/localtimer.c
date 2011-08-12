@@ -14,7 +14,7 @@
 
 #include <asm/irq.h>
 #include <asm/localtimer.h>
-
+#include <mach/irqs.h>
 /*
  * Setup the local clock events for a CPU.
  */

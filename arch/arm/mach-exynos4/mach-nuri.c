@@ -35,7 +35,7 @@
 #include <plat/clock.h>
 #include <plat/gpio-cfg.h>
 #include <plat/iic.h>
-
+#include <mach/irqs.h>
 #include <mach/map.h>
 
 /* Following are default values for UCON, ULCON and UFCON UART registers */

@@ -20,7 +20,7 @@
 #include <linux/platform_device.h>
 
 #include <asm/smp_twd.h>
-
+#include <mach/irqs.h>
 #include <mach/map.h>
 #include <plat/regs-timer.h>
 #include <asm/mach/time.h>

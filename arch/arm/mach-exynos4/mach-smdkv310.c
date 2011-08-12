@@ -31,7 +31,7 @@
 #include <plat/pd.h>
 
 #include <mach/map.h>
-
+#include <mach/irqs.h>
 /* Following are default values for UCON, ULCON and UFCON UART registers */
 #define SMDKV310_UCON_DEFAULT	(S3C2410_UCON_TXILEVEL |	\
 				 S3C2410_UCON_RXILEVEL |	\

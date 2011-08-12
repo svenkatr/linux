@@ -26,6 +26,7 @@
 #include <plat/iic-core.h>
 
 #include <mach/regs-irq.h>
+#include <mach/irqs.h>
 
 extern int combiner_init(unsigned int combiner_nr, void __iomem *base,
 			 unsigned int irq_start);
