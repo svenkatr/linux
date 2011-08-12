@@ -124,7 +124,13 @@ void __init init_IRQ(void)
 #ifdef CONFIG_SPARSE_IRQ
 int __init arch_probe_nr_irqs(void)
 {
-	nr_irqs = machine_desc->nr_irqs ? machine_desc->nr_irqs : NR_IRQS;
+	if (machine_desc->nr_irqs)
+		nr_irqs = machine_desc->nr_irqs;
+	#ifdef NR_IRQS
+	else
+		nr_irqs = NR_IRQS;
+	#endif
+	WARN_ON(nr_irqs);
 	return nr_irqs;
 }
 #endif

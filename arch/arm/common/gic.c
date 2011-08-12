@@ -28,7 +28,7 @@
 #include <linux/smp.h>
 #include <linux/cpumask.h>
 #include <linux/io.h>
-
+#include <linux/irqnr.h>
 #include <asm/irq.h>
 #include <asm/mach/irq.h>
 #include <asm/hardware/gic.h>
@@ -231,7 +231,7 @@ static void gic_handle_cascade_irq(unsigned int irq, struct irq_desc *desc)
 		goto out;
 
 	cascade_irq = gic_irq + chip_data->irq_offset;
-	if (unlikely(gic_irq < 32 || gic_irq > 1020 || cascade_irq >= NR_IRQS))
+	if (unlikely(gic_irq < 32 || gic_irq > 1020 || cascade_irq >= nr_irqs))
 		do_bad_IRQ(cascade_irq, desc);
 	else
 		generic_handle_irq(cascade_irq);
@@ -312,8 +312,8 @@ static void __init gic_dist_init(struct gic_chip_data *gic,
 	 * Limit number of interrupts registered to the platform maximum
 	 */
 	irq_limit = gic->irq_offset + gic_irqs;
-	if (WARN_ON(irq_limit > NR_IRQS))
-		irq_limit = NR_IRQS;
+	if (WARN_ON(irq_limit > nr_irqs))
+		irq_limit = nr_irqs;
 
 	/*
 	 * Setup the Linux IRQ subsystem.

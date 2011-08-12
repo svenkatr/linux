@@ -30,6 +30,10 @@ u64 smp_irq_stat_cpu(unsigned int cpu);
 
 #define arch_irq_stat_cpu	smp_irq_stat_cpu
 
+#ifndef NR_IRQS
+/* FIXME: Need a better way to derive HARDIRQ_BITS */
+#define HARDIRQ_BITS 10
+#else
 #if NR_IRQS > 512
 #define HARDIRQ_BITS	10
 #elif NR_IRQS > 256
@@ -45,6 +49,8 @@ u64 smp_irq_stat_cpu(unsigned int cpu);
  */
 #if (1 << HARDIRQ_BITS) < NR_IRQS
 # error HARDIRQ_BITS is too low!
+#endif
+
 #endif
 
 #define __ARCH_IRQ_EXIT_IRQS_DISABLED	1
