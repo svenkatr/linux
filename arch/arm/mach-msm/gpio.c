@@ -20,6 +20,7 @@
 #include <linux/io.h>
 #include <linux/irq.h>
 #include <linux/module.h>
+#include <mach/irqs.h>
 #include "gpio_hw.h"
 #include "gpiomux.h"
 

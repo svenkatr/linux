@@ -23,7 +23,7 @@
 #include <linux/io.h>
 
 #include <mach/hardware.h>
-
+#include <mach/irqs.h>
 #include <mach/msm_iomap.h>
 
 #define VIC_REG(off) (MSM_VIC_BASE + (off))

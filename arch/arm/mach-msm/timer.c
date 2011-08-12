@@ -27,6 +27,7 @@
 
 #include <mach/msm_iomap.h>
 #include <mach/cpu.h>
+#include <mach/irqs.h>
 
 #define TIMER_MATCH_VAL         0x0000
 #define TIMER_COUNT_VAL         0x0004

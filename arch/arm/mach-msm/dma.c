@@ -19,6 +19,7 @@
 #include <linux/interrupt.h>
 #include <linux/completion.h>
 #include <mach/dma.h>
+#include <mach/irqs.h>
 
 #define MSM_DMOV_CHANNEL_COUNT 16
 

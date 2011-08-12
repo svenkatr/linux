@@ -31,7 +31,7 @@
 
 #include <mach/msm_smd.h>
 #include <mach/system.h>
-
+#include <mach/irqs.h>
 #include "smd_private.h"
 #include "proc_comm.h"
 
