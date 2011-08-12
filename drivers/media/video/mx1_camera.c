@@ -45,6 +45,7 @@
 #include <mach/dma-mx1-mx2.h>
 #include <mach/hardware.h>
 #include <mach/mx1_camera.h>
+#include <mach/irqs.h>
 
 /*
  * CSI registers
@@ -799,7 +800,7 @@ static int __init mx1_camera_probe(struct platform_device *pdev)
 	set_fiq_regs(&regs);
 
 	mxc_set_irq_fiq(irq, 1);
-	enable_fiq(irq);
+	enable_irq(irq + FIQ_START);
 
 	pcdev->soc_host.drv_name	= DRIVER_NAME;
 	pcdev->soc_host.ops		= &mx1_soc_camera_host_ops;
@@ -815,7 +816,7 @@ static int __init mx1_camera_probe(struct platform_device *pdev)
 	return 0;
 
 exit_free_irq:
-	disable_fiq(irq);
+	disable_irq(irq + FIQ_START);
 	mxc_set_irq_fiq(irq, 0);
 	release_fiq(&fh);
 exit_free_dma:
@@ -840,7 +841,7 @@ static int __exit mx1_camera_remove(struct platform_device *pdev)
 	struct resource *res;
 
 	imx_dma_free(pcdev->dma_chan);
-	disable_fiq(pcdev->irq);
+	disable_irq(pcdev->irq + FIQ_START);
 	mxc_set_irq_fiq(pcdev->irq, 0);
 	release_fiq(&fh);
 
