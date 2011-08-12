@@ -15,6 +15,7 @@
 #include <linux/interrupt.h>
 #include <linux/ioport.h>
 #include <mach/map.h>
+#include <mach/irqs.h>
 
 static struct resource s5p_fimc3_resource[] = {
 	[0] = {

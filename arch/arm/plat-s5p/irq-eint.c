@@ -20,7 +20,7 @@
 #include <asm/hardware/vic.h>
 
 #include <plat/regs-irqtype.h>
-
+#include <mach/irqs.h>
 #include <mach/map.h>
 #include <plat/cpu.h>
 #include <plat/pm.h>

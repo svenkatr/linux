@@ -28,6 +28,7 @@
 #include <video/platform_lcd.h>
 
 #include <mach/map.h>
+#include <mach/irqs.h>
 #include <mach/regs-clock.h>
 #include <mach/regs-fb.h>
 

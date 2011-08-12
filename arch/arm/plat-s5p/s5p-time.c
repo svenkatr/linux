@@ -23,7 +23,7 @@
 #include <asm/mach/arch.h>
 #include <asm/mach/map.h>
 #include <asm/sched_clock.h>
-
+#include <mach/irqs.h>
 #include <mach/map.h>
 #include <plat/devs.h>
 #include <plat/regs-timer.h>

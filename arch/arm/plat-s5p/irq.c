@@ -18,6 +18,7 @@
 #include <asm/hardware/vic.h>
 
 #include <linux/serial_core.h>
+#include <mach/irqs.h>
 #include <mach/map.h>
 #include <plat/regs-timer.h>
 #include <plat/regs-serial.h>

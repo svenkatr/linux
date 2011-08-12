@@ -21,7 +21,7 @@
 #include <plat/irqs.h>
 #include <plat/pm.h>
 #include <mach/map.h>
-
+#include <mach/irqs.h>
 #include <mach/regs-gpio.h>
 #include <mach/regs-irq.h>
 
