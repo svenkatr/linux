@@ -289,13 +289,13 @@ static void floppy_enable_dma(unsigned int chan, dma_t *dma)
 
 	set_fiq_handler(fiqhandler_start, fiqhandler_length);
 	set_fiq_regs(&regs);
-	enable_fiq(fdma->fiq);
+	enable_irq(fdma->fiq + FIQ_START);
 }
 
 static void floppy_disable_dma(unsigned int chan, dma_t *dma)
 {
 	struct floppy_dma *fdma = container_of(dma, struct floppy_dma, dma);
-	disable_fiq(fdma->fiq);
+	disable_irq(fdma->fiq + FIQ_START);
 	release_fiq(&fh);
 }
 
