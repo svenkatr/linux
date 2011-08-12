@@ -25,6 +25,7 @@
 #include <linux/amba/bus.h>
 #include <linux/amba/pl061.h>
 #include <linux/slab.h>
+#include <mach/irqs.h>
 
 #define GPIODIR 0x400
 #define GPIOIS  0x404

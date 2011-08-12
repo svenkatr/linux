@@ -29,7 +29,7 @@
 #include <plat/pincfg.h>
 #include <mach/hardware.h>
 #include <mach/gpio.h>
-
+#include <mach/irqs.h>
 /*
  * The GPIO module in the Nomadik family of Systems-on-Chip is an
  * AMBA device, managing 32 pins and alternate functions.  The logic block
