@@ -455,4 +455,5 @@ MACHINE_START(OMAP_H3, "TI OMAP1710 H3 board")
 	.init_irq	= h3_init_irq,
 	.init_machine	= h3_init,
 	.timer		= &omap_timer,
+	.nr_irqs 	= NR_IRQS,
 MACHINE_END

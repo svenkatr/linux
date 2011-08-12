@@ -392,6 +392,7 @@ MACHINE_START(AMS_DELTA, "Amstrad E3 (Delta)")
 	.init_irq	= ams_delta_init_irq,
 	.init_machine	= ams_delta_init,
 	.timer		= &omap_timer,
+	.nr_irqs 	= NR_IRQS,
 MACHINE_END
 
 EXPORT_SYMBOL(ams_delta_latch1_write);

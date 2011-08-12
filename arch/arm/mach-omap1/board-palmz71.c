@@ -347,4 +347,5 @@ MACHINE_START(OMAP_PALMZ71, "OMAP310 based Palm Zire71")
 	.init_irq	= omap_palmz71_init_irq,
 	.init_machine	= omap_palmz71_init,
 	.timer		= &omap_timer,
+	.nr_irqs 	= NR_IRQS,
 MACHINE_END
