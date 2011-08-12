@@ -22,7 +22,7 @@
 #include <asm/cacheflush.h>
 #include <mach/hardware.h>
 #include <mach/map.h>
-
+#include <mach/irqs.h>
 #include <plat/regs-serial.h>
 #include <mach/regs-clock.h>
 #include <mach/regs-irq.h>
