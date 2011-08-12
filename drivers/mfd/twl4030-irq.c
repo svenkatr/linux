@@ -34,7 +34,7 @@
 #include <linux/slab.h>
 
 #include <linux/i2c/twl.h>
-
+#include <mach/irqs.h>
 #include "twl-core.h"
 
 /*
