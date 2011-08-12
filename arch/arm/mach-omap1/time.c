@@ -47,6 +47,7 @@
 
 #include <asm/system.h>
 #include <mach/hardware.h>
+#include <mach/irqs.h>
 #include <asm/leds.h>
 #include <asm/irq.h>
 #include <asm/sched_clock.h>

@@ -25,7 +25,7 @@
 #include <linux/io.h>
 
 #include <asm/irq.h>
-
+#include <mach/irqs.h>
 #include <plat/mux.h>
 #include <plat/usb.h>
 

@@ -28,6 +28,7 @@
 #include <linux/io.h>
 
 #include <mach/hardware.h>
+#include <mach/irqs.h>
 #include <mach/lcdc.h>
 #include <plat/dma.h>
 
