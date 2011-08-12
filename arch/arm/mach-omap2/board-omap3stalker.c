@@ -561,4 +561,5 @@ MACHINE_START(SBC3530, "OMAP3 STALKER")
 	.init_irq		= omap3_stalker_init_irq,
 	.init_machine		= omap3_stalker_init,
 	.timer			= &omap_timer,
+	.nr_irqs 	= NR_IRQS,
 MACHINE_END

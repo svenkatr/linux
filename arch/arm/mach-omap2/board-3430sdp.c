@@ -807,4 +807,5 @@ MACHINE_START(OMAP_3430SDP, "OMAP3430 3430SDP board")
 	.init_irq	= omap_init_irq,
 	.init_machine	= omap_3430sdp_init,
 	.timer		= &omap_timer,
+	.nr_irqs 	= NR_IRQS,
 MACHINE_END

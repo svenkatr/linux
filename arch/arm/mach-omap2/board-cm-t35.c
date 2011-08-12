@@ -649,4 +649,5 @@ MACHINE_START(CM_T35, "Compulab CM-T35")
 	.init_irq	= omap_init_irq,
 	.init_machine	= cm_t35_init,
 	.timer		= &omap_timer,
+	.nr_irqs 	= NR_IRQS,
 MACHINE_END

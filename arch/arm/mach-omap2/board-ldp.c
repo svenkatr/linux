@@ -353,4 +353,5 @@ MACHINE_START(OMAP_LDP, "OMAP LDP board")
 	.init_irq	= omap_init_irq,
 	.init_machine	= omap_ldp_init,
 	.timer		= &omap_timer,
+	.nr_irqs 	= NR_IRQS,
 MACHINE_END
