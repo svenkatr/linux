@@ -8,6 +8,8 @@
 #ifndef __DEVICES_COMMON_H
 #define __DEVICES_COMMON_H
 
+#include <mach/irqs.h>
+
 extern struct amba_device *
 dbx500_add_amba_device(const char *name, resource_size_t base,
 		       int irq, void *pdata, unsigned int periphid);

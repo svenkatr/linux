@@ -13,6 +13,7 @@
 #include <linux/i2c.h>
 #include <linux/input/matrix_keypad.h>
 #include <asm/mach-types.h>
+#include <mach/irqs.h>
 
 #include "board-mop500.h"
 

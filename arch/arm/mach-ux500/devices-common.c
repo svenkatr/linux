@@ -16,7 +16,7 @@
 #include <plat/gpio.h>
 
 #include <mach/hardware.h>
-
+#include <mach/irqs.h>
 #include "devices-common.h"
 
 struct amba_device *

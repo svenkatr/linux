@@ -13,6 +13,7 @@
 #include <linux/slab.h>
 
 #include <mach/id.h>
+#include <mach/irqs.h>
 
 #define MODEM_INTCON_BASE_ADDR 0xBFFD3000
 #define MODEM_INTCON_SIZE 0xFFF
