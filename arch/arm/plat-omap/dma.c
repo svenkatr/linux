@@ -38,6 +38,7 @@
 
 #include <asm/system.h>
 #include <mach/hardware.h>
+#include <mach/irqs.h>
 #include <plat/dma.h>
 
 #include <plat/tc.h>

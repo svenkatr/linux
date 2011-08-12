@@ -14,6 +14,7 @@
 #include <linux/string.h>
 #include <linux/delay.h>
 #include <mach/hardware.h>
+#include <mach/irqs.h>
 #include <plat/mmc.h>
 #include <plat/omap-pm.h>
 #include <plat/mux.h>
