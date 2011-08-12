@@ -26,6 +26,7 @@
 #include <linux/interrupt.h>
 
 #include <plat/dma.h>
+#include <mach/irqs.h>
 
 #include "omapfb.h"
 #include "lcdc.h"
