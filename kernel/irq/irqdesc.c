@@ -91,7 +91,11 @@ static void desc_set_defaults(unsigned int irq, struct irq_desc *desc, int node)
 	desc_smp_init(desc, node);
 }
 
+#ifdef NR_IRQS
 int nr_irqs = NR_IRQS;
+#else
+int nr_irqs;
+#endif
 EXPORT_SYMBOL_GPL(nr_irqs);
 
 static DEFINE_MUTEX(sparse_irq_lock);
@@ -215,7 +219,7 @@ int __init early_irq_init(void)
 
 	/* Let arch update nr_irqs and return the nr of preallocated irqs */
 	initcnt = arch_probe_nr_irqs();
-	printk(KERN_INFO "NR_IRQS:%d nr_irqs:%d %d\n", NR_IRQS, nr_irqs, initcnt);
+	printk(KERN_INFO "nr_irqs:%d %d\n", nr_irqs, initcnt);
 
 	if (WARN_ON(nr_irqs > IRQ_BITMAP_BITS))
 		nr_irqs = IRQ_BITMAP_BITS;
