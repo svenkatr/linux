@@ -44,7 +44,7 @@
 #include <linux/cpufreq.h>
 
 #include <asm/irq.h>
-
+#include <mach/irqs.h>
 #include <mach/hardware.h>
 #include <mach/map.h>
 
