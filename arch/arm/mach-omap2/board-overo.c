@@ -568,4 +568,5 @@ MACHINE_START(OVERO, "Gumstix Overo")
 	.init_irq	= omap3_init_irq,
 	.init_machine	= overo_init,
 	.timer		= &omap3_timer,
+	.nr_irqs 	= NR_IRQS,
 MACHINE_END

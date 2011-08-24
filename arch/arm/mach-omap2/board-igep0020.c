@@ -679,6 +679,7 @@ MACHINE_START(IGEP0020, "IGEP v2 board")
 	.init_irq	= omap3_init_irq,
 	.init_machine	= igep_init,
 	.timer		= &omap3_timer,
+	.nr_irqs 	= NR_IRQS,
 MACHINE_END
 
 MACHINE_START(IGEP0030, "IGEP OMAP3 module")
@@ -689,4 +690,5 @@ MACHINE_START(IGEP0030, "IGEP OMAP3 module")
 	.init_irq	= omap3_init_irq,
 	.init_machine	= igep_init,
 	.timer		= &omap3_timer,
+	.nr_irqs 	= NR_IRQS,
 MACHINE_END

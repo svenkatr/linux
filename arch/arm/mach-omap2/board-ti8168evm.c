@@ -54,4 +54,5 @@ MACHINE_START(TI8168EVM, "ti8168evm")
 	.init_irq	= ti816x_init_irq,
 	.timer		= &omap3_timer,
 	.init_machine	= ti8168_evm_init,
+	.nr_irqs 	= NR_IRQS,
 MACHINE_END
