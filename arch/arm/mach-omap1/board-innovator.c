@@ -465,4 +465,5 @@ MACHINE_START(OMAP_INNOVATOR, "TI-Innovator")
 	.init_irq	= innovator_init_irq,
 	.init_machine	= innovator_init,
 	.timer		= &omap1_timer,
+	.nr_irqs 	= NR_IRQS,
 MACHINE_END

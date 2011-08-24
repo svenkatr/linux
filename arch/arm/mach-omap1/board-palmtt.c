@@ -327,4 +327,5 @@ MACHINE_START(OMAP_PALMTT, "OMAP1510 based Palm Tungsten|T")
 	.init_irq	= omap_palmtt_init_irq,
 	.init_machine	= omap_palmtt_init,
 	.timer		= &omap1_timer,
+	.nr_irqs 	= NR_IRQS,
 MACHINE_END

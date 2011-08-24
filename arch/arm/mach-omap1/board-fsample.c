@@ -395,4 +395,5 @@ MACHINE_START(OMAP_FSAMPLE, "OMAP730 F-Sample")
 	.init_irq	= omap_fsample_init_irq,
 	.init_machine	= omap_fsample_init,
 	.timer		= &omap1_timer,
+	.nr_irqs 	= NR_IRQS,
 MACHINE_END

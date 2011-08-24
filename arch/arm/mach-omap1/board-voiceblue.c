@@ -307,4 +307,5 @@ MACHINE_START(VOICEBLUE, "VoiceBlue OMAP5910")
 	.init_irq	= voiceblue_init_irq,
 	.init_machine	= voiceblue_init,
 	.timer		= &omap1_timer,
+	.nr_irqs 	= NR_IRQS,
 MACHINE_END
