@@ -1,0 +1,70 @@
+* Samsung's SDHCI Controller device tree bindings
+
+Samsung's SDHCI controller is used as a connectivity interface with external
+MMC, SD and eMMC storage mediums.
+
+Required SoC Specific Properties:
+- compatible: should be one of the following
+  - "samsung,s3c6410-sdhci": For controllers compatible with s3c6410 sdhci
+    controller.
+  - "samsung,exynos4210-sdhci": For controller compatible with Exynos4 sdhci
+    controller.
+
+- reg: physical base address of the controller and length of memory mapped
+  region.
+
+- interrupts: The interrupt number to the cpu. The interrupt specifier format
+  depends on the interrupt controller.
+
+
+Required Board Specific Properties:
+- gpios: Should specify the gpios used for clock, command and data lines. The
+  gpio specifier format depends on the gpio controller. Note: There is no
+  particular order in which the gpio's have to be listed.
+
+
+Optional Board Specific Properties:
+- samsung,sdhci-bus-width: Number of data lines connected to the controller.
+  Note: This excludes the clock,command and card detect lines. If this property
+  is not specified, default value is 1.
+
+- samsung,cd-gpio-invert: If 'samsung,sdhci-cd-gpio' card detect method is
+  selected, this property can be optionally specified to invert the value of
+  external card detect gpio line.
+
+- One of the following properties for card detect type.
+  - samsung,sdhci-cd-internal: Card detect line from the card slot  is
+    connected to the card detect pad of the sdhci controller. A gpio is
+    used for this connection (with possible pin function settings).
+  - samsung,sdhci-cd-gpio: A gpio line (with possible pin function settings)
+    is used a card detect line. This gpio line is not connected to card detect
+    pad of the sdhci controller.
+  - samsung,sdhci-cd-none: There is no card detect line. Polling is used to
+    detect the presence of the card. (DEFAULT, if no card detect property
+    is specified).
+  - samsung,sdhci-cd-permanent: There is no card detect line. The card is
+    permanently connected to the sdhci controller.
+
+- gpio-cd: The gpio to be used as card detect line for
+  'samsung,sdhci-cd-internal' or 'samsung,sdhci-cd-gpio' card detection method.
+  The gpio specifier format depends on the gpio controller.
+
+Example:
+	sdhci@12530000 {
+		compatible = "samsung,exynos4210-sdhci";
+		reg = <0x12530000 0x100>;
+		interrupts = <139>;
+		samsung,sdhci-bus-width = <4>;
+		samsung,sdhci-cd-internal;
+		gpio-cd = <&gpk2 2 2 3 3>;
+		gpios = <&gpk2 0 2 0 3>,  /* clock line */
+			<&gpk2 1 2 0 3>,  /* command line */
+			<&gpk2 3 2 3 3>,  /* data line 0 */
+			<&gpk2 4 2 3 3>,  /* data line 1 */
+			<&gpk2 5 2 3 3>,  /* data line 2 */
+			<&gpk2 6 2 3 3>;  /* data line 3 */
+	};
+
+	Note: This example shows both SoC specific and board specific properties
+	in a single device node. The properties can be actually be seperated
+	into SoC specific node and board specific node.
