@@ -255,6 +255,11 @@ void __init exynos4_map_io(void)
 	s3c_fimc_setname(2, "exynos4-fimc");
 	s3c_fimc_setname(3, "exynos4-fimc");
 
+	s3c_sdhci_setname(0, "exynos4-sdhci");
+	s3c_sdhci_setname(1, "exynos4-sdhci");
+	s3c_sdhci_setname(2, "exynos4-sdhci");
+	s3c_sdhci_setname(3, "exynos4-sdhci");
+
 	/* The I2C bus controllers are directly compatible with s3c2440 */
 	s3c_i2c0_setname("s3c2440-i2c");
 	s3c_i2c1_setname("s3c2440-i2c");
