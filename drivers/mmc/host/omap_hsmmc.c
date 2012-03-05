@@ -1360,7 +1360,7 @@ static void set_data_timeout(struct omap_hsmmc_host *host)
 	if (clkd == 0)
 		clkd = 1;
 
-    /* Use the maximum timeout value allowed in the standard of 14 or 0xE */
+	/* Use the maximum timeout value allowed in the standard of 14 or 0xE */
 	dto = 14;
 
 	reg &= ~DTO_MASK;
