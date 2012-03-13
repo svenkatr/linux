@@ -13,6 +13,7 @@
 #include <linux/interrupt.h>
 #include <linux/jiffies.h>
 #include <linux/mmc/host.h>
+#include <linux/mmc/cd-gpio.h>
 #include <linux/module.h>
 #include <linux/slab.h>
 
