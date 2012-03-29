@@ -258,6 +258,11 @@ static int __mmc_start_req(struct mmc_host *host, struct mmc_request *mrq)
 		complete(&mrq->completion);
 		return -ENOMEDIUM;
 	}
+	if (mmc_is_preemptible_command(mrq->cmd))
+		mrq->cmd->cmd_attr |= MMC_CMD_PREEMPTIBLE;
+	else
+		mrq->cmd->cmd_attr &= ~MMC_CMD_PREEMPTIBLE;
+	mrq->cmd->started_time = jiffies;
 	mmc_start_request(host, mrq);
 	return 0;
 }
