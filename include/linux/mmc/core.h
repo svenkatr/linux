@@ -76,6 +76,10 @@ struct mmc_command {
  */
 #define mmc_cmd_type(cmd)	((cmd)->flags & MMC_CMD_MASK)
 
+	unsigned int		cmd_attr; /*Runtime attributes of the command */
+#define MMC_CMD_PREEMPTIBLE	BIT(0)
+#define MMC_CMD_PREEMPTED	BIT(1)
+	unsigned long		started_time;
 	unsigned int		retries;	/* max number of retries */
 	unsigned int		error;		/* command error */
 
