@@ -151,6 +151,7 @@ enum rq_flag_bits {
 	__REQ_IO_STAT,		/* account I/O stat */
 	__REQ_MIXED_MERGE,	/* merge of different types, fail separately */
 	__REQ_RW_DMPG,
+	__REQ_RW_SWAPIN,
 	__REQ_NR_BITS,		/* stops here */
 };
 
@@ -193,5 +194,6 @@ enum rq_flag_bits {
 #define REQ_MIXED_MERGE		(1 << __REQ_MIXED_MERGE)
 #define REQ_SECURE		(1 << __REQ_SECURE)
 #define REQ_RW_DMPG		(1 << __REQ_RW_DMPG)
+#define REQ_RW_SWAPIN		(1 << __REQ_RW_SWAPIN)
 
 #endif /* __LINUX_BLK_TYPES_H */

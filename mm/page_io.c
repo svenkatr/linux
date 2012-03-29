@@ -128,8 +128,9 @@ int swap_readpage(struct page *page)
 		ret = -ENOMEM;
 		goto out;
 	}
+	bio->bi_rw |= REQ_RW_SWAPIN;
 	count_vm_event(PSWPIN);
-	submit_bio(READ, bio);
+	submit_bio(READ | REQ_RW_SWAPIN, bio);
 out:
 	return ret;
 }
