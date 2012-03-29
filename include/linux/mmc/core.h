@@ -10,6 +10,7 @@
 
 #include <linux/interrupt.h>
 #include <linux/completion.h>
+#include <linux/mmc/mmc.h>
 
 struct request;
 struct mmc_data;
@@ -190,6 +191,18 @@ extern int mmc_detect_card_removed(struct mmc_host *host);
 static inline void mmc_claim_host(struct mmc_host *host)
 {
 	__mmc_claim_host(host, NULL);
+}
+
+static inline bool mmc_is_preemptible_command(struct mmc_command *cmd)
+{
+	if ((cmd->opcode == MMC_SWITCH && (cmd->arg == EXT_CSD_BKOPS_START ||
+		cmd->arg == EXT_CSD_SANITIZE_START ||
+		cmd->arg == EXT_CSD_FLUSH_CACHE))
+		|| (cmd->opcode == MMC_ERASE)
+		|| (cmd->opcode == MMC_WRITE_MULTIPLE_BLOCK)
+		|| (cmd->opcode == MMC_WRITE_BLOCK))
+		return true;
+	return false;
 }
 
 extern u32 mmc_vddrange_to_ocrmask(int vdd_min, int vdd_max);
