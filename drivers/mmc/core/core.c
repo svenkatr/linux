@@ -328,6 +328,14 @@ static void mmc_post_req(struct mmc_host *host, struct mmc_request *mrq,
 	}
 }
 
+static int mmc_abort_req(struct mmc_host *host, struct mmc_request *req)
+{
+	if (host->ops->abort_req)
+		return host->ops->abort_req(host, req);
+
+	return -ENOSYS;
+}
+
 /**
  *	mmc_start_req - start a non-blocking request
  *	@host: MMC host to start command
