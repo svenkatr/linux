@@ -213,6 +213,8 @@ queue_store_##name(struct request_queue *q, const char *page, size_t count) \
 }
 
 QUEUE_SYSFS_BIT_FNS(nonrot, NONROT, 1);
+QUEUE_SYSFS_BIT_FNS(expedite_dmpg, EXP_DMPG, 0);
+QUEUE_SYSFS_BIT_FNS(expedite_swapin, EXP_SWAPIN, 0);
 QUEUE_SYSFS_BIT_FNS(random, ADD_RANDOM, 0);
 QUEUE_SYSFS_BIT_FNS(iostats, IO_STAT, 0);
 #undef QUEUE_SYSFS_BIT_FNS
@@ -387,6 +389,18 @@ static struct queue_sysfs_entry queue_random_entry = {
 	.store = queue_store_random,
 };
 
+static struct queue_sysfs_entry queue_dmpg_entry = {
+	.attr = {.name = "expedite_demandpaging", .mode = S_IRUGO | S_IWUSR },
+	.show = queue_show_expedite_dmpg,
+	.store = queue_store_expedite_dmpg,
+};
+
+static struct queue_sysfs_entry queue_swapin_entry = {
+	.attr = {.name = "expedite_swapping", .mode = S_IRUGO | S_IWUSR },
+	.show = queue_show_expedite_swapin,
+	.store = queue_store_expedite_swapin,
+};
+
 static struct attribute *default_attrs[] = {
 	&queue_requests_entry.attr,
 	&queue_ra_entry.attr,
@@ -409,6 +423,8 @@ static struct attribute *default_attrs[] = {
 	&queue_rq_affinity_entry.attr,
 	&queue_iostats_entry.attr,
 	&queue_random_entry.attr,
+	&queue_dmpg_entry.attr,
+	&queue_swapin_entry.attr,
 	NULL,
 };
 
