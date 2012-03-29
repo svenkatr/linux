@@ -466,6 +466,38 @@ out:
 }
 EXPORT_SYMBOL(mmc_interrupt_hpi);
 
+int mmc_preempt_foreground_request(struct mmc_card *card,
+	struct mmc_request *req)
+{
+	int ret;
+
+	ret = mmc_abort_req(card->host, req);
+	if (ret == -ENOSYS)
+		return ret;
+	/*
+	 * Whether or not abort was successful, the command is
+	 * still under the host controller's context.
+	 * Should wait for the completion to be returned.
+	 */
+	wait_for_completion(&req->completion);
+	/*
+	 * Checkpoint the aborted request.
+	 * If error is set, the request completed partially,
+	 * and the ext_csd field "CORRECTLY_PRG_SECTORS_NUM"
+	 * contains the number of blocks written to the device.
+	 * If error is not set, the request was completed
+	 * successfully and there is no need to try it again.
+	 */
+	if (req->data && req->data->error) {
+		mmc_interrupt_hpi(card);
+		/* TODO : Take out the CORRECTLY_PRG_SECTORS_NUM
+		 * from ext_csd and add it to the request */
+	}
+
+	return 0;
+}
+EXPORT_SYMBOL(mmc_preempt_foreground_request);
+
 /**
  *	mmc_wait_for_cmd - start a command and wait for completion
  *	@host: MMC host to start command
