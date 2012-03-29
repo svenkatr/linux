@@ -367,7 +367,8 @@ void elv_dispatch_sort(struct request_queue *q, struct request *rq)
 	q->nr_sorted--;
 
 	boundary = q->end_sector;
-	stop_flags = REQ_SOFTBARRIER | REQ_STARTED;
+	stop_flags = REQ_SOFTBARRIER | REQ_STARTED
+		| REQ_RW_SWAPIN	| REQ_RW_DMPG ;
 	list_for_each_prev(entry, &q->queue_head) {
 		struct request *pos = list_entry_rq(entry);
 
@@ -585,6 +586,17 @@ void elv_quiesce_end(struct request_queue *q)
 
 void __elv_add_request(struct request_queue *q, struct request *rq, int where)
 {
+	unsigned int hpi_flags = REQ_RW_DMPG | REQ_RW_SWAPIN;
+
+	if (rq->cmd_flags & hpi_flags) {
+		/*
+		 * Insert swap-in or demand page requests at the front. This
+		 * causes them to be queued in the reversed order.
+		 */
+		where = ELEVATOR_INSERT_FRONT;
+	} else
+
+
 	trace_block_rq_insert(q, rq);
 
 	rq->q = q;
