@@ -467,6 +467,21 @@ out:
 }
 EXPORT_SYMBOL(mmc_interrupt_hpi);
 
+int mmc_preempt_foreground_request(struct mmc_card *card,
+	struct mmc_request *req)
+{
+	int ret;
+
+	ret = mmc_abort_req(card->host, req);
+	if (ret)
+		pr_err("%s: Host Abort failed %d\n",
+			mmc_hostname(card->host), ret);
+	else
+		ret = mmc_interrupt_hpi(card);
+	return ret;
+}
+EXPORT_SYMBOL(mmc_preempt_foreground_request);
+
 /**
  *	mmc_wait_for_cmd - start a command and wait for completion
  *	@host: MMC host to start command
