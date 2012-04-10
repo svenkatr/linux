@@ -1683,8 +1683,9 @@ static int omap_hsmmc_regs_show(struct seq_file *s, void *data)
 	if (host->pdata->get_context_loss_count)
 		context_loss = host->pdata->get_context_loss_count(host->dev);
 
-	seq_printf(s, "mmc%d:\n ctx_loss:\t%d:%d\n\nregs:\n",
-			mmc->index, host->context_loss, context_loss);
+	seq_printf(s, "mmc%d:\n ctx_loss:\t%d:%d\n fclk:\t\t%lu Hz\n\nregs:\n",
+		mmc->index, host->context_loss, context_loss,
+			clk_get_rate(host->fclk));
 
 	if (host->suspended) {
 		seq_printf(s, "host suspended, can't read registers\n");
