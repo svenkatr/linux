@@ -57,6 +57,13 @@
 	(bio)->bi_rw |= ((unsigned long) (prio) << BIO_PRIO_SHIFT);	\
 } while (0)
 
+static inline bool bio_rw_flagged(struct bio *bio, unsigned long flag)
+{
+	return ((bio->bi_rw & flag)  != 0);
+}
+
+#define bio_dmpg(bio)	bio_rw_flagged(bio, REQ_RW_DMPG)
+
 /*
  * various member access, note that bio_data should of course not be used
  * on highmem page vectors
