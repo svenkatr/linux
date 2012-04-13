@@ -401,7 +401,7 @@ EXPORT_SYMBOL(mmc_wait_for_req);
  */
 int mmc_interrupt_hpi(struct mmc_card *card)
 {
-	int err;
+	int err, i;
 	u32 status;
 
 	BUG_ON(!card);
@@ -421,27 +421,29 @@ int mmc_interrupt_hpi(struct mmc_card *card)
 	/*
 	 * If the card status is in PRG-state, we can send the HPI command.
 	 */
+	err = -EINVAL;
 	if (R1_CURRENT_STATE(status) == R1_STATE_PRG) {
-		do {
-			/*
-			 * We don't know when the HPI command will finish
-			 * processing, so we need to resend HPI until out
-			 * of prg-state, and keep checking the card status
-			 * with SEND_STATUS.  If a timeout error occurs when
-			 * sending the HPI command, we are already out of
-			 * prg-state.
-			 */
+		/* To prevent an infinite lockout, try to send HPI
+		 * a fixed number of times and bailout if it can't
+		 * succeed.
+		 */
+		for (i = 0; i < 10 && err != 0 ; i++)
 			err = mmc_send_hpi_cmd(card, &status);
-			if (err)
+		/* Once HPI was sent successfully, the card is
+		 * supposed to be back to transfer state.
+		 */
+		do {
+			if (err) {
 				pr_debug("%s: abort HPI (%d error)\n",
 					 mmc_hostname(card->host), err);
-
-			err = mmc_send_status(card, &status);
-			if (err)
 				break;
+			}
+			err = mmc_send_status(card, &status);
 		} while (R1_CURRENT_STATE(status) == R1_STATE_PRG);
-	} else
-		pr_debug("%s: Left prg-state\n", mmc_hostname(card->host));
+	} else {
+		pr_debug("%s: Can't send HPI. State=%d\n",
+			mmc_hostname(card->host), R1_CURRENT_STATE(status));
+	}
 
 out:
 	mmc_release_host(card->host);
