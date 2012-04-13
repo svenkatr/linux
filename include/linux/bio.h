@@ -63,6 +63,7 @@ static inline bool bio_rw_flagged(struct bio *bio, unsigned long flag)
 }
 
 #define bio_dmpg(bio)	bio_rw_flagged(bio, REQ_RW_DMPG)
+#define bio_swapin(bio)	bio_rw_flagged(bio, REQ_RW_SWAPIN)
 
 /*
  * various member access, note that bio_data should of course not be used
