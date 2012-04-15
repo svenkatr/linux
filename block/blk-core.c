@@ -1305,6 +1305,12 @@ void init_request_from_bio(struct request *req, struct bio *bio)
 	if (bio->bi_rw & REQ_RAHEAD)
 		req->cmd_flags |= REQ_FAILFAST_MASK;
 
+	if (bio_swapin(bio) && blk_queue_exp_swapin(req->q))
+		req->cmd_flags |= REQ_RW_SWAPIN;
+
+	if (bio_dmpg(bio) && blk_queue_exp_dmpg(req->q))
+		req->cmd_flags |= REQ_RW_DMPG;
+
 	req->errors = 0;
 	req->__sector = bio->bi_sector;
 	req->ioprio = bio_prio(bio);
@@ -1329,6 +1335,18 @@ void blk_queue_bio(struct request_queue *q, struct bio *bio)
 	if (bio->bi_rw & (REQ_FLUSH | REQ_FUA)) {
 		spin_lock_irq(q->queue_lock);
 		where = ELEVATOR_INSERT_FLUSH;
+		goto get_rq;
+	}
+
+	if (bio_swapin(bio) && blk_queue_exp_swapin(q)) {
+		spin_lock_irq(q->queue_lock);
+		where = ELEVATOR_INSERT_FRONT;
+		goto get_rq;
+	}
+
+	if (bio_dmpg(bio) && blk_queue_exp_dmpg(q)) {
+		spin_lock_irq(q->queue_lock);
+		where = ELEVATOR_INSERT_FRONT;
 		goto get_rq;
 	}
 
