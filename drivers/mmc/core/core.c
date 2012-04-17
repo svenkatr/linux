@@ -403,6 +403,7 @@ int mmc_interrupt_hpi(struct mmc_card *card)
 {
 	int err;
 	u32 status;
+	unsigned long starttime;
 
 	BUG_ON(!card);
 
@@ -421,27 +422,31 @@ int mmc_interrupt_hpi(struct mmc_card *card)
 	/*
 	 * If the card status is in PRG-state, we can send the HPI command.
 	 */
-	if (R1_CURRENT_STATE(status) == R1_STATE_PRG) {
-		do {
-			/*
-			 * We don't know when the HPI command will finish
-			 * processing, so we need to resend HPI until out
-			 * of prg-state, and keep checking the card status
-			 * with SEND_STATUS.  If a timeout error occurs when
-			 * sending the HPI command, we are already out of
-			 * prg-state.
-			 */
-			err = mmc_send_hpi_cmd(card, &status);
-			if (err)
-				pr_debug("%s: abort HPI (%d error)\n",
-					 mmc_hostname(card->host), err);
+	if (R1_CURRENT_STATE(status) != R1_STATE_PRG) {
+		pr_debug("%s: Can't send HPI: Card state=%d\n",
+			mmc_hostname(card->host), R1_CURRENT_STATE(status));
+		err = -EINVAL;
+		goto out;
+	}
 
-			err = mmc_send_status(card, &status);
-			if (err)
-				break;
-		} while (R1_CURRENT_STATE(status) == R1_STATE_PRG);
-	} else
-		pr_debug("%s: Left prg-state\n", mmc_hostname(card->host));
+	starttime = jiffies;
+	err = mmc_send_hpi_cmd(card, &status);
+	if (err) {
+		pr_debug("%s:HPI could not be sent.err=%d)\n",
+			mmc_hostname(card->host), err);
+		goto out;
+	}
+
+	do {
+		err = mmc_send_status(card, &status);
+
+		if (!err && R1_CURRENT_STATE(status) == R1_STATE_TRAN)
+			goto out;
+		if (jiffies_to_msecs(jiffies - starttime) >
+			card->ext_csd.out_of_int_time)
+			err = -ETIMEDOUT;
+	} while (!err);
+
 
 out:
 	mmc_release_host(card->host);
