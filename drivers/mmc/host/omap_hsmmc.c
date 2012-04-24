@@ -177,6 +177,7 @@ struct omap_hsmmc_host {
 	int			reqs_blocked;
 	int			use_reg;
 	int			req_in_progress;
+	int			abort_in_progress;
 	unsigned int		flags;
 	struct omap_hsmmc_next	next_data;
 
@@ -982,6 +983,7 @@ static inline void omap_hsmmc_reset_controller_fsm(struct omap_hsmmc_host *host,
 static void omap_hsmmc_do_irq(struct omap_hsmmc_host *host, int status)
 {
 	struct mmc_data *data;
+	int err = 0;
 	int end_cmd = 0, end_trans = 0;
 
 	if (!host->req_in_progress) {
@@ -991,6 +993,11 @@ static void omap_hsmmc_do_irq(struct omap_hsmmc_host *host, int status)
 			status = OMAP_HSMMC_READ(host->base, STAT);
 		} while (status & INT_EN_MASK);
 		return;
+	}
+
+	if (host->abort_in_progress) {
+		end_trans = 1;
+		end_cmd = 1;
 	}
 
 	data = host->data;
@@ -1021,7 +1028,7 @@ static void omap_hsmmc_do_irq(struct omap_hsmmc_host *host, int status)
 		if ((status & DATA_TIMEOUT) ||
 			(status & DATA_CRC)) {
 			if (host->data || host->response_busy) {
-				int err = (status & DATA_TIMEOUT) ?
+				err = (status & DATA_TIMEOUT) ?
 						-ETIMEDOUT : -EILSEQ;
 
 				if (host->data)
@@ -1045,10 +1052,13 @@ static void omap_hsmmc_do_irq(struct omap_hsmmc_host *host, int status)
 
 	OMAP_HSMMC_WRITE(host->base, STAT, status);
 
-	if (end_cmd || ((status & CC) && host->cmd))
+	if ((end_cmd || (status & CC)) && host->cmd)
 		omap_hsmmc_cmd_done(host, host->cmd);
-	if ((end_trans || (status & TC)) && host->mrq)
+	if ((end_trans || (status & TC)) && host->mrq) {
+		if (data)
+			data->error = err;
 		omap_hsmmc_xfer_done(host, data);
+	}
 }
 
 /*
@@ -1257,7 +1267,7 @@ static void omap_hsmmc_dma_cb(int lch, u16 ch_status, void *cb_data)
 	}
 
 	spin_lock_irqsave(&host->irq_lock, flags);
-	if (host->dma_ch < 0) {
+	if (host->dma_ch < 0 || host->abort_in_progress) {
 		spin_unlock_irqrestore(&host->irq_lock, flags);
 		return;
 	}
@@ -1478,6 +1488,40 @@ static void omap_hsmmc_pre_req(struct mmc_host *mmc, struct mmc_request *mrq,
 			mrq->data->host_cookie = 0;
 }
 
+static int omap_hsmmc_abort_req(struct mmc_host *mmc, struct mmc_request *req)
+{
+	struct omap_hsmmc_host *host = mmc_priv(mmc);
+	unsigned long flags;
+
+	if (!host->req_in_progress) {
+		dev_dbg(mmc_dev(host->mmc), "No request to abort\n");
+		return -EINVAL;
+	}
+	if (req && req != host->mrq) {
+		dev_dbg(mmc_dev(host->mmc), "Non matching abort request\n");
+		return -EINVAL;
+	}
+	spin_lock_irqsave(&host->irq_lock, flags);
+	host->abort_in_progress = 1;
+	omap_hsmmc_disable_irq(host);
+	spin_unlock_irqrestore(&host->irq_lock, flags);
+
+	host->response_busy = 0;
+
+	if (host->data) {
+		struct mmc_data *dat = host->data;
+		omap_hsmmc_dma_cleanup(host, -EIO);
+		dev_dbg(mmc_dev(host->mmc), "Aborting Transfer\n");
+		omap_hsmmc_xfer_done(host, dat);
+	} else if (host->cmd) {
+		dev_dbg(mmc_dev(host->mmc), "Aborting Command\n");
+		omap_hsmmc_cmd_done(host, host->cmd);
+	}
+
+	dev_dbg(mmc_dev(host->mmc), "Request %pK aborted\n", req);
+	return 0;
+
+}
 /*
  * Request function. for read/write operation
  */
@@ -1488,6 +1532,8 @@ static void omap_hsmmc_request(struct mmc_host *mmc, struct mmc_request *req)
 
 	BUG_ON(host->req_in_progress);
 	BUG_ON(host->dma_ch != -1);
+	host->abort_in_progress = 0;
+
 	if (host->protect_card) {
 		if (host->reqs_blocked < 3) {
 			/*
@@ -1664,6 +1710,7 @@ static const struct mmc_host_ops omap_hsmmc_ops = {
 	.disable = omap_hsmmc_disable_fclk,
 	.post_req = omap_hsmmc_post_req,
 	.pre_req = omap_hsmmc_pre_req,
+	.abort_req = omap_hsmmc_abort_req,
 	.request = omap_hsmmc_request,
 	.set_ios = omap_hsmmc_set_ios,
 	.get_cd = omap_hsmmc_get_cd,
