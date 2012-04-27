@@ -19,3 +19,15 @@ Description:
 		is enabled, this attribute will indicate the size of enhanced
 		data area. If not, this attribute will be -EINVAL.
 		Unit KByte. Format decimal.
+
+What:		/sys/devices/.../mmc_host/mmcX/mmcX:XXXX/hpi_time_threshold
+Date:		April 2012
+Contact:	Venkatraman S <svenkatr@ti.com>
+Description:
+		High Priority Interrupt is a new feature defined in eMMC4.4
+		standard. If this feature is enabled, stack needs to decide
+		till what time since the last issued request is considered
+		preemptible. This attribute value (in milliseconds) is
+		used for arriving at the most optimal value for a specific
+		card. Default is zero, which also disables the feature, as
+		the request becomes non-preemptible immediately.
