@@ -206,3 +206,15 @@ Description:
 		when a discarded area is read the discard_zeroes_data
 		parameter will be set to one. Otherwise it will be 0 and
 		the result of reading a discarded area is undefined.
+
+What:		/sys/block/<disk>/queue/expedite_demandpaging
+What:		/sys/block/<disk>/queue/expedite_swapin
+Date:		April 2012
+Contact:	Venkatraman S <svenkatr@ti.com>
+Description:
+		For latency improvements, some storage devices could
+		provide a mechanism for servicing demand paging and
+		swapin requests in a high priority manner. Setting
+		these flags to 1 would get the requests marked with
+		REQ_RW_DMPG or REQ_RW_SWAPIN to be moved to the front
+		of elevator queue.
