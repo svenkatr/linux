@@ -624,6 +624,30 @@ MMC_DEV_ATTR(enhanced_area_offset, "%llu\n",
 		card->ext_csd.enhanced_area_offset);
 MMC_DEV_ATTR(enhanced_area_size, "%u\n", card->ext_csd.enhanced_area_size);
 
+static ssize_t mmc_hpi_threhold_show(struct device *dev,
+	struct device_attribute *attr, char *buf)
+{
+	struct mmc_card *card = mmc_dev_to_card(dev);
+	return sprintf(buf, "%d\n", card->preempt_time_threshold);
+}
+
+static ssize_t mmc_hpi_threshold_store(struct device *dev,
+	struct device_attribute *attr,
+	const char *buf, size_t count)
+{
+	unsigned long threshold;
+	struct mmc_card *card = mmc_dev_to_card(dev);
+
+	if (kstrtoul(buf, 0, &threshold))
+		return -EINVAL;
+	if (threshold)
+		card->preempt_time_threshold = threshold;
+	return count;
+}
+
+DEVICE_ATTR(hpi_time_threshold, S_IRWXU, mmc_hpi_threhold_show,
+	mmc_hpi_threshold_store);
+
 static struct attribute *mmc_std_attrs[] = {
 	&dev_attr_cid.attr,
 	&dev_attr_csd.attr,
@@ -638,6 +662,7 @@ static struct attribute *mmc_std_attrs[] = {
 	&dev_attr_serial.attr,
 	&dev_attr_enhanced_area_offset.attr,
 	&dev_attr_enhanced_area_size.attr,
+	&dev_attr_hpi_time_threshold.attr,
 	NULL,
 };
 
