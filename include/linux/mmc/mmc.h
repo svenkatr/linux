@@ -315,6 +315,10 @@ struct _mmc_csd {
 #define EXT_CSD_PWR_CL_200_360		237	/* RO */
 #define EXT_CSD_PWR_CL_DDR_52_195	238	/* RO */
 #define EXT_CSD_PWR_CL_DDR_52_360	239	/* RO */
+#define EXT_CSD_C_PRG_SECTORS_NUM0	242	/* RO */
+#define EXT_CSD_C_PRG_SECTORS_NUM1	243	/* RO */
+#define EXT_CSD_C_PRG_SECTORS_NUM2	244	/* RO */
+#define EXT_CSD_C_PRG_SECTORS_NUM3	245	/* RO */
 #define EXT_CSD_POWER_OFF_LONG_TIME	247	/* RO */
 #define EXT_CSD_GENERIC_CMD6_TIME	248	/* RO */
 #define EXT_CSD_CACHE_SIZE		249	/* RO, 4 bytes */

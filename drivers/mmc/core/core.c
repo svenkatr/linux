@@ -122,6 +122,23 @@ static inline void mmc_should_fail_request(struct mmc_host *host,
 
 #endif /* CONFIG_FAIL_MMC_REQUEST */
 
+static int mmc_get_programmed_sectors(struct mmc_card *card, int *nsectors)
+{
+	int err;
+	u8 ext_csd[512];
+
+	mmc_claim_host(card->host);
+	err = mmc_send_ext_csd(card, ext_csd);
+	mmc_release_host(card->host);
+	if (err)
+		return err;
+	*nsectors = ext_csd[EXT_CSD_C_PRG_SECTORS_NUM0] +
+			(ext_csd[EXT_CSD_C_PRG_SECTORS_NUM1] << 7) +
+			(ext_csd[EXT_CSD_C_PRG_SECTORS_NUM2] << 15) +
+			(ext_csd[EXT_CSD_C_PRG_SECTORS_NUM3] << 23);
+
+	return 0;
+}
 /**
  *	mmc_request_done - finish processing an MMC request
  *	@host: MMC host which completed request
@@ -470,6 +487,7 @@ int mmc_preempt_foreground_request(struct mmc_card *card,
 	struct mmc_request *req)
 {
 	int ret;
+	int nsectors;
 
 	ret = mmc_abort_req(card->host, req);
 	if (ret == -ENOSYS)
@@ -490,8 +508,12 @@ int mmc_preempt_foreground_request(struct mmc_card *card,
 	 */
 	if (req->data && req->data->error) {
 		mmc_interrupt_hpi(card);
-		/* TODO : Take out the CORRECTLY_PRG_SECTORS_NUM
-		 * from ext_csd and add it to the request */
+
+		ret = mmc_get_programmed_sectors(card, &nsectors);
+		if (ret)
+			req->data->bytes_xfered = 0;
+		else
+			req->data->bytes_xfered = nsectors * 512;
 	}
 
 	return 0;
