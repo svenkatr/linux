@@ -459,7 +459,7 @@ static struct platform_device *igep_devices[] __initdata = {
 	&igep_vwlan_device,
 };
 
-static int igep2_keymap[] = {
+static const uint32_t igep2_keymap[] = {
 	KEY(0, 0, KEY_LEFT),
 	KEY(0, 1, KEY_RIGHT),
 	KEY(0, 2, KEY_A),

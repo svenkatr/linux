@@ -64,7 +64,7 @@
 #define GPIO_WIFI_PMENA		54
 #define GPIO_WIFI_IRQ		53
 
-static const int sdp4430_keymap[] = {
+static const uint32_t sdp4430_keymap[] = {
 	KEY(0, 0, KEY_E),
 	KEY(0, 1, KEY_R),
 	KEY(0, 2, KEY_T),
