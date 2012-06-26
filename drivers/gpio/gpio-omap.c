@@ -923,7 +923,7 @@ static int gpio_2irq(struct gpio_chip *chip, unsigned offset)
 
 /*---------------------------------------------------------------------*/
 
-static void __init omap_gpio_show_rev(struct gpio_bank *bank)
+static void __devinit omap_gpio_show_rev(struct gpio_bank *bank)
 {
 	static bool called;
 	u32 rev;
