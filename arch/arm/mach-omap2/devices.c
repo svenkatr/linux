@@ -426,7 +426,7 @@ static int __init omap_mcspi_init(struct omap_hwmod *oh, void *unused)
 	return 0;
 }
 
-static void omap_init_mcspi(void)
+static void __init omap_init_mcspi(void)
 {
 	omap_hwmod_for_each_by_class("mcspi", omap_mcspi_init, NULL);
 }
