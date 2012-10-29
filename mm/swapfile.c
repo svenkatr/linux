@@ -193,7 +193,7 @@ static unsigned long scan_swap_map(struct swap_info_struct *si,
 
 	/*
 	 * We try to cluster swap pages by allocating them sequentially
-	 * in swap.  Once we've allocated SWAPFILE_CLUSTER pages this
+	 * in swap.  Once we've allocated cluster_size pages this
 	 * way, however, we resort to first-free allocation, starting
 	 * a new cluster.  This prevents us from scattering swap pages
 	 * all over the entire swap partition, so that we reduce
@@ -206,8 +206,8 @@ static unsigned long scan_swap_map(struct swap_info_struct *si,
 	scan_base = offset = si->cluster_next;
 
 	if (unlikely(!si->cluster_nr--)) {
-		if (si->pages - si->inuse_pages < SWAPFILE_CLUSTER) {
-			si->cluster_nr = SWAPFILE_CLUSTER - 1;
+		if (si->pages - si->inuse_pages < si->cluster_size) {
+			si->cluster_nr = si->cluster_size - 1;
 			goto checks;
 		}
 		if (si->flags & SWP_DISCARDABLE) {
@@ -235,17 +235,17 @@ static unsigned long scan_swap_map(struct swap_info_struct *si,
 		 */
 		if (!(si->flags & SWP_SOLIDSTATE))
 			scan_base = offset = si->lowest_bit;
-		last_in_cluster = offset + SWAPFILE_CLUSTER - 1;
+		last_in_cluster = offset + si->cluster_size - 1;
 
 		/* Locate the first empty (unaligned) cluster */
 		for (; last_in_cluster <= si->highest_bit; offset++) {
 			if (si->swap_map[offset])
-				last_in_cluster = offset + SWAPFILE_CLUSTER;
+				last_in_cluster = offset + si->cluster_size;
 			else if (offset == last_in_cluster) {
 				spin_lock(&swap_lock);
-				offset -= SWAPFILE_CLUSTER - 1;
+				offset -= si->cluster_size - 1;
 				si->cluster_next = offset;
-				si->cluster_nr = SWAPFILE_CLUSTER - 1;
+				si->cluster_nr = si->cluster_size - 1;
 				found_free_cluster = 1;
 				goto checks;
 			}
@@ -256,17 +256,17 @@ static unsigned long scan_swap_map(struct swap_info_struct *si,
 		}
 
 		offset = si->lowest_bit;
-		last_in_cluster = offset + SWAPFILE_CLUSTER - 1;
+		last_in_cluster = offset + si->cluster_size - 1;
 
 		/* Locate the first empty (unaligned) cluster */
 		for (; last_in_cluster < scan_base; offset++) {
 			if (si->swap_map[offset])
-				last_in_cluster = offset + SWAPFILE_CLUSTER;
+				last_in_cluster = offset + si->cluster_size;
 			else if (offset == last_in_cluster) {
 				spin_lock(&swap_lock);
-				offset -= SWAPFILE_CLUSTER - 1;
+				offset -= si->cluster_size - 1;
 				si->cluster_next = offset;
-				si->cluster_nr = SWAPFILE_CLUSTER - 1;
+				si->cluster_nr = si->cluster_size - 1;
 				found_free_cluster = 1;
 				goto checks;
 			}
@@ -278,7 +278,7 @@ static unsigned long scan_swap_map(struct swap_info_struct *si,
 
 		offset = scan_base;
 		spin_lock(&swap_lock);
-		si->cluster_nr = SWAPFILE_CLUSTER - 1;
+		si->cluster_nr = si->cluster_size - 1;
 		si->lowest_alloc = 0;
 	}
 
@@ -2027,6 +2027,8 @@ SYSCALL_DEFINE2(swapon, const char __user *, specialfile, int, swap_flags)
 	error = swap_cgroup_swapon(p->type, maxpages);
 	if (error)
 		goto bad_swap;
+
+	p->cluster_size = SWAPFILE_CLUSTER;
 
 	nr_extents = setup_swap_map_and_extents(p, swap_header, swap_map,
 		maxpages, &span);
