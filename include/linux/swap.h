@@ -93,7 +93,14 @@ union swap_header {
 		__u32		nr_badpages;
 		unsigned char	sws_uuid[16];
 		unsigned char	sws_volume[16];
-		__u32		padding[117];
+
+		union {
+			struct {
+				__u32	erase_blk_size;
+			} blkdevinfo;
+			__u32		padding[117];
+		} swp_headerinfo;
+
 		__u32		badpages[1];
 	} info;
 };

@@ -1840,6 +1840,8 @@ static unsigned long read_swap_header(struct swap_info_struct *p,
 		swab32s(&swap_header->info.nr_badpages);
 		for (i = 0; i < swap_header->info.nr_badpages; i++)
 			swab32s(&swap_header->info.badpages[i]);
+		for (i = 0; i < 117; i++)
+			swab32s(&swap_header->info.swp_headerinfo.padding[i]);
 	}
 	/* Check the swap header's sub-version */
 	if (swap_header->info.version != 1) {
@@ -2012,6 +2014,8 @@ SYSCALL_DEFINE2(swapon, const char __user *, specialfile, int, swap_flags)
 		error = -EINVAL;
 		goto bad_swap;
 	}
+
+	printk("Swap header data 0=%x\n", swap_header->info.swp_headerinfo.padding[0]);
 
 	/* OK, set up the swap map and apply the bad block list */
 	swap_map = vzalloc(maxpages);
