@@ -2069,7 +2069,8 @@ SYSCALL_DEFINE2(swapon, const char __user *, specialfile, int, swap_flags)
 	if (error)
 		goto bad_swap;
 
-	p->cluster_size = SWAPFILE_CLUSTER;
+	p->cluster_size = /* SWAPFILE_CLUSTER; */
+		swap_header->info.swp_headerinfo.blkdevinfo.erase_blk_size / PAGE_SIZE;
 
 	nr_extents = setup_swap_map_and_extents(p, swap_header, swap_map,
 		maxpages, &span);
