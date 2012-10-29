@@ -1340,6 +1340,25 @@ static void destroy_swap_extents(struct swap_info_struct *sis)
 	}
 }
 
+static sector_t get_aligned_start_block(struct swap_info_struct *sis,
+	union swap_header *sh)
+{
+	struct block_device *bdev = sis->bdev;
+	sector_t start_sec = 0, aligned_start = 0;
+	unsigned int eb_size = sh->info.swp_headerinfo.blkdevinfo.erase_blk_size;
+	unsigned int eb_sec = eb_size >> (8);
+
+	if (eb_sec) {
+		start_sec = bdev->bd_part->start_sect;
+		aligned_start = eb_sec - (unsigned int)(start_sec + 8) % eb_sec;
+	}
+
+	printk("Swap disk: start=%llu eb_sec=%x aligned_start=%llx\n",
+		start_sec, eb_sec, aligned_start);
+
+	return aligned_start;
+}
+
 /*
  * Add a block range (and the corresponding page range) into this swapdev's
  * extent list.  The extent list is kept sorted in page order.
@@ -1417,16 +1436,36 @@ add_swap_extent(struct swap_info_struct *sis, unsigned long start_page,
  * This is extremely effective.  The average number of iterations in
  * map_swap_page() has been measured at about 0.3 per page.  - akpm.
  */
-static int setup_swap_extents(struct swap_info_struct *sis, sector_t *span)
+static int setup_swap_extents(struct swap_info_struct *sis,
+								      union swap_header *swap_header,
+									  unsigned char *swap_map,
+										sector_t *span)
 {
 	struct file *swap_file = sis->swap_file;
 	struct address_space *mapping = swap_file->f_mapping;
 	struct inode *inode = mapping->host;
-	int ret;
+	int ret, i;
 
 	if (S_ISBLK(inode->i_mode)) {
-		ret = add_swap_extent(sis, 0, sis->max, 0);
+		int blocks_per_page = PAGE_SIZE >> inode->i_blkbits;
+		sector_t aligned_start = get_aligned_start_block(sis, swap_header);
+/*		unsigned long start_page = (aligned_start >> (PAGE_SHIFT - 9)) + ((aligned_start & 0x03) ? 1 : 0); */
+		unsigned long start_page = aligned_start + 1;
+
+		printk ("Aligned start = %llu, start page = %lu pages=%x blksperpage=%d\n", aligned_start, start_page,
+			sis->pages, blocks_per_page);
+
+		if (aligned_start)
+			sis->pages -= start_page;
+		ret = add_swap_extent(sis, 0, sis->pages, aligned_start);
+		for (i = 1; i < start_page; i++) {
+			swap_map[i] = SWAP_MAP_BAD;
+		}
+
 		*span = sis->pages;
+		printk( "First swap extent nr_pages=0x%lx start_page=0x%lx, start_block=0x%llx ",
+			sis->first_swap_extent.nr_pages, sis->first_swap_extent.start_page,
+			sis->first_swap_extent.start_block);
 		return ret;
 	}
 
@@ -1917,11 +1956,13 @@ static int setup_swap_map_and_extents(struct swap_info_struct *p,
 		}
 	}
 
+	printk ("nr good pages = %d, maxpages = %lu\n",
+			nr_good_pages, maxpages);
 	if (nr_good_pages) {
 		swap_map[0] = SWAP_MAP_BAD;
 		p->max = maxpages;
 		p->pages = nr_good_pages;
-		nr_extents = setup_swap_extents(p, span);
+		nr_extents = setup_swap_extents(p, swap_header, swap_map, span);
 		if (nr_extents < 0)
 			return nr_extents;
 		nr_good_pages = p->pages;
