@@ -19,3 +19,13 @@ config SND_SOC_MXS_SGTL5000
 	  a sgtl5000 codec.
 
 endif	# SND_MXS_SOC
+
+
+config SND_MXS_SOC_BUILTIN
+	tristate "SoC Audio for Freescale i.MX23 built-in codec"
+	depends on ARCH_MXS
+	select SND_SOC_GENERIC_DMAENGINE_PCM
+	select SND_SOC_MXS_BUILTIN_CODEC
+	help
+	  Say Y or M if you want to add support for codecs attached to
+	  the MXS SAIF interface.
