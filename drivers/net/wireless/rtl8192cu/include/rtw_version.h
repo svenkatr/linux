@@ -1,0 +1,1 @@
+#define DRIVERVERSION	"v3.4.4_xxxx.20120730"
