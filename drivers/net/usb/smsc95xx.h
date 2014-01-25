@@ -113,6 +113,7 @@
 #define LED_GPIO_CFG_FDX_LED		(0x00010000)
 
 #define GPIO_CFG			(0x28)
+#define GPIO_CFG_DEFAULT    (0x1f000000) /* gpios disabled */
 
 #define AFC_CFG				(0x2C)
 
