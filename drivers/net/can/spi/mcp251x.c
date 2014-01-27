@@ -309,27 +309,35 @@ static void mcp251x_clean(struct net_device *net)
  * conversation with the chip and to avoid doing really nasty things
  * (like injecting bogus packets in the network stack).
  */
-static int mcp251x_spi_trans(struct spi_device *spi, int len)
+static int mcp251x_spi_trans(struct spi_device *spi, int tx_len, int rx_len)
 {
 	struct mcp251x_priv *priv = spi_get_drvdata(spi);
-	struct spi_transfer t = {
+	struct spi_transfer tx = {
 		.tx_buf = priv->spi_tx_buf,
-		.rx_buf = priv->spi_rx_buf,
-		.len = len,
+		.len = tx_len,
 		.cs_change = 0,
 	};
+
+	struct spi_transfer rx = {
+		.rx_buf = priv->spi_rx_buf + tx_len,
+		.len = rx_len,
+		.cs_change = 0,
+	};
+
+
 	struct spi_message m;
 	int ret;
 
 	spi_message_init(&m);
 
 	if (mcp251x_enable_dma) {
-		t.tx_dma = priv->spi_tx_dma;
-		t.rx_dma = priv->spi_rx_dma;
+		tx.tx_dma = priv->spi_tx_dma;
+		rx.rx_dma = priv->spi_rx_dma;
 		m.is_dma_mapped = 1;
 	}
 
-	spi_message_add_tail(&t, &m);
+	spi_message_add_tail(&tx, &m);
+	spi_message_add_tail(&rx, &m);
 
 	ret = spi_sync(spi, &m);
 	if (ret)
@@ -345,7 +353,7 @@ static u8 mcp251x_read_reg(struct spi_device *spi, uint8_t reg)
 	priv->spi_tx_buf[0] = INSTRUCTION_READ;
 	priv->spi_tx_buf[1] = reg;
 
-	mcp251x_spi_trans(spi, 3);
+	mcp251x_spi_trans(spi, 2, 1);
 	val = priv->spi_rx_buf[2];
 
 	return val;
@@ -359,7 +367,7 @@ static void mcp251x_read_2regs(struct spi_device *spi, uint8_t reg,
 	priv->spi_tx_buf[0] = INSTRUCTION_READ;
 	priv->spi_tx_buf[1] = reg;
 
-	mcp251x_spi_trans(spi, 4);
+	mcp251x_spi_trans(spi, 2, 2);
 
 	*v1 = priv->spi_rx_buf[2];
 	*v2 = priv->spi_rx_buf[3];
@@ -373,7 +381,7 @@ static void mcp251x_write_reg(struct spi_device *spi, u8 reg, uint8_t val)
 	priv->spi_tx_buf[1] = reg;
 	priv->spi_tx_buf[2] = val;
 
-	mcp251x_spi_trans(spi, 3);
+	mcp251x_spi_trans(spi, 3, 0);
 }
 
 static void mcp251x_write_bits(struct spi_device *spi, u8 reg,
@@ -386,7 +394,7 @@ static void mcp251x_write_bits(struct spi_device *spi, u8 reg,
 	priv->spi_tx_buf[2] = mask;
 	priv->spi_tx_buf[3] = val;
 
-	mcp251x_spi_trans(spi, 4);
+	mcp251x_spi_trans(spi, 4, 0);
 }
 
 static void mcp251x_hw_tx_frame(struct spi_device *spi, u8 *buf,
@@ -402,7 +410,7 @@ static void mcp251x_hw_tx_frame(struct spi_device *spi, u8 *buf,
 					  buf[i]);
 	} else {
 		memcpy(priv->spi_tx_buf, buf, TXBDAT_OFF + len);
-		mcp251x_spi_trans(spi, TXBDAT_OFF + len);
+		mcp251x_spi_trans(spi, TXBDAT_OFF + len, 0);
 	}
 }
 
@@ -434,7 +442,7 @@ static void mcp251x_hw_tx(struct spi_device *spi, struct can_frame *frame,
 
 	/* use INSTRUCTION_RTS, to avoid "repeated frame problem" */
 	priv->spi_tx_buf[0] = INSTRUCTION_RTS(1 << tx_buf_idx);
-	mcp251x_spi_trans(priv->spi, 1);
+	mcp251x_spi_trans(priv->spi, 1, 0);
 }
 
 static void mcp251x_hw_rx_frame(struct spi_device *spi, u8 *buf,
@@ -453,7 +461,8 @@ static void mcp251x_hw_rx_frame(struct spi_device *spi, u8 *buf,
 			buf[i] = mcp251x_read_reg(spi, RXBCTRL(buf_idx) + i);
 	} else {
 		priv->spi_tx_buf[RXBCTRL_OFF] = INSTRUCTION_READ_RXB(buf_idx);
-		mcp251x_spi_trans(spi, SPI_TRANSFER_BUF_LEN);
+		//FIXME: wtf?
+		mcp251x_spi_trans(spi, 1 + RXBCTRL_OFF, SPI_TRANSFER_BUF_LEN - RXBCTRL_OFF - 1);
 		memcpy(buf, priv->spi_rx_buf, SPI_TRANSFER_BUF_LEN);
 	}
 }
@@ -634,7 +643,7 @@ static int mcp251x_hw_reset(struct spi_device *spi)
 	mdelay(MCP251X_OST_DELAY_MS);
 
 	priv->spi_tx_buf[0] = INSTRUCTION_RESET;
-	ret = mcp251x_spi_trans(spi, 1);
+	ret = mcp251x_spi_trans(spi, 1, 0);
 	if (ret)
 		return ret;
 
