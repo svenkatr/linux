@@ -449,6 +449,7 @@ dtb-$(CONFIG_ARCH_MXS) += \
 	imx23-sansa.dtb \
 	imx23-stmp378x_devb.dtb \
 	imx23-wirenboard28.dtb \
+	imx23-wirenboard32.dtb \
 	imx23-xfi3.dtb \
 	imx28-apf28.dtb \
 	imx28-apf28dev.dtb \
