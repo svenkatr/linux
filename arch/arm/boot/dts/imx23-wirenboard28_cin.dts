@@ -141,6 +141,42 @@
 					fsl,voltage = <1>;
 					fsl,pull-up = <1>;
 				};
+
+
+				pin_gpio_pu_0_2: pin_gpio_pu_0_2@0 {
+					reg = <0>;
+					fsl,pinmux-ids = <
+						0x0023 /* MX23_PAD_GPMI_D02__GPIO_0_2			 */
+
+					>;
+					fsl,drive-strength = <0>;
+					fsl,voltage = <1>;
+					/* enable 47K pull-up on terminal block 9 (gpio 2) */
+					fsl,pull-up = <1>;
+				};
+				pin_gpio_pu_0_3: pin_gpio_pu_0_3@0 {
+					reg = <0>;
+					fsl,pinmux-ids = <
+						0x0033 /* MX23_PAD_GPMI_D03__GPIO_0_3						 */
+
+					>;
+					fsl,drive-strength = <0>;
+					fsl,voltage = <1>;
+					/* enable 47K pull-up on terminal block 10 (gpio 3) */
+					fsl,pull-up = <1>;
+				};
+				pin_gpio_pu_0_4: pin_gpio_pu_0_4@0 {
+					reg = <0>;
+					fsl,pinmux-ids = <
+						0x0043 /* MX23_PAD_GPMI_D04__GPIO_0_4						 */
+
+					>;
+					fsl,drive-strength = <0>;
+					fsl,voltage = <1>;
+					/* enable 47K pull-up on terminal block 11 (gpio 4) */
+					fsl,pull-up = <1>;
+				};
+
 			};
 
 			ssp1: ssp@80034000 {
@@ -188,11 +224,6 @@
 					interrupt-parent = <&gpio0>;
 					interrupts = <5 0>;
 					uartclk = <14745600>;
-
-					rs485-rts-active-high-a;
-
-					rs485-enabled-at-boot-time-a;
-
 				};
 
 
@@ -359,28 +390,28 @@
 
 
 	/* Uncomment to enable 1-wire network on GPIO2 (terminal block 9) */
-	/*
 	onewire@0 {
 		compatible = "w1-gpio";
+        pinctrl-names = "default";
+        pinctrl-0 = <&pin_gpio_pu_0_2>;
 		gpios = <&gpio0 2 0>;
 	};
-	*/
 
 	/* Uncomment to enable 1-wire network on GPIO3 (terminal block 10) */
-	/*
 	onewire@1 {
 		compatible = "w1-gpio";
+        pinctrl-names = "default";
+        pinctrl-0 = <&pin_gpio_pu_0_3>;
 		gpios = <&gpio0 3 0>;
 	};
-	*/
 
 	/* Uncomment to enable 1-wire network on GPIO4 (terminal block 11) */
-	/*
 	onewire@2 {
 		compatible = "w1-gpio";
+        pinctrl-names = "default";
+        pinctrl-0 = <&pin_gpio_pu_0_4>;
 		gpios = <&gpio0 4 0>;
 	};
-	*/
 
 
 
