@@ -1,0 +1,394 @@
+/*
+ * Copyright 2012 Freescale Semiconductor, Inc.
+ *
+ * Author: Fabio Estevam <fabio.estevam@freescale.com>
+ *
+ * The code contained herein is licensed under the GNU General Public
+ * License. You may obtain a copy of the GNU General Public License
+ * Version 2 or later at the following locations:
+ *
+ * http://www.opensource.org/licenses/gpl-license.html
+ * http://www.gnu.org/copyleft/gpl.html
+ */
+
+/dts-v1/;
+#include "imx23.dtsi"
+
+/ {
+	model = "Wiren Board KMON rev. 1.0 (i.MX23)";
+	compatible = "contactless,imx23-wirenboard-kmon1", "contactless,imx23-wirenboard32", "olimex,imx23-olinuxino", "fsl,imx23";
+
+	memory {
+		reg = <0x40000000 0x04000000>;
+	};
+
+
+    clk16m: oscillator {
+         compatible = "fixed-clock";
+         #clock-cells = <0>;
+         clock-frequency  = <16000000>;
+         clock-output-names = "clk16m";
+    };
+
+	apb@80000000 {
+		apbh@80000000 {
+			ssp0: ssp@80010000 {
+				compatible = "fsl,imx23-mmc";
+				pinctrl-names = "default";
+				pinctrl-0 = <&mmc0_4bit_pins_a &mmc0_pins_fixup>;
+				bus-width = <4>;
+				broken-cd;
+				status = "okay";
+			};
+
+			pinctrl@80018000 {
+				pinctrl-names = "default";
+				pinctrl-0 = <&hog_pins_a &i2c0_pins_a_gpio
+							&pin_gpio_pu_0_5
+							&pin_gpio_pu_0_6
+							&pin_gpio_pu_0_7
+							&pin_gpio_pu_0_16
+							>;
+
+
+				hog_pins_a: hog@0 {
+					reg = <0>;
+					fsl,pinmux-ids = <
+						0x2013 /* MX23_PAD_SSP1_DETECT__GPIO_2_1 */
+						0x0113 /* MX23_PAD_GPMI_ALE__GPIO_0_17 */
+					>;
+					fsl,drive-strength = <0>;
+					fsl,voltage = <1>;
+					fsl,pull-up = <0>;
+				};
+
+				i2c_gpio: i2c_gpio {
+					reg = <0>;
+					fsl,pinmux-ids = <
+						0x0173 // MX23_PAD_GPMI_WPN__GPIO_0_23
+						0x0193 // MX23_PAD_GPMI_RDN__GPIO_0_25
+					>;
+					fsl,pull-up = <1>;
+				};
+
+		        i2c0_pins_a: i2c0@0 {
+		           reg = <0>;
+		           fsl,pinmux-ids = <
+		           0x1171 /* MX23_PAD_LCD_ENABLE__I2C_SCL */
+		           0x1181 /* MX23_PAD_LCD_HSYNC__I2C_SDA */
+		           >;
+		           fsl,drive-strength = <1>;
+		           fsl,voltage = <1>;
+		           fsl,pull-up = <1>;
+		        };
+
+		        i2c0_pins_a_gpio: i2c0_pins_a_gpio {
+		           reg = <0>;
+		           fsl,pinmux-ids = <
+		           0x1173 /* MX23_PAD_LCD_ENABLE__GPIO_1_23 */
+		           0x1183 /* MX23_PAD_LCD_HSYNC__GPIO_1_24 */
+		           >;
+		           fsl,drive-strength = <1>;
+		           fsl,voltage = <1>;
+		           fsl,pull-up = <1>;
+		        };
+
+				spi2_pins_nocs: spi2@0 {
+					reg = <0>;
+					fsl,pinmux-ids = <
+						0x0182 /* MX23_PAD_GPMI_WRN__SSP2_SCK */
+						0x0142 /* MX23_PAD_GPMI_RDY1__SSP2_CMD */
+						0x0002 /* MX23_PAD_GPMI_D00__SSP2_DATA0 */
+					>;
+					fsl,drive-strength = <1>;
+					fsl,voltage = <1>;
+					fsl,pull-up = <1>;
+				};
+
+		        cs_mem_gpio_pins: cs_mem_gpio_pins{
+		           reg = <0>;
+		           fsl,pinmux-ids = <
+			           0x0133 /* MX23_PAD_GPMI_RDY0__GPIO_0_19 */
+		           >;
+		           fsl,drive-strength = <1>;
+		           fsl,voltage = <1>;
+		        };
+
+
+				pin_gpio_pu_0_5: pin_gpio_pu_0_5@0 {
+					reg = <0>;
+					fsl,pinmux-ids = <
+						0x0053 /* MX23_PAD_GPMI_D05__GPIO_0_5 */
+
+					>;
+					fsl,drive-strength = <0>;
+					fsl,voltage = <1>;
+					/* enable 47K pull-up on terminal block R4 (gpio 5) */
+					fsl,pull-up = <1>;
+				};
+
+				pin_gpio_pu_0_6: pin_gpio_pu_0_6@0 {
+					reg = <0>;
+					fsl,pinmux-ids = <
+						0x0063 /* MX23_PAD_GPMI_D06__GPIO_0_6 */
+
+					>;
+					fsl,drive-strength = <0>;
+					fsl,voltage = <1>;
+					/* enable 47K pull-up on terminal block R3 (gpio 6) */
+					fsl,pull-up = <1>;
+				};
+
+				pin_gpio_pu_0_7: pin_gpio_pu_0_7@0 {
+					reg = <0>;
+					fsl,pinmux-ids = <
+						0x0073 /* MX23_PAD_GPMI_D07__GPIO_0_7 */
+
+					>;
+					fsl,drive-strength = <0>;
+					fsl,voltage = <1>;
+					/* enable 47K pull-up on terminal block R2 (gpio 7) */
+					fsl,pull-up = <1>;
+				};
+
+				pin_gpio_pu_0_16: pin_gpio_pu_0_16@0 {
+					reg = <0>;
+					fsl,pinmux-ids = <
+						0x0103 /* MX23_PAD_GPMI_CLE__GPIO_0_16 */
+
+					>;
+					fsl,drive-strength = <0>;
+					fsl,voltage = <1>;
+					/* enable 47K pull-up on terminal block R1 (gpio 16) */
+					fsl,pull-up = <1>;
+				};
+
+
+
+
+
+			};
+
+			ssp1: ssp@80034000 {
+				#address-cells = <1>;
+				#size-cells = <0>;
+				compatible = "fsl,imx23-spi";
+				pinctrl-names = "default";
+				pinctrl-0 = <&spi2_pins_nocs &cs_mem_gpio_pins>;
+				status = "okay";
+				cs-gpios = <&gpio0 3 0 /* cs0 fixme: use hardware cs directly*/
+							&gpio0 4 0 /* cs1 fixme: use hardware cs directly*/
+							>;
+
+
+				sc16is7x2_0: sc16is7x2@0 {
+					compatible = "fsl,spi-sc16is7x2";
+					spi-max-frequency = <1000000>;
+					reg = <3>;
+					gpio-base = <120>;
+					uart-base = <0>;
+
+					interrupt-parent = <&gpio1>;
+					interrupts = <20 0>;
+					uartclk = <14745600>;
+
+					disable-modem-pins-on-startup-a;
+					disable-modem-pins-on-startup-b;
+
+					rs485-rts-active-high-a;
+					rs485-rts-active-high-b;
+
+					rs485-enabled-at-boot-time-a;
+					rs485-enabled-at-boot-time-b;
+
+
+					#gpio-cells = <2>;
+					gpio-controller;
+				};
+
+				sc16is7x2_1: sc16is7x2@1 {
+					compatible = "fsl,spi-sc16is7x2";
+					spi-max-frequency = <1000000>;
+					reg = <4>;
+					gpio-base = <130>;
+					uart-base = <2>;
+
+					interrupt-parent = <&gpio1>;
+					interrupts = <18 0>;
+					uartclk = <14745600>;
+					#gpio-cells = <2>;
+					gpio-controller;
+
+
+					rs485-rts-active-high-a;
+					rs485-rts-active-high-b;
+
+					rs485-enabled-at-boot-time-a;
+					rs485-enabled-at-boot-time-b;
+
+				};
+
+
+
+
+
+
+
+			};
+		};
+
+		apbx@80040000 {
+			rtc@8005c000 {
+				status = "okay";
+			};
+
+			lradc@80050000 {
+				status = "okay";
+			};
+
+/* Uncomment no enable hardware i2c */
+/*
+			i2c0: i2c@80058000 {
+				pinctrl-names = "default";
+				pinctrl-0 = <&i2c0_pins_a>;
+				status = "okay";
+			};
+*/
+
+			duart: serial@80070000 {
+				pinctrl-names = "default";
+				pinctrl-0 = <&duart_pins_a>;
+				status = "okay";
+			};
+
+			auart0: serial@8006c000 {
+				pinctrl-names = "default";
+				pinctrl-0 = <&auart0_2pins_a>;
+				status = "okay";
+			};
+
+			usbphy0: usbphy@8007c000 {
+				status = "okay";
+			};
+
+
+			codec: mxs-builtin-codec {
+				compatible = "fsl,mxs-builtin-codec";
+				reg = <0x80048000 0x2000>, <0x8004c000 0x2000>,
+					<0x8005c000 0x2000>;
+				reg-names = "audioout", "audioin", "rtc";
+				clocks = <&clks 31>;
+				clock-names = "filt";
+				disable-mic-bias;
+			};
+
+			platform_dai: mxs-builtin-cpu-dai {
+				compatible = "fsl,mxs-builtin-cpu-dai";
+				reg = <0x80048000 0x2000>, <0x8004c000 0x2000>,
+				<0x8005c000 0x2000>;
+				reg-names = "audioout", "audioin", "rtc";
+				interrupts = <8 6 4>;
+				dmas = <&dma_apbx 0>, <&dma_apbx 1>;
+				dma-names = "rx", "tx";
+			};
+
+
+			/*
+			pwm: pwm@80064000 {
+		            pinctrl-names = "default";
+		            pinctrl-0 = <&pwm2_pins_a>;
+		            status = "okay";
+		    };
+		    */
+
+
+		};
+	};
+
+	ahb@80080000 {
+		usb0: usb@80080000 {
+		    /*vbus-supply = <&reg_33v_bus>;*/
+			status = "okay";
+			dr_mode = "host";
+		};
+	};
+
+
+	leds {
+		compatible = "gpio-leds";
+		pinctrl-names = "default";
+
+		som {
+			label = "som";
+			gpios = <&gpio2 1 0>;
+			linux,default-trigger = "timer";
+		};
+
+/*		green {
+			label = "green";
+			gpios = <&sc16is7x2_0 7 1>;
+			linux,default-trigger = "default-on";
+		};
+
+
+		red {
+			label = "red";
+			gpios = <&sc16is7x2_0 6 1>;
+			linux,default-trigger = "default-on";
+		};
+*/
+
+	};
+
+    /*
+    reg_isolated_5v: regulator@1 {
+		compatible = "regulator-fixed";
+		regulator-name = "5v_isolated";
+		regulator-min-microvolt = <5000000>;
+		regulator-max-microvolt = <5000000>;
+		gpio = <&sc16is7x2_1 3 0>;
+		startup-delay-us = <70000>;
+		enable-active-high;
+		regulator-boot-on;
+
+	};
+
+	userspacereg {
+		compatible = "reg-userspace-consumer";
+		vtest-supply = <&reg_isolated_5v>;
+	};
+	*/
+
+	mxs-builtin-audio {
+		compatible = "fsl,mxs-builtin-audio";
+		audio-codec = <&codec>;
+		cpu-dai = <&platform_dai>;
+	};
+
+
+
+
+	onewire@0 {
+		compatible = "w1-gpio";
+		gpios = <&gpio2 28 0>;
+		/* FIXME: add pullup */
+	};
+
+
+
+
+	tps3813: watchdog {
+		/* tps3813 */
+		compatible = "linux,wdt-gpio";
+		gpios = <&gpio2 27 0>;
+		hw_algo = "toggle";
+		hw_margin_ms = <1000>;
+		always-enabled;
+		timeout-sec = <30>;
+	};
+
+
+
+
+
+};
