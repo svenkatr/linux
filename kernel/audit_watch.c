@@ -240,6 +240,8 @@ static void audit_watch_log_rule_change(struct audit_krule *r, struct audit_watc
 	if (audit_enabled) {
 		struct audit_buffer *ab;
 		ab = audit_log_start(NULL, GFP_NOFS, AUDIT_CONFIG_CHANGE);
+		if (unlikely(!ab))
+			return;
 		audit_log_format(ab, "auid=%u ses=%u op=",
 				 from_kuid(&init_user_ns, audit_get_loginuid(current)),
 				 audit_get_sessionid(current));
@@ -463,35 +465,27 @@ void audit_remove_watch_rule(struct audit_krule *krule)
 	}
 }
 
-static bool audit_watch_should_send_event(struct fsnotify_group *group, struct inode *inode,
-					  struct fsnotify_mark *inode_mark,
-					  struct fsnotify_mark *vfsmount_mark,
-					  __u32 mask, void *data, int data_type)
-{
-       return true;
-}
-
 /* Update watch data in audit rules based on fsnotify events. */
 static int audit_watch_handle_event(struct fsnotify_group *group,
+				    struct inode *to_tell,
 				    struct fsnotify_mark *inode_mark,
 				    struct fsnotify_mark *vfsmount_mark,
-				    struct fsnotify_event *event)
+				    u32 mask, void *data, int data_type,
+				    const unsigned char *dname, u32 cookie)
 {
 	struct inode *inode;
-	__u32 mask = event->mask;
-	const char *dname = event->file_name;
 	struct audit_parent *parent;
 
 	parent = container_of(inode_mark, struct audit_parent, mark);
 
 	BUG_ON(group != audit_watch_group);
 
-	switch (event->data_type) {
+	switch (data_type) {
 	case (FSNOTIFY_EVENT_PATH):
-		inode = event->path.dentry->d_inode;
+		inode = ((struct path *)data)->dentry->d_inode;
 		break;
 	case (FSNOTIFY_EVENT_INODE):
-		inode = event->inode;
+		inode = (struct inode *)data;
 		break;
 	default:
 		BUG();
@@ -510,11 +504,7 @@ static int audit_watch_handle_event(struct fsnotify_group *group,
 }
 
 static const struct fsnotify_ops audit_watch_fsnotify_ops = {
-	.should_send_event = 	audit_watch_should_send_event,
 	.handle_event = 	audit_watch_handle_event,
-	.free_group_priv = 	NULL,
-	.freeing_mark = 	NULL,
-	.free_event_priv = 	NULL,
 };
 
 static int __init audit_watch_init(void)

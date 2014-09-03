@@ -19,6 +19,7 @@
 #include <linux/if_vlan.h>
 #include <asm/cacheflush.h>
 #include <asm/hwcap.h>
+#include <asm/opcodes.h>
 
 #include "bpf_jit_32.h"
 
@@ -113,8 +114,11 @@ static u32 jit_udiv(u32 dividend, u32 divisor)
 
 static inline void _emit(int cond, u32 inst, struct jit_ctx *ctx)
 {
+	inst |= (cond << 28);
+	inst = __opcode_to_mem_arm(inst);
+
 	if (ctx->target != NULL)
-		ctx->target[ctx->idx] = inst | (cond << 28);
+		ctx->target[ctx->idx] = inst;
 
 	ctx->idx++;
 }
@@ -341,10 +345,17 @@ static void emit_load_be16(u8 cond, u8 r_res, u8 r_addr, struct jit_ctx *ctx)
 
 static inline void emit_swap16(u8 r_dst, u8 r_src, struct jit_ctx *ctx)
 {
-	emit(ARM_LSL_R(ARM_R1, r_src, 8), ctx);
-	emit(ARM_ORR_S(r_dst, ARM_R1, r_src, SRTYPE_LSL, 8), ctx);
-	emit(ARM_LSL_I(r_dst, r_dst, 8), ctx);
-	emit(ARM_LSL_R(r_dst, r_dst, 8), ctx);
+	/* r_dst = (r_src << 8) | (r_src >> 8) */
+	emit(ARM_LSL_I(ARM_R1, r_src, 8), ctx);
+	emit(ARM_ORR_S(r_dst, ARM_R1, r_src, SRTYPE_LSR, 8), ctx);
+
+	/*
+	 * we need to mask out the bits set in r_dst[23:16] due to
+	 * the first shift instruction.
+	 *
+	 * note that 0x8ff is the encoded immediate 0x00ff0000.
+	 */
+	emit(ARM_BIC_I(r_dst, r_dst, 0x8ff), ctx);
 }
 
 #else  /* ARMv6+ */
@@ -569,7 +580,7 @@ load_ind:
 			/* x = ((*(frame + k)) & 0xf) << 2; */
 			ctx->seen |= SEEN_X | SEEN_DATA | SEEN_CALL;
 			/* the interpreter should deal with the negative K */
-			if (k < 0)
+			if ((int)k < 0)
 				return -1;
 			/* offset in r1: we might have to take the slow path */
 			emit_mov_i(r_off, k, ctx);
@@ -630,10 +641,10 @@ load_ind:
 			emit(ARM_MUL(r_A, r_A, r_X), ctx);
 			break;
 		case BPF_S_ALU_DIV_K:
-			/* current k == reciprocal_value(userspace k) */
+			if (k == 1)
+				break;
 			emit_mov_i(r_scratch, k, ctx);
-			/* A = top 32 bits of the product */
-			emit(ARM_UMULL(r_scratch, r_A, r_A, r_scratch), ctx);
+			emit_udiv(r_A, r_A, r_scratch, ctx);
 			break;
 		case BPF_S_ALU_DIV_X:
 			update_on_xread(ctx);
@@ -814,8 +825,8 @@ b_epilogue:
 			break;
 		case BPF_S_ANC_RXHASH:
 			ctx->seen |= SEEN_SKB;
-			BUILD_BUG_ON(FIELD_SIZEOF(struct sk_buff, rxhash) != 4);
-			off = offsetof(struct sk_buff, rxhash);
+			BUILD_BUG_ON(FIELD_SIZEOF(struct sk_buff, hash) != 4);
+			off = offsetof(struct sk_buff, hash);
 			emit(ARM_LDR_I(r_A, r_skb, off), ctx);
 			break;
 		case BPF_S_ANC_VLAN_TAG:
@@ -893,8 +904,7 @@ void bpf_jit_compile(struct sk_filter *fp)
 #endif
 
 	alloc_size = 4 * ctx.idx;
-	ctx.target = module_alloc(max(sizeof(struct work_struct),
-				      alloc_size));
+	ctx.target = module_alloc(alloc_size);
 	if (unlikely(ctx.target == NULL))
 		goto out;
 
@@ -911,29 +921,19 @@ void bpf_jit_compile(struct sk_filter *fp)
 #endif
 
 	if (bpf_jit_enable > 1)
-		print_hex_dump(KERN_INFO, "BPF JIT code: ",
-			       DUMP_PREFIX_ADDRESS, 16, 4, ctx.target,
-			       alloc_size, false);
+		/* there are 2 passes here */
+		bpf_jit_dump(fp->len, alloc_size, 2, ctx.target);
 
 	fp->bpf_func = (void *)ctx.target;
+	fp->jited = 1;
 out:
 	kfree(ctx.offsets);
 	return;
 }
 
-static void bpf_jit_free_worker(struct work_struct *work)
-{
-	module_free(NULL, work);
-}
-
 void bpf_jit_free(struct sk_filter *fp)
 {
-	struct work_struct *work;
-
-	if (fp->bpf_func != sk_run_filter) {
-		work = (struct work_struct *)fp->bpf_func;
-
-		INIT_WORK(work, bpf_jit_free_worker);
-		schedule_work(work);
-	}
+	if (fp->jited)
+		module_free(NULL, fp->bpf_func);
+	kfree(fp);
 }

@@ -8,7 +8,6 @@
 #include <linux/kthread.h>
 #include <linux/random.h>
 #include <linux/kernel.h>
-#include <linux/init.h>
 #include <linux/mm.h>
 
 #include <asm/cacheflush.h>
@@ -68,7 +67,7 @@ static int print_split(struct split_state *s)
 			s->gpg++;
 			i += GPS/PAGE_SIZE;
 		} else if (level == PG_LEVEL_2M) {
-			if (!(pte_val(*pte) & _PAGE_PSE)) {
+			if ((pte_val(*pte) & _PAGE_PRESENT) && !(pte_val(*pte) & _PAGE_PSE)) {
 				printk(KERN_ERR
 					"%lx level %d but not PSE %Lx\n",
 					addr, level, (u64)pte_val(*pte));
@@ -130,13 +129,12 @@ static int pageattr_test(void)
 	}
 
 	failed += print_split(&sa);
-	srandom32(100);
 
 	for (i = 0; i < NTEST; i++) {
-		unsigned long pfn = random32() % max_pfn_mapped;
+		unsigned long pfn = prandom_u32() % max_pfn_mapped;
 
 		addr[i] = (unsigned long)__va(pfn << PAGE_SHIFT);
-		len[i] = random32() % 100;
+		len[i] = prandom_u32() % 100;
 		len[i] = min_t(unsigned long, len[i], max_pfn_mapped - pfn - 1);
 
 		if (len[i] == 0)

@@ -40,7 +40,6 @@
 #include <linux/module.h>
 #include <linux/gfp.h>
 #include <linux/pci.h>
-#include <linux/init.h>
 #include <linux/blkdev.h>
 #include <linux/delay.h>
 #include <linux/interrupt.h>
@@ -2435,7 +2434,7 @@ static int nv_init_one(struct pci_dev *pdev, const struct pci_device_id *ent)
 #ifdef CONFIG_PM
 static int nv_pci_device_resume(struct pci_dev *pdev)
 {
-	struct ata_host *host = dev_get_drvdata(&pdev->dev);
+	struct ata_host *host = pci_get_drvdata(pdev);
 	struct nv_host_priv *hpriv = host->private_data;
 	int rc;
 

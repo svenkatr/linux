@@ -21,6 +21,18 @@
 
 #include "pinctrl-mvebu.h"
 
+static void __iomem *mpp_base;
+
+static int kirkwood_mpp_ctrl_get(unsigned pid, unsigned long *config)
+{
+	return default_mpp_ctrl_get(mpp_base, pid, config);
+}
+
+static int kirkwood_mpp_ctrl_set(unsigned pid, unsigned long config)
+{
+	return default_mpp_ctrl_set(mpp_base, pid, config);
+}
+
 #define V(f6180, f6190, f6192, f6281, f6282, dx4122)	\
 	((f6180 << 0) | (f6190 << 1) | (f6192 << 2) |	\
 	 (f6281 << 3) | (f6282 << 4) | (dx4122 << 5))
@@ -66,9 +78,9 @@ static struct mvebu_mpp_mode mv88f6xxx_mpp_modes[] = {
 		MPP_VAR_FUNCTION(0x5, "sata0", "act",    V(0, 1, 1, 1, 1, 0)),
 		MPP_VAR_FUNCTION(0xb, "lcd", "vsync",    V(0, 0, 0, 0, 1, 0))),
 	MPP_MODE(6,
-		MPP_VAR_FUNCTION(0x0, "sysrst", "out",   V(1, 1, 1, 1, 1, 1)),
-		MPP_VAR_FUNCTION(0x1, "spi", "mosi",     V(1, 1, 1, 1, 1, 1)),
-		MPP_VAR_FUNCTION(0x2, "ptp", "trig",     V(1, 1, 1, 1, 0, 0))),
+		MPP_VAR_FUNCTION(0x1, "sysrst", "out",   V(1, 1, 1, 1, 1, 1)),
+		MPP_VAR_FUNCTION(0x2, "spi", "mosi",     V(1, 1, 1, 1, 1, 1)),
+		MPP_VAR_FUNCTION(0x3, "ptp", "trig",     V(1, 1, 1, 1, 0, 0))),
 	MPP_MODE(7,
 		MPP_VAR_FUNCTION(0x0, "gpo", NULL,       V(1, 1, 1, 1, 1, 1)),
 		MPP_VAR_FUNCTION(0x1, "pex", "rsto",     V(1, 1, 1, 1, 0, 1)),
@@ -359,7 +371,7 @@ static struct mvebu_mpp_mode mv88f6xxx_mpp_modes[] = {
 };
 
 static struct mvebu_mpp_ctrl mv88f6180_mpp_controls[] = {
-	MPP_REG_CTRL(0, 29),
+	MPP_FUNC_CTRL(0, 29, NULL, kirkwood_mpp_ctrl),
 };
 
 static struct pinctrl_gpio_range mv88f6180_gpio_ranges[] = {
@@ -367,7 +379,7 @@ static struct pinctrl_gpio_range mv88f6180_gpio_ranges[] = {
 };
 
 static struct mvebu_mpp_ctrl mv88f619x_mpp_controls[] = {
-	MPP_REG_CTRL(0, 35),
+	MPP_FUNC_CTRL(0, 35, NULL, kirkwood_mpp_ctrl),
 };
 
 static struct pinctrl_gpio_range mv88f619x_gpio_ranges[] = {
@@ -376,7 +388,7 @@ static struct pinctrl_gpio_range mv88f619x_gpio_ranges[] = {
 };
 
 static struct mvebu_mpp_ctrl mv88f628x_mpp_controls[] = {
-	MPP_REG_CTRL(0, 49),
+	MPP_FUNC_CTRL(0, 49, NULL, kirkwood_mpp_ctrl),
 };
 
 static struct pinctrl_gpio_range mv88f628x_gpio_ranges[] = {
@@ -444,7 +456,7 @@ static struct mvebu_pinctrl_soc_info mv98dx4122_info = {
 	.ngpioranges = ARRAY_SIZE(mv88f628x_gpio_ranges),
 };
 
-static struct of_device_id kirkwood_pinctrl_of_match[] __devinitdata = {
+static struct of_device_id kirkwood_pinctrl_of_match[] = {
 	{ .compatible = "marvell,88f6180-pinctrl", .data = &mv88f6180_info },
 	{ .compatible = "marvell,88f6190-pinctrl", .data = &mv88f6190_info },
 	{ .compatible = "marvell,88f6192-pinctrl", .data = &mv88f6192_info },
@@ -454,15 +466,22 @@ static struct of_device_id kirkwood_pinctrl_of_match[] __devinitdata = {
 	{ }
 };
 
-static int __devinit kirkwood_pinctrl_probe(struct platform_device *pdev)
+static int kirkwood_pinctrl_probe(struct platform_device *pdev)
 {
+	struct resource *res;
 	const struct of_device_id *match =
 		of_match_device(kirkwood_pinctrl_of_match, &pdev->dev);
-	pdev->dev.platform_data = match->data;
+	pdev->dev.platform_data = (void *)match->data;
+
+	res = platform_get_resource(pdev, IORESOURCE_MEM, 0);
+	mpp_base = devm_ioremap_resource(&pdev->dev, res);
+	if (IS_ERR(mpp_base))
+		return PTR_ERR(mpp_base);
+
 	return mvebu_pinctrl_probe(pdev);
 }
 
-static int __devexit kirkwood_pinctrl_remove(struct platform_device *pdev)
+static int kirkwood_pinctrl_remove(struct platform_device *pdev)
 {
 	return mvebu_pinctrl_remove(pdev);
 }
@@ -471,10 +490,10 @@ static struct platform_driver kirkwood_pinctrl_driver = {
 	.driver = {
 		.name = "kirkwood-pinctrl",
 		.owner = THIS_MODULE,
-		.of_match_table = of_match_ptr(kirkwood_pinctrl_of_match),
+		.of_match_table = kirkwood_pinctrl_of_match,
 	},
 	.probe = kirkwood_pinctrl_probe,
-	.remove = __devexit_p(kirkwood_pinctrl_remove),
+	.remove = kirkwood_pinctrl_remove,
 };
 
 module_platform_driver(kirkwood_pinctrl_driver);

@@ -18,7 +18,7 @@
 #include <linux/platform_device.h>
 #include <linux/i2c-gpio.h>
 #include <linux/atmel-mci.h>
-#include <linux/platform_data/atmel-aes.h>
+#include <linux/platform_data/crypto-atmel.h>
 
 #include <linux/platform_data/at91_adc.h>
 
@@ -32,6 +32,7 @@
 #include <mach/at91sam9_smc.h>
 #include <linux/platform_data/dma-atmel.h>
 #include <mach/atmel-mci.h>
+#include <mach/hardware.h>
 
 #include <media/atmel-isi.h>
 
@@ -965,7 +966,7 @@ void __init at91_add_device_isi(struct isi_platform_data *data,
 
 #if defined(CONFIG_FB_ATMEL) || defined(CONFIG_FB_ATMEL_MODULE)
 static u64 lcdc_dmamask = DMA_BIT_MASK(32);
-static struct atmel_lcdfb_info lcdc_data;
+static struct atmel_lcdfb_pdata lcdc_data;
 
 static struct resource lcdc_resources[] = {
 	[0] = {
@@ -981,7 +982,6 @@ static struct resource lcdc_resources[] = {
 };
 
 static struct platform_device at91_lcdc_device = {
-	.name		= "atmel_lcdfb",
 	.id		= 0,
 	.dev		= {
 				.dma_mask		= &lcdc_dmamask,
@@ -992,10 +992,15 @@ static struct platform_device at91_lcdc_device = {
 	.num_resources	= ARRAY_SIZE(lcdc_resources),
 };
 
-void __init at91_add_device_lcdc(struct atmel_lcdfb_info *data)
+void __init at91_add_device_lcdc(struct atmel_lcdfb_pdata *data)
 {
 	if (!data)
 		return;
+
+	if (cpu_is_at91sam9g45es())
+		at91_lcdc_device.name = "at91sam9g45es-lcdfb";
+	else
+		at91_lcdc_device.name = "at91sam9g45-lcdfb";
 
 	at91_set_A_periph(AT91_PIN_PE0, 0);	/* LCDDPWR */
 
@@ -1033,7 +1038,7 @@ void __init at91_add_device_lcdc(struct atmel_lcdfb_info *data)
 	platform_device_register(&at91_lcdc_device);
 }
 #else
-void __init at91_add_device_lcdc(struct atmel_lcdfb_info *data) {}
+void __init at91_add_device_lcdc(struct atmel_lcdfb_pdata *data) {}
 #endif
 
 
@@ -1199,7 +1204,7 @@ static struct resource adc_resources[] = {
 };
 
 static struct platform_device at91_adc_device = {
-	.name		= "at91_adc",
+	.name		= "at91sam9g45-adc",
 	.id		= -1,
 	.dev		= {
 				.platform_data	= &adc_data,
@@ -1583,6 +1588,7 @@ static struct resource dbgu_resources[] = {
 static struct atmel_uart_data dbgu_data = {
 	.use_dma_tx	= 0,
 	.use_dma_rx	= 0,
+	.rts_gpio	= -EINVAL,
 };
 
 static u64 dbgu_dmamask = DMA_BIT_MASK(32);
@@ -1621,6 +1627,7 @@ static struct resource uart0_resources[] = {
 static struct atmel_uart_data uart0_data = {
 	.use_dma_tx	= 1,
 	.use_dma_rx	= 1,
+	.rts_gpio	= -EINVAL,
 };
 
 static u64 uart0_dmamask = DMA_BIT_MASK(32);
@@ -1664,6 +1671,7 @@ static struct resource uart1_resources[] = {
 static struct atmel_uart_data uart1_data = {
 	.use_dma_tx	= 1,
 	.use_dma_rx	= 1,
+	.rts_gpio	= -EINVAL,
 };
 
 static u64 uart1_dmamask = DMA_BIT_MASK(32);
@@ -1707,6 +1715,7 @@ static struct resource uart2_resources[] = {
 static struct atmel_uart_data uart2_data = {
 	.use_dma_tx	= 1,
 	.use_dma_rx	= 1,
+	.rts_gpio	= -EINVAL,
 };
 
 static u64 uart2_dmamask = DMA_BIT_MASK(32);
@@ -1750,6 +1759,7 @@ static struct resource uart3_resources[] = {
 static struct atmel_uart_data uart3_data = {
 	.use_dma_tx	= 1,
 	.use_dma_rx	= 1,
+	.rts_gpio	= -EINVAL,
 };
 
 static u64 uart3_dmamask = DMA_BIT_MASK(32);
@@ -1900,7 +1910,8 @@ static void __init at91_add_device_tdes(void) {}
  * -------------------------------------------------------------------- */
 
 #if defined(CONFIG_CRYPTO_DEV_ATMEL_AES) || defined(CONFIG_CRYPTO_DEV_ATMEL_AES_MODULE)
-static struct aes_platform_data aes_data;
+static struct crypto_platform_data aes_data;
+static struct crypto_dma_data alt_atslave;
 static u64 aes_dmamask = DMA_BIT_MASK(32);
 
 static struct resource aes_resources[] = {
@@ -1931,23 +1942,20 @@ static struct platform_device at91sam9g45_aes_device = {
 static void __init at91_add_device_aes(void)
 {
 	struct at_dma_slave	*atslave;
-	struct aes_dma_data	*alt_atslave;
-
-	alt_atslave = kzalloc(sizeof(struct aes_dma_data), GFP_KERNEL);
 
 	/* DMA TX slave channel configuration */
-	atslave = &alt_atslave->txdata;
+	atslave = &alt_atslave.txdata;
 	atslave->dma_dev = &at_hdmac_device.dev;
 	atslave->cfg = ATC_FIFOCFG_ENOUGHSPACE	| ATC_SRC_H2SEL_HW |
 						ATC_SRC_PER(AT_DMA_ID_AES_RX);
 
 	/* DMA RX slave channel configuration */
-	atslave = &alt_atslave->rxdata;
+	atslave = &alt_atslave.rxdata;
 	atslave->dma_dev = &at_hdmac_device.dev;
 	atslave->cfg = ATC_FIFOCFG_ENOUGHSPACE	| ATC_DST_H2SEL_HW |
 						ATC_DST_PER(AT_DMA_ID_AES_TX);
 
-	aes_data.dma_slave = alt_atslave;
+	aes_data.dma_slave = &alt_atslave;
 	platform_device_register(&at91sam9g45_aes_device);
 }
 #else

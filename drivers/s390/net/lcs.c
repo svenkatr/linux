@@ -899,6 +899,7 @@ lcs_send_lancmd(struct lcs_card *card, struct lcs_buffer *buffer,
 	add_timer(&timer);
 	wait_event(reply->wait_q, reply->received);
 	del_timer_sync(&timer);
+	destroy_timer_on_stack(&timer);
 	LCS_DBF_TEXT_(4, trace, "rc:%d",reply->rc);
 	rc = reply->rc;
 	lcs_put_reply(reply);
@@ -2384,7 +2385,7 @@ static struct ccw_driver lcs_ccw_driver = {
 	.ids	= lcs_ids,
 	.probe	= ccwgroup_probe_ccwdev,
 	.remove	= ccwgroup_remove_ccwdev,
-	.int_class = IOINT_LCS,
+	.int_class = IRQIO_LCS,
 };
 
 /**
@@ -2441,7 +2442,7 @@ __init lcs_init_module(void)
 	if (rc)
 		goto out_err;
 	lcs_root_dev = root_device_register("lcs");
-	rc = IS_ERR(lcs_root_dev) ? PTR_ERR(lcs_root_dev) : 0;
+	rc = PTR_RET(lcs_root_dev);
 	if (rc)
 		goto register_err;
 	rc = ccw_driver_register(&lcs_ccw_driver);

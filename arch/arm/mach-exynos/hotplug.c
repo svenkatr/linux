@@ -19,16 +19,15 @@
 #include <asm/cp15.h>
 #include <asm/smp_plat.h>
 
-#include <mach/regs-pmu.h>
 #include <plat/cpu.h>
 
 #include "common.h"
+#include "regs-pmu.h"
 
 static inline void cpu_enter_lowpower_a9(void)
 {
 	unsigned int v;
 
-	flush_cache_all();
 	asm volatile(
 	"	mcr	p15, 0, %1, c7, c5, 0\n"
 	"	mcr	p15, 0, %1, c7, c10, 4\n"

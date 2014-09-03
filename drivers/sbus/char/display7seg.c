@@ -9,7 +9,6 @@
 #include <linux/fs.h>
 #include <linux/errno.h>
 #include <linux/major.h>
-#include <linux/init.h>
 #include <linux/miscdevice.h>
 #include <linux/ioport.h>		/* request_region */
 #include <linux/slab.h>
@@ -107,7 +106,7 @@ static long d7s_ioctl(struct file *file, unsigned int cmd, unsigned long arg)
 	int error = 0;
 	u8 ireg = 0;
 
-	if (D7S_MINOR != iminor(file->f_path.dentry->d_inode))
+	if (D7S_MINOR != iminor(file_inode(file)))
 		return -ENODEV;
 
 	mutex_lock(&d7s_mutex);
@@ -171,7 +170,7 @@ static struct miscdevice d7s_miscdev = {
 	.fops		= &d7s_fops
 };
 
-static int __devinit d7s_probe(struct platform_device *op)
+static int d7s_probe(struct platform_device *op)
 {
 	struct device_node *opts;
 	int err = -EINVAL;
@@ -236,7 +235,7 @@ out_free:
 	goto out;
 }
 
-static int __devexit d7s_remove(struct platform_device *op)
+static int d7s_remove(struct platform_device *op)
 {
 	struct d7s *p = dev_get_drvdata(&op->dev);
 	u8 regs = readb(p->regs);
@@ -272,7 +271,7 @@ static struct platform_driver d7s_driver = {
 		.of_match_table = d7s_match,
 	},
 	.probe		= d7s_probe,
-	.remove		= __devexit_p(d7s_remove),
+	.remove		= d7s_remove,
 };
 
 module_platform_driver(d7s_driver);

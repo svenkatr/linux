@@ -76,12 +76,15 @@ Configuration options:
  * attachment if necessary, and possibly to set other options supported by
  * manual attachment.
  */
-#include "../comedidev.h"
 
+#include <linux/module.h>
+#include <linux/pci.h>
 #include <linux/delay.h>
 #include <linux/gfp.h>
 #include <linux/interrupt.h>
 #include <linux/io.h>
+
+#include "../comedidev.h"
 
 #include "amcc_s5933.h"
 #include "8253.h"
@@ -191,28 +194,30 @@ Configuration options:
 
 #define EXTTRG_AI	0	/* ext trg is used by AI */
 
-static const struct comedi_lrange range_pci9118dg_hr = { 8, {
-							     BIP_RANGE(5),
-							     BIP_RANGE(2.5),
-							     BIP_RANGE(1.25),
-							     BIP_RANGE(0.625),
-							     UNI_RANGE(10),
-							     UNI_RANGE(5),
-							     UNI_RANGE(2.5),
-							     UNI_RANGE(1.25)
-							     }
+static const struct comedi_lrange range_pci9118dg_hr = {
+	8, {
+		BIP_RANGE(5),
+		BIP_RANGE(2.5),
+		BIP_RANGE(1.25),
+		BIP_RANGE(0.625),
+		UNI_RANGE(10),
+		UNI_RANGE(5),
+		UNI_RANGE(2.5),
+		UNI_RANGE(1.25)
+	}
 };
 
-static const struct comedi_lrange range_pci9118hg = { 8, {
-							  BIP_RANGE(5),
-							  BIP_RANGE(0.5),
-							  BIP_RANGE(0.05),
-							  BIP_RANGE(0.005),
-							  UNI_RANGE(10),
-							  UNI_RANGE(1),
-							  UNI_RANGE(0.1),
-							  UNI_RANGE(0.01)
-							  }
+static const struct comedi_lrange range_pci9118hg = {
+	8, {
+		BIP_RANGE(5),
+		BIP_RANGE(0.5),
+		BIP_RANGE(0.05),
+		BIP_RANGE(0.005),
+		UNI_RANGE(10),
+		UNI_RANGE(1),
+		UNI_RANGE(0.1),
+		UNI_RANGE(0.01)
+	}
 };
 
 #define PCI9118_BIPOLAR_RANGES	4	/*
@@ -349,12 +354,11 @@ struct pci9118_private {
 						 * on external start
 						 */
 	unsigned int ai_data_len;
-	short *ai_data;
-	short ao_data[2];			/* data output buffer */
+	unsigned short ao_data[2];		/* data output buffer */
 	unsigned int ai_scans;			/* number of scans to do */
 	char dma_doublebuf;			/* we can use double buffering */
 	unsigned int dma_actbuf;		/* which buffer is used now */
-	short *dmabuf_virt[2];			/*
+	unsigned short *dmabuf_virt[2];		/*
 						 * pointers to begin of
 						 * DMA buffer
 						 */
@@ -567,12 +571,26 @@ static int setup_channel_list(struct comedi_device *dev,
 	return 1;		/* we can serve this with scan logic */
 }
 
+static int pci9118_ai_eoc(struct comedi_device *dev,
+			  struct comedi_subdevice *s,
+			  struct comedi_insn *insn,
+			  unsigned long context)
+{
+	unsigned int status;
+
+	status = inl(dev->iobase + PCI9118_ADSTAT);
+	if (status & AdStatus_ADrdy)
+		return 0;
+	return -EBUSY;
+}
+
 static int pci9118_insn_read_ai(struct comedi_device *dev,
 				struct comedi_subdevice *s,
 				struct comedi_insn *insn, unsigned int *data)
 {
 	struct pci9118_private *devpriv = dev->private;
-	int n, timeout;
+	int ret;
+	int n;
 
 	devpriv->AdControlReg = AdControl_Int & 0xff;
 	devpriv->AdFunctionReg = AdFunction_PDTrg | AdFunction_PETrg;
@@ -593,19 +611,13 @@ static int pci9118_insn_read_ai(struct comedi_device *dev,
 	for (n = 0; n < insn->n; n++) {
 		outw(0, dev->iobase + PCI9118_SOFTTRG);	/* start conversion */
 		udelay(2);
-		timeout = 100;
-		while (timeout--) {
-			if (inl(dev->iobase + PCI9118_ADSTAT) & AdStatus_ADrdy)
-				goto conv_finish;
-			udelay(1);
+
+		ret = comedi_timeout(dev, s, insn, pci9118_ai_eoc, 0);
+		if (ret) {
+			outl(0, dev->iobase + PCI9118_DELFIFO);	/* flush FIFO */
+			return ret;
 		}
 
-		comedi_error(dev, "A/D insn timeout");
-		data[n] = 0;
-		outl(0, dev->iobase + PCI9118_DELFIFO);	/* flush FIFO */
-		return -ETIME;
-
-conv_finish:
 		if (devpriv->ai16bits) {
 			data[n] =
 			    (inl(dev->iobase +
@@ -668,13 +680,12 @@ static int pci9118_insn_bits_di(struct comedi_device *dev,
 
 static int pci9118_insn_bits_do(struct comedi_device *dev,
 				struct comedi_subdevice *s,
-				struct comedi_insn *insn, unsigned int *data)
+				struct comedi_insn *insn,
+				unsigned int *data)
 {
-	if (data[0]) {
-		s->state &= ~data[0];
-		s->state |= (data[0] & data[1]);
+	if (comedi_dio_update_state(s, data))
 		outl(s->state & 0x0f, dev->iobase + PCI9118_DO);
-	}
+
 	data[1] = s->state;
 
 	return insn->n;
@@ -698,7 +709,7 @@ static void interrupt_pci9118_ai_mode4_switch(struct comedi_device *dev)
 
 static unsigned int defragment_dma_buffer(struct comedi_device *dev,
 					  struct comedi_subdevice *s,
-					  short *dma_buffer,
+					  unsigned short *dma_buffer,
 					  unsigned int num_samples)
 {
 	struct pci9118_private *devpriv = dev->private;
@@ -722,7 +733,7 @@ static unsigned int defragment_dma_buffer(struct comedi_device *dev,
 
 static int move_block_from_dma(struct comedi_device *dev,
 					struct comedi_subdevice *s,
-					short *dma_buffer,
+					unsigned short *dma_buffer,
 					unsigned int num_samples)
 {
 	struct pci9118_private *devpriv = dev->private;
@@ -790,7 +801,8 @@ static void pci9118_calc_divisors(char mode, struct comedi_device *dev,
 	case 4:
 		if (*tim2 < this_board->ai_ns_min)
 			*tim2 = this_board->ai_ns_min;
-		i8253_cascade_ns_to_timer(devpriv->i8254_osc_base, div1, div2,
+		i8253_cascade_ns_to_timer(devpriv->i8254_osc_base,
+					  div1, div2,
 					  tim2, flags & TRIG_ROUND_NEAREST);
 		break;
 	case 2:
@@ -808,7 +820,7 @@ static void pci9118_calc_divisors(char mode, struct comedi_device *dev,
 		*tim2 = *div1 * devpriv->i8254_osc_base;
 							/* real convert timer */
 
-		if (usessh & (chnsshfront == 0))	/* use BSSH signal */
+		if (usessh && (chnsshfront == 0))	/* use BSSH signal */
 			if (*div2 < (chans + 2))
 				*div2 = chans + 2;
 
@@ -907,8 +919,7 @@ static char pci9118_decode_error_status(struct comedi_device *dev,
 	}
 	if (m & devpriv->ai_maskharderr) {
 		s->async->events |= COMEDI_CB_ERROR | COMEDI_CB_EOA;
-		pci9118_ai_cancel(dev, s);
-		comedi_event(dev, s);
+		cfc_handle_events(dev, s);
 		return 1;
 	}
 
@@ -922,7 +933,7 @@ static void pci9118_ai_munge(struct comedi_device *dev,
 {
 	struct pci9118_private *devpriv = dev->private;
 	unsigned int i, num_samples = num_bytes / sizeof(short);
-	short *array = data;
+	unsigned short *array = data;
 
 	for (i = 0; i < num_samples; i++) {
 		if (devpriv->usedma)
@@ -942,9 +953,7 @@ static void interrupt_pci9118_ai_onesample(struct comedi_device *dev,
 					   unsigned short int_daq)
 {
 	struct pci9118_private *devpriv = dev->private;
-	register short sampl;
-
-	s->async->events = 0;
+	unsigned short sampl;
 
 	if (int_adstat & devpriv->ai_maskerr)
 		if (pci9118_decode_error_status(dev, s, int_adstat))
@@ -961,8 +970,7 @@ static void interrupt_pci9118_ai_onesample(struct comedi_device *dev,
 				 sampl & 0x000f,
 				 devpriv->chanlist[s->async->cur_chan]);
 			s->async->events |= COMEDI_CB_ERROR | COMEDI_CB_EOA;
-			pci9118_ai_cancel(dev, s);
-			comedi_event(dev, s);
+			cfc_handle_events(dev, s);
 			return;
 		}
 	}
@@ -973,16 +981,14 @@ static void interrupt_pci9118_ai_onesample(struct comedi_device *dev,
 							/* one scan done */
 		s->async->cur_chan %= devpriv->ai_n_scanlen;
 		devpriv->ai_act_scan++;
-		if (!(devpriv->ai_neverending))
-			if (devpriv->ai_act_scan >= devpriv->ai_scans) {
-							/* all data sampled */
-				pci9118_ai_cancel(dev, s);
+		if (!devpriv->ai_neverending) {
+			/* all data sampled? */
+			if (devpriv->ai_act_scan >= devpriv->ai_scans)
 				s->async->events |= COMEDI_CB_EOA;
-			}
+		}
 	}
 
-	if (s->async->events)
-		comedi_event(dev, s);
+	cfc_handle_events(dev, s);
 }
 
 static void interrupt_pci9118_ai_dma(struct comedi_device *dev,
@@ -997,16 +1003,14 @@ static void interrupt_pci9118_ai_dma(struct comedi_device *dev,
 	if (int_amcc & MASTER_ABORT_INT) {
 		comedi_error(dev, "AMCC IRQ - MASTER DMA ABORT!");
 		s->async->events |= COMEDI_CB_ERROR | COMEDI_CB_EOA;
-		pci9118_ai_cancel(dev, s);
-		comedi_event(dev, s);
+		cfc_handle_events(dev, s);
 		return;
 	}
 
 	if (int_amcc & TARGET_ABORT_INT) {
 		comedi_error(dev, "AMCC IRQ - TARGET DMA ABORT!");
 		s->async->events |= COMEDI_CB_ERROR | COMEDI_CB_EOA;
-		pci9118_ai_cancel(dev, s);
-		comedi_event(dev, s);
+		cfc_handle_events(dev, s);
 		return;
 	}
 	if (int_adstat & devpriv->ai_maskerr)
@@ -1044,12 +1048,11 @@ static void interrupt_pci9118_ai_dma(struct comedi_device *dev,
 		m = m - sampls;		/* m= how many samples was transferred */
 	}
 
-	if (!devpriv->ai_neverending)
-		if (devpriv->ai_act_scan >= devpriv->ai_scans) {
-							/* all data sampled */
-			pci9118_ai_cancel(dev, s);
+	if (!devpriv->ai_neverending) {
+		/* all data sampled? */
+		if (devpriv->ai_act_scan >= devpriv->ai_scans)
 			s->async->events |= COMEDI_CB_EOA;
-		}
+	}
 
 	if (devpriv->dma_doublebuf) {	/* switch dma buffers */
 		devpriv->dma_actbuf = 1 - devpriv->dma_actbuf;
@@ -1062,7 +1065,7 @@ static void interrupt_pci9118_ai_dma(struct comedi_device *dev,
 			interrupt_pci9118_ai_mode4_switch(dev);
 	}
 
-	comedi_event(dev, s);
+	cfc_handle_events(dev, s);
 }
 
 static irqreturn_t interrupt_pci9118(int irq, void *d)
@@ -1124,7 +1127,7 @@ static irqreturn_t interrupt_pci9118(int irq, void *d)
 				}
 			}
 
-		(devpriv->int_ai_func) (dev, &dev->subdevices[0], int_adstat,
+		(devpriv->int_ai_func) (dev, dev->read_subdev, int_adstat,
 					int_amcc, int_daq);
 
 	}
@@ -1275,9 +1278,9 @@ static int pci9118_ai_cmdtest(struct comedi_device *dev,
 
 	if (cmd->scan_begin_src == TRIG_TIMER) {
 		tmp = cmd->scan_begin_arg;
-		i8253_cascade_ns_to_timer(devpriv->i8254_osc_base, &divisor1,
-					  &divisor2, &cmd->scan_begin_arg,
-					  cmd->flags & TRIG_ROUND_MASK);
+		i8253_cascade_ns_to_timer(devpriv->i8254_osc_base,
+					  &divisor1, &divisor2,
+					  &cmd->scan_begin_arg, cmd->flags);
 		if (cmd->scan_begin_arg < this_board->ai_ns_min)
 			cmd->scan_begin_arg = this_board->ai_ns_min;
 		if (tmp != cmd->scan_begin_arg)
@@ -1286,9 +1289,9 @@ static int pci9118_ai_cmdtest(struct comedi_device *dev,
 
 	if (cmd->convert_src & (TRIG_TIMER | TRIG_NOW)) {
 		tmp = cmd->convert_arg;
-		i8253_cascade_ns_to_timer(devpriv->i8254_osc_base, &divisor1,
-					  &divisor2, &cmd->convert_arg,
-					  cmd->flags & TRIG_ROUND_MASK);
+		i8253_cascade_ns_to_timer(devpriv->i8254_osc_base,
+					  &divisor1, &divisor2,
+					  &cmd->convert_arg, cmd->flags);
 		if (cmd->convert_arg < this_board->ai_ns_min)
 			cmd->convert_arg = this_board->ai_ns_min;
 		if (tmp != cmd->convert_arg)
@@ -1610,7 +1613,6 @@ static int pci9118_ai_cmd(struct comedi_device *dev, struct comedi_subdevice *s)
 	devpriv->ai_n_chan = cmd->chanlist_len;
 	devpriv->ai_n_scanlen = cmd->scan_end_arg;
 	devpriv->ai_chanlist = cmd->chanlist;
-	devpriv->ai_data = s->async->prealloc_buf;
 	devpriv->ai_data_len = s->async->prealloc_bufsz;
 	devpriv->ai_timer1 = 0;
 	devpriv->ai_timer2 = 0;
@@ -1933,28 +1935,6 @@ static struct pci_dev *pci9118_find_pci(struct comedi_device *dev,
 	return NULL;
 }
 
-static void pci9118_report_attach(struct comedi_device *dev, unsigned int irq)
-{
-	struct pci_dev *pcidev = comedi_to_pci_dev(dev);
-	struct pci9118_private *devpriv = dev->private;
-	char irqbuf[30];
-	char muxbuf[30];
-
-	if (irq)
-		snprintf(irqbuf, sizeof(irqbuf), "irq %u%s", irq,
-			 (dev->irq ? "" : " UNAVAILABLE"));
-	else
-		snprintf(irqbuf, sizeof(irqbuf), "irq DISABLED");
-	if (devpriv->usemux)
-		snprintf(muxbuf, sizeof(muxbuf), "ext mux %u chans",
-			 devpriv->usemux);
-	else
-		snprintf(muxbuf, sizeof(muxbuf), "no ext mux");
-	dev_info(dev->class_dev, "%s (pci %s, %s, %sbus master, %s) attached\n",
-		 dev->board_name, pci_name(pcidev), irqbuf,
-		 (devpriv->master ? "" : "no "), muxbuf);
-}
-
 static int pci9118_common_attach(struct comedi_device *dev, int disable_irq,
 				 int master, int ext_mux, int softsshdelay,
 				 int hw_err_mask)
@@ -1964,16 +1944,12 @@ static int pci9118_common_attach(struct comedi_device *dev, int disable_irq,
 	struct pci_dev *pcidev = comedi_to_pci_dev(dev);
 	struct comedi_subdevice *s;
 	int ret, pages, i;
-	unsigned int irq;
 	u16 u16w;
 
 	dev->board_name = this_board->name;
-	ret = comedi_pci_enable(pcidev, dev->board_name);
-	if (ret) {
-		dev_err(dev->class_dev,
-			"cannot enable PCI device %s\n", pci_name(pcidev));
+	ret = comedi_pci_enable(dev);
+	if (ret)
 		return ret;
-	}
 	if (master)
 		pci_set_master(pcidev);
 
@@ -1987,8 +1963,8 @@ static int pci9118_common_attach(struct comedi_device *dev, int disable_irq,
 		for (i = 0; i < 2; i++) {
 			for (pages = 4; pages >= 0; pages--) {
 				devpriv->dmabuf_virt[i] =
-				    (short *)__get_free_pages(GFP_KERNEL,
-							      pages);
+				    (unsigned short *)
+				    __get_free_pages(GFP_KERNEL, pages);
 				if (devpriv->dmabuf_virt[i])
 					break;
 			}
@@ -2038,12 +2014,18 @@ static int pci9118_common_attach(struct comedi_device *dev, int disable_irq,
 	pci_write_config_word(pcidev, PCI_COMMAND, u16w | 64);
 				/* Enable parity check for parity error */
 
+	if (!disable_irq && pcidev->irq) {
+		ret = request_irq(pcidev->irq, interrupt_pci9118, IRQF_SHARED,
+				  dev->board_name, dev);
+		if (ret == 0)
+			dev->irq = pcidev->irq;
+	}
+
 	ret = comedi_alloc_subdevices(dev, 4);
 	if (ret)
 		return ret;
 
 	s = &dev->subdevices[0];
-	dev->read_subdev = s;
 	s->type = COMEDI_SUBD_AI;
 	s->subdev_flags = SDF_READABLE | SDF_COMMON | SDF_GROUND | SDF_DIFF;
 	if (devpriv->usemux)
@@ -2052,11 +2034,17 @@ static int pci9118_common_attach(struct comedi_device *dev, int disable_irq,
 		s->n_chan = this_board->n_aichan;
 
 	s->maxdata = this_board->ai_maxdata;
-	s->len_chanlist = this_board->n_aichanlist;
 	s->range_table = this_board->rangelist_ai;
-	s->cancel = pci9118_ai_cancel;
 	s->insn_read = pci9118_insn_read_ai;
-	s->munge = pci9118_ai_munge;
+	if (dev->irq) {
+		dev->read_subdev = s;
+		s->subdev_flags |= SDF_CMD_READ;
+		s->len_chanlist = this_board->n_aichanlist;
+		s->do_cmdtest = pci9118_ai_cmdtest;
+		s->do_cmd = pci9118_ai_cmd;
+		s->cancel = pci9118_ai_cancel;
+		s->munge = pci9118_ai_munge;
+	}
 
 	s = &dev->subdevices[1];
 	s->type = COMEDI_SUBD_AO;
@@ -2075,7 +2063,6 @@ static int pci9118_common_attach(struct comedi_device *dev, int disable_irq,
 	s->maxdata = 1;
 	s->len_chanlist = 4;
 	s->range_table = &range_digital;
-	s->io_bits = 0;		/* all bits input */
 	s->insn_bits = pci9118_insn_bits_di;
 
 	s = &dev->subdevices[3];
@@ -2085,11 +2072,10 @@ static int pci9118_common_attach(struct comedi_device *dev, int disable_irq,
 	s->maxdata = 1;
 	s->len_chanlist = 4;
 	s->range_table = &range_digital;
-	s->io_bits = 0xf;	/* all bits output */
 	s->insn_bits = pci9118_insn_bits_do;
 
 	devpriv->valid = 1;
-	devpriv->i8254_osc_base = 250;	/* 250ns=4MHz */
+	devpriv->i8254_osc_base = I8254_OSC_BASE_4MHZ;
 	devpriv->ai_maskharderr = 0x10a;
 					/* default measure crash condition */
 	if (hw_err_mask)		/* disable some requested */
@@ -2104,27 +2090,6 @@ static int pci9118_common_attach(struct comedi_device *dev, int disable_irq,
 		break;
 	}
 
-	if (disable_irq)
-		irq = 0;
-	else
-		irq = pcidev->irq;
-	if (irq > 0) {
-		if (request_irq(irq, interrupt_pci9118, IRQF_SHARED,
-				dev->board_name, dev)) {
-			dev_warn(dev->class_dev,
-				 "unable to allocate IRQ %u, DISABLING IT\n",
-				 irq);
-		} else {
-			dev->irq = irq;
-			/* Enable AI commands */
-			s = &dev->subdevices[0];
-			s->subdev_flags |= SDF_CMD_READ;
-			s->do_cmdtest = pci9118_ai_cmdtest;
-			s->do_cmd = pci9118_ai_cmd;
-		}
-	}
-
-	pci9118_report_attach(dev, irq);
 	return 0;
 }
 
@@ -2141,10 +2106,9 @@ static int pci9118_attach(struct comedi_device *dev,
 	softsshdelay = it->options[4];
 	hw_err_mask = it->options[5];
 
-	devpriv = kzalloc(sizeof(*devpriv), GFP_KERNEL);
+	devpriv = comedi_alloc_devpriv(dev, sizeof(*devpriv));
 	if (!devpriv)
 		return -ENOMEM;
-	dev->private = devpriv;
 
 	pcidev = pci9118_find_pci(dev, it);
 	if (!pcidev)
@@ -2161,10 +2125,9 @@ static int pci9118_auto_attach(struct comedi_device *dev,
 	struct pci_dev *pcidev = comedi_to_pci_dev(dev);
 	struct pci9118_private *devpriv;
 
-	devpriv = kzalloc(sizeof(*devpriv), GFP_KERNEL);
+	devpriv = comedi_alloc_devpriv(dev, sizeof(*devpriv));
 	if (!devpriv)
 		return -ENOMEM;
-	dev->private = devpriv;
 
 	dev->board_ptr = pci9118_find_boardinfo(pcidev);
 	if (dev->board_ptr == NULL) {
@@ -2200,12 +2163,9 @@ static void pci9118_detach(struct comedi_device *dev)
 			free_pages((unsigned long)devpriv->dmabuf_virt[1],
 				   devpriv->dmabuf_pages[1]);
 	}
-	if (pcidev) {
-		if (dev->iobase)
-			comedi_pci_disable(pcidev);
-
+	comedi_pci_disable(dev);
+	if (pcidev)
 		pci_dev_put(pcidev);
-	}
 }
 
 static struct comedi_driver adl_pci9118_driver = {
@@ -2220,17 +2180,13 @@ static struct comedi_driver adl_pci9118_driver = {
 };
 
 static int adl_pci9118_pci_probe(struct pci_dev *dev,
-					   const struct pci_device_id *ent)
+				 const struct pci_device_id *id)
 {
-	return comedi_pci_auto_config(dev, &adl_pci9118_driver);
+	return comedi_pci_auto_config(dev, &adl_pci9118_driver,
+				      id->driver_data);
 }
 
-static void adl_pci9118_pci_remove(struct pci_dev *dev)
-{
-	comedi_pci_auto_unconfig(dev);
-}
-
-static DEFINE_PCI_DEVICE_TABLE(adl_pci9118_pci_table) = {
+static const struct pci_device_id adl_pci9118_pci_table[] = {
 	{ PCI_DEVICE(PCI_VENDOR_ID_AMCC, 0x80d9) },
 	{ 0 }
 };
@@ -2240,7 +2196,7 @@ static struct pci_driver adl_pci9118_pci_driver = {
 	.name		= "adl_pci9118",
 	.id_table	= adl_pci9118_pci_table,
 	.probe		= adl_pci9118_pci_probe,
-	.remove		= adl_pci9118_pci_remove,
+	.remove		= comedi_pci_auto_unconfig,
 };
 module_comedi_pci_driver(adl_pci9118_driver, adl_pci9118_pci_driver);
 

@@ -215,6 +215,7 @@
 #define TLBILX_T_CLASS3			7
 
 #ifndef __ASSEMBLY__
+#include <asm/bug.h>
 
 extern unsigned int tlbcam_index;
 
@@ -230,6 +231,10 @@ typedef struct {
 	u64 low_slices_psize;   /* SLB page size encodings */
 	u64 high_slices_psize;  /* 4 bits per slice for now */
 	u16 user_psize;         /* page size index */
+#endif
+#ifdef CONFIG_PPC_64K_PAGES
+	/* for 4K PTE fragment support */
+	void *pte_frag;
 #endif
 } mm_context_t;
 
@@ -250,6 +255,23 @@ struct mmu_psize_def
 };
 extern struct mmu_psize_def mmu_psize_defs[MMU_PAGE_COUNT];
 
+static inline int shift_to_mmu_psize(unsigned int shift)
+{
+	int psize;
+
+	for (psize = 0; psize < MMU_PAGE_COUNT; ++psize)
+		if (mmu_psize_defs[psize].shift == shift)
+			return psize;
+	return -1;
+}
+
+static inline unsigned int mmu_psize_to_shift(unsigned int mmu_psize)
+{
+	if (mmu_psize_defs[mmu_psize].shift)
+		return mmu_psize_defs[mmu_psize].shift;
+	BUG();
+}
+
 /* The page sizes use the same names as 64-bit hash but are
  * constants
  */
@@ -264,8 +286,24 @@ extern struct mmu_psize_def mmu_psize_defs[MMU_PAGE_COUNT];
 extern int mmu_linear_psize;
 extern int mmu_vmemmap_psize;
 
+struct tlb_core_data {
+	/*
+	 * Per-core spinlock for e6500 TLB handlers (no tlbsrx.)
+	 * Must be the first struct element.
+	 */
+	u8 lock;
+
+	/* For software way selection, as on Freescale TLB1 */
+	u8 esel_next, esel_max, esel_first;
+};
+
 #ifdef CONFIG_PPC64
 extern unsigned long linear_map_top;
+extern int book3e_htw_mode;
+
+#define PPC_HTW_NONE	0
+#define PPC_HTW_IBM	1
+#define PPC_HTW_E6500	2
 
 /*
  * 64-bit booke platforms don't load the tlb in the tlb miss handler code.

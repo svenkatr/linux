@@ -14,6 +14,7 @@
 #include <linux/kprobes.h>
 #include <linux/kdebug.h>
 #include <linux/nmi.h>
+#include <linux/debugfs.h>
 #include <linux/delay.h>
 #include <linux/hardirq.h>
 #include <linux/slab.h>
@@ -28,6 +29,9 @@
 #include <asm/mach_traps.h>
 #include <asm/nmi.h>
 #include <asm/x86_init.h>
+
+#define CREATE_TRACE_POINTS
+#include <trace/events/nmi.h>
 
 struct nmi_desc {
 	spinlock_t lock;
@@ -82,6 +86,30 @@ __setup("unknown_nmi_panic", setup_unknown_nmi_panic);
 
 #define nmi_to_desc(type) (&nmi_desc[type])
 
+static u64 nmi_longest_ns = 1 * NSEC_PER_MSEC;
+
+static int __init nmi_warning_debugfs(void)
+{
+	debugfs_create_u64("nmi_longest_ns", 0644,
+			arch_debugfs_dir, &nmi_longest_ns);
+	return 0;
+}
+fs_initcall(nmi_warning_debugfs);
+
+static void nmi_max_handler(struct irq_work *w)
+{
+	struct nmiaction *a = container_of(w, struct nmiaction, irq_work);
+	int remainder_ns, decimal_msecs;
+	u64 whole_msecs = ACCESS_ONCE(a->max_duration);
+
+	remainder_ns = do_div(whole_msecs, (1000 * 1000));
+	decimal_msecs = remainder_ns / 1000;
+
+	printk_ratelimited(KERN_INFO
+		"INFO: NMI handler (%ps) took too long to run: %lld.%03d msecs\n",
+		a->handler, whole_msecs, decimal_msecs);
+}
+
 static int __kprobes nmi_handle(unsigned int type, struct pt_regs *regs, bool b2b)
 {
 	struct nmi_desc *desc = nmi_to_desc(type);
@@ -96,8 +124,22 @@ static int __kprobes nmi_handle(unsigned int type, struct pt_regs *regs, bool b2
 	 * can be latched at any given time.  Walk the whole list
 	 * to handle those situations.
 	 */
-	list_for_each_entry_rcu(a, &desc->head, list)
-		handled += a->handler(type, regs);
+	list_for_each_entry_rcu(a, &desc->head, list) {
+		int thishandled;
+		u64 delta;
+
+		delta = sched_clock();
+		thishandled = a->handler(type, regs);
+		handled += thishandled;
+		delta = sched_clock() - delta;
+		trace_nmi_handler(a->handler, (int)delta, thishandled);
+
+		if (delta < nmi_longest_ns || delta < a->max_duration)
+			continue;
+
+		a->max_duration = delta;
+		irq_work_queue(&a->irq_work);
+	}
 
 	rcu_read_unlock();
 
@@ -112,6 +154,8 @@ int __register_nmi_handler(unsigned int type, struct nmiaction *action)
 
 	if (!action->handler)
 		return -EINVAL;
+
+	init_irq_work(&action->irq_work, nmi_max_handler);
 
 	spin_lock_irqsave(&desc->lock, flags);
 
@@ -509,3 +553,4 @@ void local_touch_nmi(void)
 {
 	__this_cpu_write(last_nmi_rip, 0);
 }
+EXPORT_SYMBOL_GPL(local_touch_nmi);

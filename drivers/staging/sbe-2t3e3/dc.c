@@ -315,20 +315,17 @@ static int dc_init_descriptor_list(struct channel *sc)
 	struct sk_buff *m;
 
 	if (sc->ether.rx_ring == NULL)
-		sc->ether.rx_ring = kzalloc(SBE_2T3E3_RX_DESC_RING_SIZE *
-					    sizeof(t3e3_rx_desc_t), GFP_KERNEL);
-	if (sc->ether.rx_ring == NULL) {
-		dev_err(&sc->pdev->dev, "SBE 2T3E3: no buffer space for RX ring\n");
+		sc->ether.rx_ring = kcalloc(SBE_2T3E3_RX_DESC_RING_SIZE,
+					    sizeof(struct t3e3_rx_desc), GFP_KERNEL);
+	if (sc->ether.rx_ring == NULL)
 		return -ENOMEM;
-	}
 
 	if (sc->ether.tx_ring == NULL)
-		sc->ether.tx_ring = kzalloc(SBE_2T3E3_TX_DESC_RING_SIZE *
-					    sizeof(t3e3_tx_desc_t), GFP_KERNEL);
+		sc->ether.tx_ring = kcalloc(SBE_2T3E3_TX_DESC_RING_SIZE,
+					    sizeof(struct t3e3_tx_desc), GFP_KERNEL);
 	if (sc->ether.tx_ring == NULL) {
 		kfree(sc->ether.rx_ring);
 		sc->ether.rx_ring = NULL;
-		dev_err(&sc->pdev->dev, "SBE 2T3E3: no buffer space for RX ring\n");
 		return -ENOMEM;
 	}
 
@@ -342,7 +339,8 @@ static int dc_init_descriptor_list(struct channel *sc)
 			SBE_2T3E3_RX_DESC_SECOND_ADDRESS_CHAINED | SBE_2T3E3_MTU;
 
 		if (sc->ether.rx_data[i] == NULL) {
-			if (!(m = dev_alloc_skb(MCLBYTES))) {
+			m = dev_alloc_skb(MCLBYTES);
+			if (!m) {
 				for (j = 0; j < i; j++) {
 					dev_kfree_skb_any(sc->ether.rx_data[j]);
 					sc->ether.rx_data[j] = NULL;

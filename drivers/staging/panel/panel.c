@@ -171,8 +171,8 @@ struct logical_input {
 
 	union {
 		struct {	/* valid when type == INPUT_TYPE_STD */
-			void (*press_fct) (int);
-			void (*release_fct) (int);
+			void (*press_fct)(int);
+			void (*release_fct)(int);
 			int press_data;
 			int release_data;
 		} std;
@@ -185,7 +185,7 @@ struct logical_input {
 	} u;
 };
 
-LIST_HEAD(logical_inputs);	/* list of all defined logical inputs */
+static LIST_HEAD(logical_inputs);	/* list of all defined logical inputs */
 
 /* physical contacts history
  * Physical contacts are a 45 bits string of 9 groups of 5 bits each.
@@ -417,9 +417,9 @@ static char lcd_must_clear;
 static char lcd_left_shift;
 static char init_in_progress;
 
-static void (*lcd_write_cmd) (int);
-static void (*lcd_write_data) (int);
-static void (*lcd_clear_fast) (void);
+static void (*lcd_write_cmd)(int);
+static void (*lcd_write_data)(int);
+static void (*lcd_clear_fast)(void);
 
 static DEFINE_SPINLOCK(pprt_lock);
 static struct timer_list scan_timer;
@@ -457,14 +457,12 @@ MODULE_PARM_DESC(keypad_enabled, "Deprecated option, use keypad_type instead");
 static int lcd_type = -1;
 module_param(lcd_type, int, 0000);
 MODULE_PARM_DESC(lcd_type,
-		 "LCD type: 0=none, 1=old //, 2=serial ks0074, "
-		 "3=hantronix //, 4=nexcom //, 5=compiled-in");
+		 "LCD type: 0=none, 1=old //, 2=serial ks0074, 3=hantronix //, 4=nexcom //, 5=compiled-in");
 
 static int lcd_proto = -1;
 module_param(lcd_proto, int, 0000);
 MODULE_PARM_DESC(lcd_proto,
-		"LCD communication: 0=parallel (//), 1=serial,"
-		"2=TI LCD Interface");
+		"LCD communication: 0=parallel (//), 1=serial, 2=TI LCD Interface");
 
 static int lcd_charset = -1;
 module_param(lcd_charset, int, 0000);
@@ -473,8 +471,7 @@ MODULE_PARM_DESC(lcd_charset, "LCD character set: 0=standard, 1=KS0074");
 static int keypad_type = -1;
 module_param(keypad_type, int, 0000);
 MODULE_PARM_DESC(keypad_type,
-		 "Keypad type: 0=none, 1=old 6 keys, 2=new 6+1 keys, "
-		 "3=nexcom 4 keys");
+		 "Keypad type: 0=none, 1=old 6 keys, 2=new 6+1 keys, 3=nexcom 4 keys");
 
 static int profile = DEFAULT_PROFILE;
 module_param(profile, int, 0000);
@@ -494,43 +491,37 @@ MODULE_PARM_DESC(profile,
 static int lcd_e_pin  = PIN_NOT_SET;
 module_param(lcd_e_pin, int, 0000);
 MODULE_PARM_DESC(lcd_e_pin,
-		 "# of the // port pin connected to LCD 'E' signal, "
-		 "with polarity (-17..17)");
+		 "# of the // port pin connected to LCD 'E' signal, with polarity (-17..17)");
 
 static int lcd_rs_pin = PIN_NOT_SET;
 module_param(lcd_rs_pin, int, 0000);
 MODULE_PARM_DESC(lcd_rs_pin,
-		 "# of the // port pin connected to LCD 'RS' signal, "
-		 "with polarity (-17..17)");
+		 "# of the // port pin connected to LCD 'RS' signal, with polarity (-17..17)");
 
 static int lcd_rw_pin = PIN_NOT_SET;
 module_param(lcd_rw_pin, int, 0000);
 MODULE_PARM_DESC(lcd_rw_pin,
-		 "# of the // port pin connected to LCD 'RW' signal, "
-		 "with polarity (-17..17)");
+		 "# of the // port pin connected to LCD 'RW' signal, with polarity (-17..17)");
 
 static int lcd_bl_pin = PIN_NOT_SET;
 module_param(lcd_bl_pin, int, 0000);
 MODULE_PARM_DESC(lcd_bl_pin,
-		 "# of the // port pin connected to LCD backlight, "
-		 "with polarity (-17..17)");
+		 "# of the // port pin connected to LCD backlight, with polarity (-17..17)");
 
 static int lcd_da_pin = PIN_NOT_SET;
 module_param(lcd_da_pin, int, 0000);
 MODULE_PARM_DESC(lcd_da_pin,
-		 "# of the // port pin connected to serial LCD 'SDA' "
-		 "signal, with polarity (-17..17)");
+		 "# of the // port pin connected to serial LCD 'SDA' signal, with polarity (-17..17)");
 
 static int lcd_cl_pin = PIN_NOT_SET;
 module_param(lcd_cl_pin, int, 0000);
 MODULE_PARM_DESC(lcd_cl_pin,
-		 "# of the // port pin connected to serial LCD 'SCL' "
-		 "signal, with polarity (-17..17)");
+		 "# of the // port pin connected to serial LCD 'SCL' signal, with polarity (-17..17)");
 
-static unsigned char *lcd_char_conv;
+static const unsigned char *lcd_char_conv;
 
 /* for some LCD drivers (ks0074) we need a charset conversion table. */
-static unsigned char lcd_char_conv_ks0074[256] = {
+static const unsigned char lcd_char_conv_ks0074[256] = {
 	/*          0|8   1|9   2|A   3|B   4|C   5|D   6|E   7|F */
 	/* 0x00 */ 0x00, 0x01, 0x02, 0x03, 0x04, 0x05, 0x06, 0x07,
 	/* 0x08 */ 0x08, 0x09, 0x0a, 0x0b, 0x0c, 0x0d, 0x0e, 0x0f,
@@ -566,7 +557,7 @@ static unsigned char lcd_char_conv_ks0074[256] = {
 	/* 0xF8 */ 0xac, 0xa6, 0xea, 0xef, 0x7e, 0xeb, 0xb2, 0x79,
 };
 
-char old_keypad_profile[][4][9] = {
+static const char old_keypad_profile[][4][9] = {
 	{"S0", "Left\n", "Left\n", ""},
 	{"S1", "Down\n", "Down\n", ""},
 	{"S2", "Up\n", "Up\n", ""},
@@ -577,7 +568,7 @@ char old_keypad_profile[][4][9] = {
 };
 
 /* signals, press, repeat, release */
-char new_keypad_profile[][4][9] = {
+static const char new_keypad_profile[][4][9] = {
 	{"S0", "Left\n", "Left\n", ""},
 	{"S1", "Down\n", "Down\n", ""},
 	{"S2", "Up\n", "Up\n", ""},
@@ -590,7 +581,7 @@ char new_keypad_profile[][4][9] = {
 };
 
 /* signals, press, repeat, release */
-char nexcom_keypad_profile[][4][9] = {
+static const char nexcom_keypad_profile[][4][9] = {
 	{"a-p-e-", "Down\n", "Down\n", ""},
 	{"a-p-E-", "Ret\n", "Ret\n", ""},
 	{"a-P-E-", "Esc\n", "Esc\n", ""},
@@ -599,7 +590,7 @@ char nexcom_keypad_profile[][4][9] = {
 	{"", "", "", ""}
 };
 
-static char (*keypad_profile)[4][9] = old_keypad_profile;
+static const char (*keypad_profile)[4][9] = old_keypad_profile;
 
 /* FIXME: this should be converted to a bit array containing signals states */
 static struct {
@@ -669,7 +660,7 @@ static void panel_set_bits(void)
  *   out(dport, in(dport) & d_val[2] | d_val[signal_state])
  *   out(cport, in(cport) & c_val[2] | c_val[signal_state])
  */
-void pin_to_bits(int pin, unsigned char *d_val, unsigned char *c_val)
+static void pin_to_bits(int pin, unsigned char *d_val, unsigned char *c_val)
 {
 	int d_bit, c_bit, inv;
 
@@ -1372,14 +1363,14 @@ static struct miscdevice lcd_dev = {
 };
 
 /* public function usable from the kernel for any purpose */
-void panel_lcd_print(char *s)
+static void panel_lcd_print(const char *s)
 {
 	if (lcd_enabled && lcd_initialized)
 		lcd_write(NULL, s, strlen(s), NULL);
 }
 
 /* initialize the LCD driver */
-void lcd_init(void)
+static void lcd_init(void)
 {
 	switch (lcd_type) {
 	case LCD_TYPE_OLD:
@@ -1590,8 +1581,8 @@ static ssize_t keypad_read(struct file *file,
 		if (file->f_flags & O_NONBLOCK)
 			return -EAGAIN;
 
-		interruptible_sleep_on(&keypad_read_wait);
-		if (signal_pending(current))
+		if (wait_event_interruptible(keypad_read_wait,
+					     keypad_buflen != 0))
 			return -EINTR;
 	}
 
@@ -1638,7 +1629,7 @@ static struct miscdevice keypad_dev = {
 	&keypad_fops
 };
 
-static void keypad_send_key(char *string, int max_len)
+static void keypad_send_key(const char *string, int max_len)
 {
 	if (init_in_progress)
 		return;
@@ -1756,17 +1747,18 @@ static inline int input_state_high(struct logical_input *input)
 
 			if (input->high_timer == 0) {
 				char *press_str = input->u.kbd.press_str;
-				if (press_str[0])
-					keypad_send_key(press_str,
-							sizeof(input->u.kbd.press_str));
+				if (press_str[0]) {
+					int s = sizeof(input->u.kbd.press_str);
+					keypad_send_key(press_str, s);
+				}
 			}
 
 			if (input->u.kbd.repeat_str[0]) {
 				char *repeat_str = input->u.kbd.repeat_str;
 				if (input->high_timer >= KEYPAD_REP_START) {
+					int s = sizeof(input->u.kbd.repeat_str);
 					input->high_timer -= KEYPAD_REP_DELAY;
-					keypad_send_key(repeat_str,
-							sizeof(input->u.kbd.repeat_str));
+					keypad_send_key(repeat_str, s);
 				}
 				/* we will need to come back here soon */
 				inputs_stable = 0;
@@ -1802,10 +1794,11 @@ static inline void input_state_falling(struct logical_input *input)
 
 			if (input->u.kbd.repeat_str[0]) {
 				char *repeat_str = input->u.kbd.repeat_str;
-				if (input->high_timer >= KEYPAD_REP_START)
+				if (input->high_timer >= KEYPAD_REP_START) {
+					int s = sizeof(input->u.kbd.repeat_str);
 					input->high_timer -= KEYPAD_REP_DELAY;
-					keypad_send_key(repeat_str,
-							sizeof(input->u.kbd.repeat_str));
+					keypad_send_key(repeat_str, s);
+				}
 				/* we will need to come back here soon */
 				inputs_stable = 0;
 			}
@@ -1822,9 +1815,10 @@ static inline void input_state_falling(struct logical_input *input)
 				release_fct(input->u.std.release_data);
 		} else if (input->type == INPUT_TYPE_KBD) {
 			char *release_str = input->u.kbd.release_str;
-			if (release_str[0])
-				keypad_send_key(release_str,
-						sizeof(input->u.kbd.release_str));
+			if (release_str[0]) {
+				int s = sizeof(input->u.kbd.release_str);
+				keypad_send_key(release_str, s);
+			}
 		}
 
 		input->state = INPUT_ST_LOW;
@@ -1929,7 +1923,7 @@ static void init_scan_timer(void)
  * corresponding to out and in bits respectively.
  * returns 1 if ok, 0 if error (in which case, nothing is written).
  */
-static int input_name2mask(char *name, pmask_t *mask, pmask_t *value,
+static int input_name2mask(const char *name, pmask_t *mask, pmask_t *value,
 			   char *imask, char *omask)
 {
 	static char sigtab[10] = "EeSsPpAaBb";
@@ -1977,8 +1971,9 @@ static int input_name2mask(char *name, pmask_t *mask, pmask_t *value,
  * strings <press>, <repeat>, <release> for these respective events.
  * Returns the pointer to the new key if ok, NULL if the key could not be bound.
  */
-static struct logical_input *panel_bind_key(char *name, char *press,
-					    char *repeat, char *release)
+static struct logical_input *panel_bind_key(const char *name, const char *press,
+					    const char *repeat,
+					    const char *release)
 {
 	struct logical_input *key;
 
@@ -2013,9 +2008,9 @@ static struct logical_input *panel_bind_key(char *name, char *press,
  * be bound.
  */
 static struct logical_input *panel_bind_callback(char *name,
-						 void (*press_fct) (int),
+						 void (*press_fct)(int),
 						 int press_data,
-						 void (*release_fct) (int),
+						 void (*release_fct)(int),
 						 int release_data)
 {
 	struct logical_input *callback;
@@ -2178,7 +2173,7 @@ static struct parport_driver panel_driver = {
 };
 
 /* init function */
-int panel_init(void)
+static int panel_init(void)
 {
 	/* for backwards compatibility */
 	if (keypad_type < 0)

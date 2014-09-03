@@ -20,7 +20,6 @@
 #include <linux/delay.h>
 #include <linux/i2c.h>
 #include <linux/pci.h>
-#include <linux/init.h>
 #include <linux/acpi.h>
 
 #define ALI1563_MAX_TIMEOUT	500
@@ -417,7 +416,7 @@ static void ali1563_remove(struct pci_dev *dev)
 	ali1563_shutdown(dev);
 }
 
-static DEFINE_PCI_DEVICE_TABLE(ali1563_id_table) = {
+static const struct pci_device_id ali1563_id_table[] = {
 	{ PCI_DEVICE(PCI_VENDOR_ID_AL, PCI_DEVICE_ID_AL_M1563) },
 	{},
 };

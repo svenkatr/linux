@@ -288,8 +288,11 @@ static int tca8418_keypad_probe(struct i2c_client *client,
 		irq_is_gpio = pdata->irq_is_gpio;
 	} else {
 		struct device_node *np = dev->of_node;
-		of_property_read_u32(np, "keypad,num-rows", &rows);
-		of_property_read_u32(np, "keypad,num-columns", &cols);
+		int err;
+
+		err = matrix_keypad_parse_of_params(dev, &rows, &cols);
+		if (err)
+			return err;
 		rep = of_property_read_bool(np, "keypad,autorepeat");
 	}
 
@@ -384,11 +387,18 @@ static const struct i2c_device_id tca8418_id[] = {
 MODULE_DEVICE_TABLE(i2c, tca8418_id);
 
 #ifdef CONFIG_OF
-static const struct of_device_id tca8418_dt_ids[] __devinitconst = {
+static const struct of_device_id tca8418_dt_ids[] = {
 	{ .compatible = "ti,tca8418", },
 	{ }
 };
 MODULE_DEVICE_TABLE(of, tca8418_dt_ids);
+
+/*
+ * The device tree based i2c loader looks for
+ * "i2c:" + second_component_of(property("compatible"))
+ * and therefore we need an alias to be found.
+ */
+MODULE_ALIAS("i2c:tca8418");
 #endif
 
 static struct i2c_driver tca8418_keypad_driver = {

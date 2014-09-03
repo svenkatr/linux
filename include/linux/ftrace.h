@@ -74,7 +74,7 @@ typedef void (*ftrace_func_t)(unsigned long ip, unsigned long parent_ip,
  * SAVE_REGS - The ftrace_ops wants regs saved at each function called
  *            and passed to the callback. If this flag is set, but the
  *            architecture does not support passing regs
- *            (ARCH_SUPPORTS_FTRACE_SAVE_REGS is not defined), then the
+ *            (CONFIG_DYNAMIC_FTRACE_WITH_REGS is not defined), then the
  *            ftrace_ops will fail to register, unless the next flag
  *            is set.
  * SAVE_REGS_IF_SUPPORTED - This is the same as SAVE_REGS, but if the
@@ -89,6 +89,10 @@ typedef void (*ftrace_func_t)(unsigned long ip, unsigned long parent_ip,
  *            that the call back has its own recursion protection. If it does
  *            not set this, then the ftrace infrastructure will add recursion
  *            protection for the caller.
+ * STUB   - The ftrace_ops is just a place holder.
+ * INITIALIZED - The ftrace_ops has already been initialized (first use time
+ *            register_ftrace_function() is called, it will initialized the ops)
+ * DELETED - The ops are being deleted, do not let them be registered again.
  */
 enum {
 	FTRACE_OPS_FL_ENABLED			= 1 << 0,
@@ -98,16 +102,32 @@ enum {
 	FTRACE_OPS_FL_SAVE_REGS			= 1 << 4,
 	FTRACE_OPS_FL_SAVE_REGS_IF_SUPPORTED	= 1 << 5,
 	FTRACE_OPS_FL_RECURSION_SAFE		= 1 << 6,
+	FTRACE_OPS_FL_STUB			= 1 << 7,
+	FTRACE_OPS_FL_INITIALIZED		= 1 << 8,
+	FTRACE_OPS_FL_DELETED			= 1 << 9,
 };
 
+/*
+ * Note, ftrace_ops can be referenced outside of RCU protection.
+ * (Although, for perf, the control ops prevent that). If ftrace_ops is
+ * allocated and not part of kernel core data, the unregistering of it will
+ * perform a scheduling on all CPUs to make sure that there are no more users.
+ * Depending on the load of the system that may take a bit of time.
+ *
+ * Any private data added must also take care not to be freed and if private
+ * data is added to a ftrace_ops that is in core code, the user of the
+ * ftrace_ops must perform a schedule_on_each_cpu() before freeing it.
+ */
 struct ftrace_ops {
 	ftrace_func_t			func;
 	struct ftrace_ops		*next;
 	unsigned long			flags;
 	int __percpu			*disabled;
+	void				*private;
 #ifdef CONFIG_DYNAMIC_FTRACE
 	struct ftrace_hash		*notrace_hash;
 	struct ftrace_hash		*filter_hash;
+	struct mutex			regex_lock;
 #endif
 };
 
@@ -259,8 +279,10 @@ struct ftrace_probe_ops {
 	void			(*func)(unsigned long ip,
 					unsigned long parent_ip,
 					void **data);
-	int			(*callback)(unsigned long ip, void **data);
-	void			(*free)(void **data);
+	int			(*init)(struct ftrace_probe_ops *ops,
+					unsigned long ip, void **data);
+	void			(*free)(struct ftrace_probe_ops *ops,
+					unsigned long ip, void **data);
 	int			(*print)(struct seq_file *m,
 					 unsigned long ip,
 					 struct ftrace_probe_ops *ops,
@@ -277,7 +299,7 @@ extern void
 unregister_ftrace_function_probe_func(char *glob, struct ftrace_probe_ops *ops);
 extern void unregister_ftrace_function_probe_all(char *glob);
 
-extern int ftrace_text_reserved(void *start, void *end);
+extern int ftrace_text_reserved(const void *start, const void *end);
 
 extern int ftrace_nr_registered_ops(void);
 
@@ -308,12 +330,9 @@ enum {
 #define FTRACE_REF_MAX		((1UL << 29) - 1)
 
 struct dyn_ftrace {
-	union {
-		unsigned long		ip; /* address of mcount call-site */
-		struct dyn_ftrace	*freelist;
-	};
+	unsigned long		ip; /* address of mcount call-site */
 	unsigned long		flags;
-	struct dyn_arch_ftrace		arch;
+	struct dyn_arch_ftrace	arch;
 };
 
 int ftrace_force_update(void);
@@ -394,7 +413,6 @@ ssize_t ftrace_filter_write(struct file *file, const char __user *ubuf,
 			    size_t cnt, loff_t *ppos);
 ssize_t ftrace_notrace_write(struct file *file, const char __user *ubuf,
 			     size_t cnt, loff_t *ppos);
-loff_t ftrace_regex_lseek(struct file *file, loff_t offset, int whence);
 int ftrace_regex_release(struct inode *inode, struct file *file);
 
 void __init
@@ -402,7 +420,7 @@ ftrace_set_early_filter(struct ftrace_ops *ops, char *buf, int enable);
 
 /* defined in arch */
 extern int ftrace_ip_converted(unsigned long ip);
-extern int ftrace_dyn_arch_init(void *data);
+extern int ftrace_dyn_arch_init(void);
 extern void ftrace_replace_code(int enable);
 extern int ftrace_update_ftrace_func(ftrace_func_t func);
 extern void ftrace_caller(void);
@@ -418,7 +436,7 @@ void ftrace_modify_all_code(int command);
 #endif
 
 #ifndef FTRACE_REGS_ADDR
-#ifdef ARCH_SUPPORTS_FTRACE_SAVE_REGS
+#ifdef CONFIG_DYNAMIC_FTRACE_WITH_REGS
 # define FTRACE_REGS_ADDR ((unsigned long)ftrace_regs_caller)
 #else
 # define FTRACE_REGS_ADDR FTRACE_ADDR
@@ -480,7 +498,7 @@ extern int ftrace_make_nop(struct module *mod,
  */
 extern int ftrace_make_call(struct dyn_ftrace *rec, unsigned long addr);
 
-#ifdef ARCH_SUPPORTS_FTRACE_SAVE_REGS
+#ifdef CONFIG_DYNAMIC_FTRACE_WITH_REGS
 /**
  * ftrace_modify_call - convert from one addr to another (no nop)
  * @rec: the mcount call site record
@@ -517,6 +535,7 @@ static inline int ftrace_modify_call(struct dyn_ftrace *rec, unsigned long old_a
 extern int ftrace_arch_read_dyn_info(char *buf, int size);
 
 extern int skip_trace(unsigned long ip);
+extern void ftrace_module_init(struct module *mod);
 
 extern void ftrace_disable_daemon(void);
 extern void ftrace_enable_daemon(void);
@@ -526,15 +545,16 @@ static inline int ftrace_force_update(void) { return 0; }
 static inline void ftrace_disable_daemon(void) { }
 static inline void ftrace_enable_daemon(void) { }
 static inline void ftrace_release_mod(struct module *mod) {}
-static inline int register_ftrace_command(struct ftrace_func_command *cmd)
+static inline void ftrace_module_init(struct module *mod) {}
+static inline __init int register_ftrace_command(struct ftrace_func_command *cmd)
 {
 	return -EINVAL;
 }
-static inline int unregister_ftrace_command(char *cmd_name)
+static inline __init int unregister_ftrace_command(char *cmd_name)
 {
 	return -EINVAL;
 }
-static inline int ftrace_text_reserved(void *start, void *end)
+static inline int ftrace_text_reserved(const void *start, const void *end)
 {
 	return 0;
 }
@@ -559,10 +579,6 @@ static inline ssize_t ftrace_filter_write(struct file *file, const char __user *
 			    size_t cnt, loff_t *ppos) { return -ENODEV; }
 static inline ssize_t ftrace_notrace_write(struct file *file, const char __user *ubuf,
 			     size_t cnt, loff_t *ppos) { return -ENODEV; }
-static inline loff_t ftrace_regex_lseek(struct file *file, loff_t offset, int whence)
-{
-	return -ENODEV;
-}
 static inline int
 ftrace_regex_release(struct inode *inode, struct file *file) { return -ENODEV; }
 #endif /* CONFIG_DYNAMIC_FTRACE */
@@ -716,6 +732,7 @@ ftrace_push_return_trace(unsigned long ret, unsigned long func, int *depth,
 extern char __irqentry_text_start[];
 extern char __irqentry_text_end[];
 
+#define FTRACE_NOTRACE_DEPTH 65536
 #define FTRACE_RETFUNC_DEPTH 50
 #define FTRACE_RETSTACK_ALLOC_SIZE 32
 extern int register_ftrace_graph(trace_func_graph_ret_t retfunc,
@@ -819,10 +836,15 @@ enum ftrace_dump_mode;
 
 extern enum ftrace_dump_mode ftrace_dump_on_oops;
 
+extern void disable_trace_on_warning(void);
+extern int __disable_trace_on_warning;
+
 #ifdef CONFIG_PREEMPT
 #define INIT_TRACE_RECURSION		.trace_recursion = 0,
 #endif
 
+#else /* CONFIG_TRACING */
+static inline void  disable_trace_on_warning(void) { }
 #endif /* CONFIG_TRACING */
 
 #ifndef INIT_TRACE_RECURSION

@@ -106,15 +106,56 @@ static struct ib_ucontext *c4iw_alloc_ucontext(struct ib_device *ibdev,
 {
 	struct c4iw_ucontext *context;
 	struct c4iw_dev *rhp = to_c4iw_dev(ibdev);
+	static int warned;
+	struct c4iw_alloc_ucontext_resp uresp;
+	int ret = 0;
+	struct c4iw_mm_entry *mm = NULL;
 
 	PDBG("%s ibdev %p\n", __func__, ibdev);
 	context = kzalloc(sizeof(*context), GFP_KERNEL);
-	if (!context)
-		return ERR_PTR(-ENOMEM);
+	if (!context) {
+		ret = -ENOMEM;
+		goto err;
+	}
+
 	c4iw_init_dev_ucontext(&rhp->rdev, &context->uctx);
 	INIT_LIST_HEAD(&context->mmaps);
 	spin_lock_init(&context->mmap_lock);
+
+	if (udata->outlen < sizeof(uresp)) {
+		if (!warned++)
+			pr_err(MOD "Warning - downlevel libcxgb4 (non-fatal), device status page disabled.");
+		rhp->rdev.flags |= T4_STATUS_PAGE_DISABLED;
+	} else {
+		mm = kmalloc(sizeof(*mm), GFP_KERNEL);
+		if (!mm) {
+			ret = -ENOMEM;
+			goto err_free;
+		}
+
+		uresp.status_page_size = PAGE_SIZE;
+
+		spin_lock(&context->mmap_lock);
+		uresp.status_page_key = context->key;
+		context->key += PAGE_SIZE;
+		spin_unlock(&context->mmap_lock);
+
+		ret = ib_copy_to_udata(udata, &uresp, sizeof(uresp));
+		if (ret)
+			goto err_mm;
+
+		mm->key = uresp.status_page_key;
+		mm->addr = virt_to_phys(rhp->rdev.status_page);
+		mm->len = PAGE_SIZE;
+		insert_mmap(context, mm);
+	}
 	return &context->ibucontext;
+err_mm:
+	kfree(mm);
+err_free:
+	kfree(context);
+err:
+	return ERR_PTR(ret);
 }
 
 static int c4iw_mmap(struct ib_ucontext *context, struct vm_area_struct *vma)
@@ -162,8 +203,14 @@ static int c4iw_mmap(struct ib_ucontext *context, struct vm_area_struct *vma)
 		 */
 		if (addr >= rdev->oc_mw_pa)
 			vma->vm_page_prot = t4_pgprot_wc(vma->vm_page_prot);
-		else
-			vma->vm_page_prot = pgprot_noncached(vma->vm_page_prot);
+		else {
+			if (is_t5(rdev->lldi.adapter_type))
+				vma->vm_page_prot =
+					t4_pgprot_wc(vma->vm_page_prot);
+			else
+				vma->vm_page_prot =
+					pgprot_noncached(vma->vm_page_prot);
+		}
 		ret = io_remap_pfn_range(vma, vma->vm_start,
 					 addr >> PAGE_SHIFT,
 					 len, vma->vm_page_prot);
@@ -263,7 +310,7 @@ static int c4iw_query_device(struct ib_device *ibdev,
 	dev = to_c4iw_dev(ibdev);
 	memset(props, 0, sizeof *props);
 	memcpy(&props->sys_image_guid, dev->rdev.lldi.ports[0]->dev_addr, 6);
-	props->hw_ver = dev->rdev.lldi.adapter_type;
+	props->hw_ver = CHELSIO_CHIP_RELEASE(dev->rdev.lldi.adapter_type);
 	props->fw_ver = dev->rdev.lldi.fw_vers;
 	props->device_cap_flags = dev->device_cap_flags;
 	props->page_size_cap = T4_PAGESIZE_MASK;
@@ -281,7 +328,7 @@ static int c4iw_query_device(struct ib_device *ibdev,
 	props->max_mr = c4iw_num_stags(&dev->rdev);
 	props->max_pd = T4_MAX_NUM_PD;
 	props->local_ca_ack_delay = 0;
-	props->max_fast_reg_page_list_len = T4_MAX_FR_DEPTH;
+	props->max_fast_reg_page_list_len = t4_max_fr_depth(use_dsgl);
 
 	return 0;
 }
@@ -346,7 +393,8 @@ static ssize_t show_rev(struct device *dev, struct device_attribute *attr,
 	struct c4iw_dev *c4iw_dev = container_of(dev, struct c4iw_dev,
 						 ibdev.dev);
 	PDBG("%s dev 0x%p\n", __func__, dev);
-	return sprintf(buf, "%d\n", c4iw_dev->rdev.lldi.adapter_type);
+	return sprintf(buf, "%d\n",
+		       CHELSIO_CHIP_RELEASE(c4iw_dev->rdev.lldi.adapter_type));
 }
 
 static ssize_t show_fw_ver(struct device *dev, struct device_attribute *attr,

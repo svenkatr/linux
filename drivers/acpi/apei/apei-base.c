@@ -34,13 +34,13 @@
 #include <linux/module.h>
 #include <linux/init.h>
 #include <linux/acpi.h>
-#include <linux/acpi_io.h>
 #include <linux/slab.h>
 #include <linux/io.h>
 #include <linux/kref.h>
 #include <linux/rculist.h>
 #include <linux/interrupt.h>
 #include <linux/debugfs.h>
+#include <asm/unaligned.h>
 
 #include "apei-internal.h"
 
@@ -567,8 +567,7 @@ static int apei_check_gar(struct acpi_generic_address *reg, u64 *paddr,
 	bit_offset = reg->bit_offset;
 	access_size_code = reg->access_width;
 	space_id = reg->space_id;
-	/* Handle possible alignment issues */
-	memcpy(paddr, &reg->address, sizeof(*paddr));
+	*paddr = get_unaligned(&reg->address);
 	if (!*paddr) {
 		pr_warning(FW_BUG APEI_PFX
 			   "Invalid physical address in GAR [0x%llx/%u/%u/%u/%u]\n",
@@ -590,6 +589,9 @@ static int apei_check_gar(struct acpi_generic_address *reg, u64 *paddr,
 	if (bit_width == 32 && bit_offset == 0 && (*paddr & 0x03) == 0 &&
 	    *access_bit_width < 32)
 		*access_bit_width = 32;
+	else if (bit_width == 64 && bit_offset == 0 && (*paddr & 0x07) == 0 &&
+	    *access_bit_width < 64)
+		*access_bit_width = 64;
 
 	if ((bit_width + bit_offset) > *access_bit_width) {
 		pr_warning(FW_BUG APEI_PFX
@@ -755,9 +757,9 @@ int apei_osc_setup(void)
 		.cap.pointer	= capbuf,
 	};
 
-	capbuf[OSC_QUERY_TYPE] = OSC_QUERY_ENABLE;
-	capbuf[OSC_SUPPORT_TYPE] = 1;
-	capbuf[OSC_CONTROL_TYPE] = 0;
+	capbuf[OSC_QUERY_DWORD] = OSC_QUERY_ENABLE;
+	capbuf[OSC_SUPPORT_DWORD] = 1;
+	capbuf[OSC_CONTROL_DWORD] = 0;
 
 	if (ACPI_FAILURE(acpi_get_handle(NULL, "\\_SB", &handle))
 	    || ACPI_FAILURE(acpi_run_osc(handle, &context)))

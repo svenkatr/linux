@@ -40,6 +40,7 @@
 #include "state.h"
 #include "nfsd.h"
 
+#define NFSD4_MAX_SEC_LABEL_LEN	2048
 #define NFSD4_MAX_TAGLEN	128
 #define XDR_LEN(n)                     (((n) + 3) & ~3)
 
@@ -118,6 +119,7 @@ struct nfsd4_create {
 	struct iattr	cr_iattr;           /* request */
 	struct nfsd4_change_info  cr_cinfo; /* response */
 	struct nfs4_acl *cr_acl;
+	struct xdr_netobj cr_label;
 };
 #define cr_linklen	u.link.namelen
 #define cr_linkname	u.link.name
@@ -184,7 +186,6 @@ struct nfsd4_lock {
 #define lk_old_lock_stateid     v.old.lock_stateid
 #define lk_old_lock_seqid       v.old.lock_seqid
 
-#define lk_rflags       u.ok.rflags
 #define lk_resp_stateid u.ok.stateid
 #define lk_denied       u.denied
 
@@ -227,7 +228,7 @@ struct nfsd4_open {
 	u32		op_create;     	    /* request */
 	u32		op_createmode;      /* request */
 	u32		op_bmval[3];        /* request */
-	struct iattr	iattr;              /* UNCHECKED4, GUARDED4, EXCLUSIVE4_1 */
+	struct iattr	op_iattr;           /* UNCHECKED4, GUARDED4, EXCLUSIVE4_1 */
 	nfs4_verifier	op_verf __attribute__((aligned(32)));
 					    /* EXCLUSIVE4 */
 	clientid_t	op_clientid;        /* request */
@@ -237,6 +238,7 @@ struct nfsd4_open {
 	u32		op_share_deny;      /* request */
 	u32		op_deleg_want;      /* request */
 	stateid_t	op_stateid;         /* response */
+	__be32		op_xdr_error;       /* see nfsd4_open_omfg() */
 	u32		op_recall;          /* recall */
 	struct nfsd4_change_info  op_cinfo; /* response */
 	u32		op_rflags;          /* response */
@@ -246,8 +248,8 @@ struct nfsd4_open {
 	struct nfs4_file *op_file;          /* used during processing */
 	struct nfs4_ol_stateid *op_stp;	    /* used during processing */
 	struct nfs4_acl *op_acl;
+	struct xdr_netobj op_label;
 };
-#define op_iattr	iattr
 
 struct nfsd4_open_confirm {
 	stateid_t	oc_req_stateid		/* request */;
@@ -330,6 +332,7 @@ struct nfsd4_setattr {
 	u32		sa_bmval[3];        /* request */
 	struct iattr	sa_iattr;           /* request */
 	struct nfs4_acl *sa_acl;
+	struct xdr_netobj sa_label;
 };
 
 struct nfsd4_setclientid {
@@ -370,7 +373,6 @@ struct nfsd4_test_stateid {
 
 struct nfsd4_free_stateid {
 	stateid_t	fr_stateid;         /* request */
-	__be32		fr_status;          /* response */
 };
 
 /* also used for NVERIFY */
@@ -563,7 +565,7 @@ __be32 nfsd4_check_resp_size(struct nfsd4_compoundres *, u32);
 void nfsd4_encode_operation(struct nfsd4_compoundres *, struct nfsd4_op *);
 void nfsd4_encode_replay(struct nfsd4_compoundres *resp, struct nfsd4_op *op);
 __be32 nfsd4_encode_fattr(struct svc_fh *fhp, struct svc_export *exp,
-		       struct dentry *dentry, __be32 *buffer, int *countp,
+		       struct dentry *dentry, __be32 **buffer, int countp,
 		       u32 *bmval, struct svc_rqst *, int ignore_crossmnt);
 extern __be32 nfsd4_setclientid(struct svc_rqst *rqstp,
 		struct nfsd4_compound_state *,
@@ -572,8 +574,6 @@ extern __be32 nfsd4_setclientid_confirm(struct svc_rqst *rqstp,
 		struct nfsd4_compound_state *,
 		struct nfsd4_setclientid_confirm *setclientid_confirm);
 extern void nfsd4_store_cache_entry(struct nfsd4_compoundres *resp);
-extern __be32 nfsd4_replay_cache_entry(struct nfsd4_compoundres *resp,
-		struct nfsd4_sequence *seq);
 extern __be32 nfsd4_exchange_id(struct svc_rqst *rqstp,
 		struct nfsd4_compound_state *, struct nfsd4_exchange_id *);
 extern __be32 nfsd4_backchannel_ctl(struct svc_rqst *, struct nfsd4_compound_state *, struct nfsd4_backchannel_ctl *);
@@ -623,6 +623,7 @@ extern __be32 nfsd4_test_stateid(struct svc_rqst *rqstp,
 		struct nfsd4_compound_state *, struct nfsd4_test_stateid *test_stateid);
 extern __be32 nfsd4_free_stateid(struct svc_rqst *rqstp,
 		struct nfsd4_compound_state *, struct nfsd4_free_stateid *free_stateid);
+extern void nfsd4_bump_seqid(struct nfsd4_compound_state *, __be32 nfserr);
 #endif
 
 /*

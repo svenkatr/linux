@@ -4,6 +4,7 @@
 #include <linux/tracepoint.h>
 #include <asm/sigp.h>
 #include <asm/debug.h>
+#include <asm/dis.h>
 
 #undef TRACE_SYSTEM
 #define TRACE_SYSTEM kvm
@@ -28,6 +29,52 @@
 #define VCPU_TP_PRINTK(p_str, p_args...)				\
 	TP_printk("%02d[%016lx-%016lx]: " p_str, __entry->id,		\
 		  __entry->pswmask, __entry->pswaddr, p_args)
+
+TRACE_EVENT(kvm_s390_major_guest_pfault,
+	    TP_PROTO(VCPU_PROTO_COMMON),
+	    TP_ARGS(VCPU_ARGS_COMMON),
+
+	    TP_STRUCT__entry(
+		    VCPU_FIELD_COMMON
+		    ),
+
+	    TP_fast_assign(
+		    VCPU_ASSIGN_COMMON
+		    ),
+	    VCPU_TP_PRINTK("%s", "major fault, maybe applicable for pfault")
+	);
+
+TRACE_EVENT(kvm_s390_pfault_init,
+	    TP_PROTO(VCPU_PROTO_COMMON, long pfault_token),
+	    TP_ARGS(VCPU_ARGS_COMMON, pfault_token),
+
+	    TP_STRUCT__entry(
+		    VCPU_FIELD_COMMON
+		    __field(long, pfault_token)
+		    ),
+
+	    TP_fast_assign(
+		    VCPU_ASSIGN_COMMON
+		    __entry->pfault_token = pfault_token;
+		    ),
+	    VCPU_TP_PRINTK("init pfault token %ld", __entry->pfault_token)
+	);
+
+TRACE_EVENT(kvm_s390_pfault_done,
+	    TP_PROTO(VCPU_PROTO_COMMON, long pfault_token),
+	    TP_ARGS(VCPU_ARGS_COMMON, pfault_token),
+
+	    TP_STRUCT__entry(
+		    VCPU_FIELD_COMMON
+		    __field(long, pfault_token)
+		    ),
+
+	    TP_fast_assign(
+		    VCPU_ASSIGN_COMMON
+		    __entry->pfault_token = pfault_token;
+		    ),
+	    VCPU_TP_PRINTK("done pfault token %ld", __entry->pfault_token)
+	);
 
 /*
  * Tracepoints for SIE entry and exit.
@@ -67,7 +114,7 @@ TRACE_EVENT(kvm_s390_sie_fault,
 #define sie_intercept_code				\
 	{0x04, "Instruction"},				\
 	{0x08, "Program interruption"},			\
-	{0x0C, "Instruction and program interuption"},	\
+	{0x0C, "Instruction and program interruption"},	\
 	{0x10, "External request"},			\
 	{0x14, "External interruption"},		\
 	{0x18, "I/O request"},				\
@@ -117,7 +164,7 @@ TRACE_EVENT(kvm_s390_intercept_instruction,
 			   __entry->instruction,
 			   insn_to_mnemonic((unsigned char *)
 					    &__entry->instruction,
-					 __entry->insn) ?
+					 __entry->insn, sizeof(__entry->insn)) ?
 			   "unknown" : __entry->insn)
 	);
 
@@ -174,6 +221,7 @@ TRACE_EVENT(kvm_s390_intercept_validity,
 	{SIGP_STOP_AND_STORE_STATUS, "stop and store status"},	\
 	{SIGP_SET_ARCHITECTURE, "set architecture"},		\
 	{SIGP_SET_PREFIX, "set prefix"},			\
+	{SIGP_STORE_STATUS_AT_ADDRESS, "store status at addr"},	\
 	{SIGP_SENSE_RUNNING, "sense running"},			\
 	{SIGP_RESTART, "restart"}
 

@@ -1721,7 +1721,7 @@ static void at76_mac80211_tx(struct ieee80211_hw *hw,
 	 * following workaround is necessary. If the TX frame is an
 	 * authentication frame extract the bssid and send the CMD_JOIN. */
 	if (mgmt->frame_control & cpu_to_le16(IEEE80211_STYPE_AUTH)) {
-		if (!ether_addr_equal(priv->bssid, mgmt->bssid)) {
+		if (!ether_addr_equal_64bits(priv->bssid, mgmt->bssid)) {
 			memcpy(priv->bssid, mgmt->bssid, ETH_ALEN);
 			ieee80211_queue_work(hw, &priv->work_join_bssid);
 			dev_kfree_skb_any(skb);
@@ -1943,12 +1943,12 @@ static int at76_config(struct ieee80211_hw *hw, u32 changed)
 	struct at76_priv *priv = hw->priv;
 
 	at76_dbg(DBG_MAC80211, "%s(): channel %d",
-		 __func__, hw->conf.channel->hw_value);
+		 __func__, hw->conf.chandef.chan->hw_value);
 	at76_dbg_dump(DBG_MAC80211, priv->bssid, ETH_ALEN, "bssid:");
 
 	mutex_lock(&priv->mtx);
 
-	priv->channel = hw->conf.channel->hw_value;
+	priv->channel = hw->conf.chandef.chan->hw_value;
 
 	if (is_valid_ether_addr(priv->bssid))
 		at76_join(priv);
@@ -2112,7 +2112,6 @@ static struct at76_priv *at76_alloc_new_device(struct usb_device *udev)
 	priv->pm_period = 0;
 
 	/* unit us */
-	priv->hw->channel_change_time = 100000;
 
 	return priv;
 }
@@ -2164,10 +2163,8 @@ static int at76_alloc_urbs(struct at76_priv *priv,
 
 	buffer_size = sizeof(struct at76_tx_buffer) + MAX_PADDING_SIZE;
 	priv->bulk_out_buffer = kmalloc(buffer_size, GFP_KERNEL);
-	if (!priv->bulk_out_buffer) {
-		dev_err(&interface->dev, "cannot allocate output buffer\n");
+	if (!priv->bulk_out_buffer)
 		return -ENOMEM;
-	}
 
 	at76_dbg(DBG_PROC_ENTRY, "%s: EXIT", __func__);
 

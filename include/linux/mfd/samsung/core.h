@@ -14,18 +14,19 @@
 #ifndef __LINUX_MFD_SEC_CORE_H
 #define __LINUX_MFD_SEC_CORE_H
 
-#define NUM_IRQ_REGS	4
-
 enum sec_device_type {
 	S5M8751X,
 	S5M8763X,
 	S5M8767X,
+	S2MPA01,
 	S2MPS11X,
+	S2MPS14X,
 };
 
 /**
  * struct sec_pmic_dev - s5m87xx master device for sub-drivers
  * @dev: master device of the chip (can be used to access platform data)
+ * @pdata: pointer to private data used to pass platform data to child
  * @i2c: i2c client private data for regulator
  * @rtc: i2c client private data for rtc
  * @iolock: mutex for serializing io access
@@ -39,11 +40,11 @@ enum sec_device_type {
  */
 struct sec_pmic_dev {
 	struct device *dev;
-	struct regmap *regmap;
+	struct sec_platform_data *pdata;
+	struct regmap *regmap_pmic;
+	struct regmap *regmap_rtc;
 	struct i2c_client *i2c;
 	struct i2c_client *rtc;
-	struct mutex iolock;
-	struct mutex irqlock;
 
 	int device_type;
 	int irq_base;
@@ -51,21 +52,14 @@ struct sec_pmic_dev {
 	struct regmap_irq_chip_data *irq_data;
 
 	int ono;
-	u8 irq_masks_cur[NUM_IRQ_REGS];
-	u8 irq_masks_cache[NUM_IRQ_REGS];
-	int type;
+	unsigned long type;
 	bool wakeup;
+	bool wtsr_smpl;
 };
 
 int sec_irq_init(struct sec_pmic_dev *sec_pmic);
 void sec_irq_exit(struct sec_pmic_dev *sec_pmic);
 int sec_irq_resume(struct sec_pmic_dev *sec_pmic);
-
-extern int sec_reg_read(struct sec_pmic_dev *sec_pmic, u8 reg, void *dest);
-extern int sec_bulk_read(struct sec_pmic_dev *sec_pmic, u8 reg, int count, u8 *buf);
-extern int sec_reg_write(struct sec_pmic_dev *sec_pmic, u8 reg, u8 value);
-extern int sec_bulk_write(struct sec_pmic_dev *sec_pmic, u8 reg, int count, u8 *buf);
-extern int sec_reg_update(struct sec_pmic_dev *sec_pmic, u8 reg, u8 val, u8 mask);
 
 struct sec_platform_data {
 	struct sec_regulator_data	*regulators;
@@ -82,11 +76,11 @@ struct sec_platform_data {
 
 	int				buck_gpios[3];
 	int				buck_ds[3];
-	int				buck2_voltage[8];
+	unsigned int			buck2_voltage[8];
 	bool				buck2_gpiodvs;
-	int				buck3_voltage[8];
+	unsigned int			buck3_voltage[8];
 	bool				buck3_gpiodvs;
-	int				buck4_voltage[8];
+	unsigned int			buck4_voltage[8];
 	bool				buck4_gpiodvs;
 
 	int				buck_set1;
@@ -100,7 +94,7 @@ struct sec_platform_data {
 	int				buck3_default_idx;
 	int				buck4_default_idx;
 
-	int                             buck_ramp_delay;
+	int				buck_ramp_delay;
 
 	int				buck2_ramp_delay;
 	int				buck34_ramp_delay;
@@ -108,10 +102,15 @@ struct sec_platform_data {
 	int				buck16_ramp_delay;
 	int				buck7810_ramp_delay;
 	int				buck9_ramp_delay;
+	int				buck24_ramp_delay;
+	int				buck3_ramp_delay;
+	int				buck7_ramp_delay;
+	int				buck8910_ramp_delay;
 
-	bool                            buck2_ramp_enable;
-	bool                            buck3_ramp_enable;
-	bool                            buck4_ramp_enable;
+	bool				buck1_ramp_enable;
+	bool				buck2_ramp_enable;
+	bool				buck3_ramp_enable;
+	bool				buck4_ramp_enable;
 	bool				buck6_ramp_enable;
 
 	int				buck2_init;
@@ -127,6 +126,8 @@ struct sec_platform_data {
 struct sec_regulator_data {
 	int				id;
 	struct regulator_init_data	*initdata;
+	struct device_node		*reg_node;
+	int				ext_control_gpio;
 };
 
 /*
@@ -136,7 +137,7 @@ struct sec_regulator_data {
  */
 struct sec_opmode_data {
 	int id;
-	int mode;
+	unsigned int mode;
 };
 
 /*

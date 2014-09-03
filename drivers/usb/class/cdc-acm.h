@@ -106,6 +106,9 @@ struct acm {
 	struct work_struct work;			/* work queue entry for line discipline waking up */
 	unsigned int ctrlin;				/* input control lines (DCD, DSR, RI, break, overruns) */
 	unsigned int ctrlout;				/* output control lines (DTR, RTS) */
+	struct async_icount iocount;			/* counters for control line changes */
+	struct async_icount oldcount;			/* for comparison of counter */
+	wait_queue_head_t wioctl;			/* for ioctl */
 	unsigned int writesize;				/* max packet size for the output bulk endpoint */
 	unsigned int readsize,ctrlsize;			/* buffer sizes for freeing */
 	unsigned int minor;				/* acm minor number */
@@ -128,3 +131,4 @@ struct acm {
 #define NO_CAP_LINE			4
 #define NOT_A_MODEM			8
 #define NO_DATA_INTERFACE		16
+#define IGNORE_DEVICE			32

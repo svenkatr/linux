@@ -37,7 +37,6 @@
 #include <linux/kernel.h>
 #include <linux/module.h>
 #include <linux/pci.h>
-#include <linux/init.h>
 #include <linux/blkdev.h>
 #include <linux/delay.h>
 #include <linux/interrupt.h>
@@ -312,8 +311,7 @@ static struct ata_port_operations vsc_sata_ops = {
 	.scr_write		= vsc_sata_scr_write,
 };
 
-static void __devinit vsc_sata_setup_port(struct ata_ioports *port,
-					  void __iomem *base)
+static void vsc_sata_setup_port(struct ata_ioports *port, void __iomem *base)
 {
 	port->cmd_addr		= base + VSC_SATA_TF_CMD_OFFSET;
 	port->data_addr		= base + VSC_SATA_TF_DATA_OFFSET;
@@ -335,8 +333,8 @@ static void __devinit vsc_sata_setup_port(struct ata_ioports *port,
 }
 
 
-static int __devinit vsc_sata_init_one(struct pci_dev *pdev,
-				       const struct pci_device_id *ent)
+static int vsc_sata_init_one(struct pci_dev *pdev,
+			     const struct pci_device_id *ent)
 {
 	static const struct ata_port_info pi = {
 		.flags		= ATA_FLAG_SATA,

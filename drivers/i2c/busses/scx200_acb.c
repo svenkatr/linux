@@ -542,7 +542,6 @@ static int scx200_remove(struct platform_device *pdev)
 	struct scx200_acb_iface *iface;
 
 	iface = platform_get_drvdata(pdev);
-	platform_set_drvdata(pdev, NULL);
 	scx200_cleanup_iface(iface);
 
 	return 0;
@@ -557,7 +556,7 @@ static struct platform_driver scx200_pci_driver = {
 	.remove = scx200_remove,
 };
 
-static DEFINE_PCI_DEVICE_TABLE(scx200_isa) = {
+static const struct pci_device_id scx200_isa[] = {
 	{ PCI_DEVICE(PCI_VENDOR_ID_NS, PCI_DEVICE_ID_NS_SCx200_BRIDGE) },
 	{ PCI_DEVICE(PCI_VENDOR_ID_NS, PCI_DEVICE_ID_NS_SC1100_BRIDGE) },
 	{ 0, }

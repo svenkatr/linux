@@ -27,7 +27,6 @@
 /*#include <linux/fs.h>
 #include <linux/mount.h>
 #include <linux/pagemap.h>
-#include <linux/init.h>
 #include <linux/namei.h>
 #include <linux/sched.h>*/
 #include <linux/platform_device.h>
@@ -128,7 +127,8 @@ static void tmio_start_hc(struct platform_device *dev)
 	tmio_iowrite8(2, tmio->ccr + CCR_INTC);
 
 	dev_info(&dev->dev, "revision %d @ 0x%08llx, irq %d\n",
-			tmio_ioread8(tmio->ccr + CCR_REVID), hcd->rsrc_start, hcd->irq);
+			tmio_ioread8(tmio->ccr + CCR_REVID),
+			(u64) hcd->rsrc_start, hcd->irq);
 }
 
 static int ohci_tmio_start(struct usb_hcd *hcd)
@@ -249,6 +249,7 @@ static int ohci_hcd_tmio_drv_probe(struct platform_device *dev)
 	if (ret)
 		goto err_add_hcd;
 
+	device_wakeup_enable(hcd->self.controller);
 	if (ret == 0)
 		return ret;
 
@@ -285,8 +286,6 @@ static int ohci_hcd_tmio_drv_remove(struct platform_device *dev)
 	iounmap(hcd->regs);
 	iounmap(tmio->ccr);
 	usb_put_hcd(hcd);
-
-	platform_set_drvdata(dev, NULL);
 
 	return 0;
 }

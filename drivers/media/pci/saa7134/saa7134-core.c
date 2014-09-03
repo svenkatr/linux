@@ -308,7 +308,7 @@ void saa7134_buffer_finish(struct saa7134_dev *dev,
 
 	/* finish current buffer */
 	q->curr->vb.state = state;
-	do_gettimeofday(&q->curr->vb.ts);
+	v4l2_get_timestamp(&q->curr->vb.ts);
 	wake_up(&q->curr->vb.done);
 	q->curr = NULL;
 }
@@ -751,10 +751,11 @@ static int saa7134_hwfini(struct saa7134_dev *dev)
 	saa7134_input_fini(dev);
 	saa7134_vbi_fini(dev);
 	saa7134_tvaudio_fini(dev);
+	saa7134_video_fini(dev);
 	return 0;
 }
 
-static void __devinit must_configure_manually(int has_eeprom)
+static void must_configure_manually(int has_eeprom)
 {
 	unsigned int i,p;
 
@@ -802,9 +803,9 @@ static struct video_device *vdev_init(struct saa7134_dev *dev,
 	*vfd = *template;
 	vfd->v4l2_dev  = &dev->v4l2_dev;
 	vfd->release = video_device_release;
-	vfd->debug   = video_debug;
 	snprintf(vfd->name, sizeof(vfd->name), "%s %s (%s)",
 		 dev->name, type, saa7134_boards[dev->board].name);
+	set_bit(V4L2_FL_USE_FH_PRIO, &vfd->flags);
 	video_set_drvdata(vfd, dev);
 	return vfd;
 }
@@ -860,8 +861,8 @@ static void mpeg_ops_detach(struct saa7134_mpeg_ops *ops,
 	dev->mops = NULL;
 }
 
-static int __devinit saa7134_initdev(struct pci_dev *pci_dev,
-				     const struct pci_device_id *pci_id)
+static int saa7134_initdev(struct pci_dev *pci_dev,
+			   const struct pci_device_id *pci_id)
 {
 	struct saa7134_dev *dev;
 	struct saa7134_mpeg_ops *mops;
@@ -991,7 +992,7 @@ static int __devinit saa7134_initdev(struct pci_dev *pci_dev,
 
 	/* get irq */
 	err = request_irq(pci_dev->irq, saa7134_irq,
-			  IRQF_SHARED | IRQF_DISABLED, dev->name, dev);
+			  IRQF_SHARED, dev->name, dev);
 	if (err < 0) {
 		printk(KERN_ERR "%s: can't get IRQ %d\n",
 		       dev->name,pci_dev->irq);
@@ -1007,13 +1008,13 @@ static int __devinit saa7134_initdev(struct pci_dev *pci_dev,
 
 	/* load i2c helpers */
 	if (card_is_empress(dev)) {
-		struct v4l2_subdev *sd =
+		dev->empress_sd =
 			v4l2_i2c_new_subdev(&dev->v4l2_dev, &dev->i2c_adap,
 				"saa6752hs",
 				saa7134_boards[dev->board].empress_addr, NULL);
 
-		if (sd)
-			sd->grp_id = GRP_EMPRESS;
+		if (dev->empress_sd)
+			dev->empress_sd->grp_id = GRP_EMPRESS;
 	}
 
 	if (saa7134_boards[dev->board].rds_addr) {
@@ -1027,8 +1028,6 @@ static int __devinit saa7134_initdev(struct pci_dev *pci_dev,
 			dev->has_rds = 1;
 		}
 	}
-
-	v4l2_prio_init(&dev->prio);
 
 	mutex_lock(&saa7134_devlist_lock);
 	list_for_each_entry(mops, &mops_list, next)
@@ -1047,6 +1046,7 @@ static int __devinit saa7134_initdev(struct pci_dev *pci_dev,
 		printk(KERN_INFO "%s: Overlay support disabled.\n", dev->name);
 
 	dev->video_dev = vdev_init(dev,&saa7134_video_template,"video");
+	dev->video_dev->ctrl_handler = &dev->ctrl_handler;
 	err = video_register_device(dev->video_dev,VFL_TYPE_GRABBER,
 				    video_nr[dev->nr]);
 	if (err < 0) {
@@ -1058,6 +1058,7 @@ static int __devinit saa7134_initdev(struct pci_dev *pci_dev,
 	       dev->name, video_device_node_name(dev->video_dev));
 
 	dev->vbi_dev = vdev_init(dev, &saa7134_video_template, "vbi");
+	dev->vbi_dev->ctrl_handler = &dev->ctrl_handler;
 
 	err = video_register_device(dev->vbi_dev,VFL_TYPE_VBI,
 				    vbi_nr[dev->nr]);
@@ -1068,6 +1069,7 @@ static int __devinit saa7134_initdev(struct pci_dev *pci_dev,
 
 	if (card_has_radio(dev)) {
 		dev->radio_dev = vdev_init(dev,&saa7134_radio_template,"radio");
+		dev->radio_dev->ctrl_handler = &dev->radio_ctrl_handler;
 		err = video_register_device(dev->radio_dev,VFL_TYPE_RADIO,
 					    radio_nr[dev->nr]);
 		if (err < 0)
@@ -1102,7 +1104,7 @@ static int __devinit saa7134_initdev(struct pci_dev *pci_dev,
 	return err;
 }
 
-static void __devexit saa7134_finidev(struct pci_dev *pci_dev)
+static void saa7134_finidev(struct pci_dev *pci_dev)
 {
 	struct v4l2_device *v4l2_dev = pci_get_drvdata(pci_dev);
 	struct saa7134_dev *dev = container_of(v4l2_dev, struct saa7134_dev, v4l2_dev);
@@ -1322,7 +1324,7 @@ static struct pci_driver saa7134_pci_driver = {
 	.name     = "saa7134",
 	.id_table = saa7134_pci_tbl,
 	.probe    = saa7134_initdev,
-	.remove   = __devexit_p(saa7134_finidev),
+	.remove   = saa7134_finidev,
 #ifdef CONFIG_PM
 	.suspend  = saa7134_suspend,
 	.resume   = saa7134_resume

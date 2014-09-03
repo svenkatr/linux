@@ -30,6 +30,7 @@
 #include <linux/jiffies.h>
 #include <linux/module.h>
 
+#include <asm/dma-coherence.h>
 #include <asm/mipsregs.h>
 #include <asm/time.h>
 
@@ -59,7 +60,16 @@ void __init plat_mem_setup(void)
 		/* Clear to obtain best system bus performance */
 		clear_c0_config(1 << 19); /* Clear Config[OD] */
 
-	board_setup();  /* board specific setup */
+	hw_coherentio = 0;
+	coherentio = 1;
+	switch (alchemy_get_cputype()) {
+	case ALCHEMY_CPU_AU1000:
+	case ALCHEMY_CPU_AU1500:
+	case ALCHEMY_CPU_AU1100:
+		coherentio = 0;
+	}
+
+	board_setup();	/* board specific setup */
 
 	/* IO/MEM resources. */
 	set_io_port_base(0);

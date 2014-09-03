@@ -876,10 +876,8 @@ static int dvb_input_attach(struct ddb_input *input)
 			return -ENODEV;
 		if (tuner_attach_tda18271(input) < 0)
 			return -ENODEV;
-		if (input->fe) {
-			if (dvb_register_frontend(adap, input->fe) < 0)
-				return -ENODEV;
-		}
+		if (dvb_register_frontend(adap, input->fe) < 0)
+			return -ENODEV;
 		if (input->fe2) {
 			if (dvb_register_frontend(adap, input->fe2) < 0)
 				return -ENODEV;
@@ -1542,9 +1540,9 @@ static void ddb_unmap(struct ddb *dev)
 }
 
 
-static void __devexit ddb_remove(struct pci_dev *pdev)
+static void ddb_remove(struct pci_dev *pdev)
 {
-	struct ddb *dev = (struct ddb *) pci_get_drvdata(pdev);
+	struct ddb *dev = pci_get_drvdata(pdev);
 
 	ddb_ports_detach(dev);
 	ddb_i2c_release(dev);
@@ -1565,8 +1563,7 @@ static void __devexit ddb_remove(struct pci_dev *pdev)
 }
 
 
-static int __devinit ddb_probe(struct pci_dev *pdev,
-			       const struct pci_device_id *id)
+static int ddb_probe(struct pci_dev *pdev, const struct pci_device_id *id)
 {
 	struct ddb *dev;
 	int stat = 0;
@@ -1679,7 +1676,7 @@ static struct ddb_info ddb_v6 = {
 	.subvendor   = _subvend, .subdevice = _subdev, \
 	.driver_data = (unsigned long)&_driverdata }
 
-static const struct pci_device_id ddb_id_tbl[] __devinitdata = {
+static const struct pci_device_id ddb_id_tbl[] = {
 	DDB_ID(DDVID, 0x0002, DDVID, 0x0001, ddb_octopus),
 	DDB_ID(DDVID, 0x0003, DDVID, 0x0001, ddb_octopus),
 	DDB_ID(DDVID, 0x0003, DDVID, 0x0002, ddb_octopus_le),
@@ -1696,7 +1693,7 @@ static struct pci_driver ddb_pci_driver = {
 	.name        = "DDBridge",
 	.id_table    = ddb_id_tbl,
 	.probe       = ddb_probe,
-	.remove      = __devexit_p(ddb_remove),
+	.remove      = ddb_remove,
 };
 
 static __init int module_init_ddbridge(void)

@@ -8,15 +8,15 @@
  */
 
 #include <linux/clk.h>
-#include <linux/module.h>
-#include <linux/of.h>
-#include <linux/platform_device.h>
 
 #include "drm.h"
 #include "dc.h"
 
 struct tegra_rgb {
 	struct tegra_output output;
+	struct tegra_dc *dc;
+	bool enabled;
+
 	struct clk *clk_parent;
 	struct clk *clk;
 };
@@ -87,18 +87,73 @@ static void tegra_dc_write_regs(struct tegra_dc *dc,
 
 static int tegra_output_rgb_enable(struct tegra_output *output)
 {
-	struct tegra_dc *dc = to_tegra_dc(output->encoder.crtc);
+	struct tegra_rgb *rgb = to_rgb(output);
+	unsigned long value;
 
-	tegra_dc_write_regs(dc, rgb_enable, ARRAY_SIZE(rgb_enable));
+	if (rgb->enabled)
+		return 0;
+
+	tegra_dc_write_regs(rgb->dc, rgb_enable, ARRAY_SIZE(rgb_enable));
+
+	value = DE_SELECT_ACTIVE | DE_CONTROL_NORMAL;
+	tegra_dc_writel(rgb->dc, value, DC_DISP_DATA_ENABLE_OPTIONS);
+
+	/* XXX: parameterize? */
+	value = tegra_dc_readl(rgb->dc, DC_COM_PIN_OUTPUT_POLARITY(1));
+	value &= ~LVS_OUTPUT_POLARITY_LOW;
+	value &= ~LHS_OUTPUT_POLARITY_LOW;
+	tegra_dc_writel(rgb->dc, value, DC_COM_PIN_OUTPUT_POLARITY(1));
+
+	/* XXX: parameterize? */
+	value = DISP_DATA_FORMAT_DF1P1C | DISP_ALIGNMENT_MSB |
+		DISP_ORDER_RED_BLUE;
+	tegra_dc_writel(rgb->dc, value, DC_DISP_DISP_INTERFACE_CONTROL);
+
+	/* XXX: parameterize? */
+	value = SC0_H_QUALIFIER_NONE | SC1_H_QUALIFIER_NONE;
+	tegra_dc_writel(rgb->dc, value, DC_DISP_SHIFT_CLOCK_OPTIONS);
+
+	value = tegra_dc_readl(rgb->dc, DC_CMD_DISPLAY_COMMAND);
+	value &= ~DISP_CTRL_MODE_MASK;
+	value |= DISP_CTRL_MODE_C_DISPLAY;
+	tegra_dc_writel(rgb->dc, value, DC_CMD_DISPLAY_COMMAND);
+
+	value = tegra_dc_readl(rgb->dc, DC_CMD_DISPLAY_POWER_CONTROL);
+	value |= PW0_ENABLE | PW1_ENABLE | PW2_ENABLE | PW3_ENABLE |
+		 PW4_ENABLE | PM0_ENABLE | PM1_ENABLE;
+	tegra_dc_writel(rgb->dc, value, DC_CMD_DISPLAY_POWER_CONTROL);
+
+	tegra_dc_writel(rgb->dc, GENERAL_ACT_REQ << 8, DC_CMD_STATE_CONTROL);
+	tegra_dc_writel(rgb->dc, GENERAL_ACT_REQ, DC_CMD_STATE_CONTROL);
+
+	rgb->enabled = true;
 
 	return 0;
 }
 
 static int tegra_output_rgb_disable(struct tegra_output *output)
 {
-	struct tegra_dc *dc = to_tegra_dc(output->encoder.crtc);
+	struct tegra_rgb *rgb = to_rgb(output);
+	unsigned long value;
 
-	tegra_dc_write_regs(dc, rgb_disable, ARRAY_SIZE(rgb_disable));
+	if (!rgb->enabled)
+		return 0;
+
+	value = tegra_dc_readl(rgb->dc, DC_CMD_DISPLAY_POWER_CONTROL);
+	value &= ~(PW0_ENABLE | PW1_ENABLE | PW2_ENABLE | PW3_ENABLE |
+		   PW4_ENABLE | PM0_ENABLE | PM1_ENABLE);
+	tegra_dc_writel(rgb->dc, value, DC_CMD_DISPLAY_POWER_CONTROL);
+
+	value = tegra_dc_readl(rgb->dc, DC_CMD_DISPLAY_COMMAND);
+	value &= ~DISP_CTRL_MODE_MASK;
+	tegra_dc_writel(rgb->dc, value, DC_CMD_DISPLAY_COMMAND);
+
+	tegra_dc_writel(rgb->dc, GENERAL_ACT_REQ << 8, DC_CMD_STATE_CONTROL);
+	tegra_dc_writel(rgb->dc, GENERAL_ACT_REQ, DC_CMD_STATE_CONTROL);
+
+	tegra_dc_write_regs(rgb->dc, rgb_disable, ARRAY_SIZE(rgb_disable));
+
+	rgb->enabled = false;
 
 	return 0;
 }
@@ -147,6 +202,14 @@ int tegra_dc_rgb_probe(struct tegra_dc *dc)
 	if (!rgb)
 		return -ENOMEM;
 
+	rgb->output.dev = dc->dev;
+	rgb->output.of_node = np;
+	rgb->dc = dc;
+
+	err = tegra_output_probe(&rgb->output);
+	if (err < 0)
+		return err;
+
 	rgb->clk = devm_clk_get(dc->dev, NULL);
 	if (IS_ERR(rgb->clk)) {
 		dev_err(dc->dev, "failed to get clock\n");
@@ -165,14 +228,21 @@ int tegra_dc_rgb_probe(struct tegra_dc *dc)
 		return err;
 	}
 
-	rgb->output.dev = dc->dev;
-	rgb->output.of_node = np;
+	dc->rgb = &rgb->output;
 
-	err = tegra_output_parse_dt(&rgb->output);
+	return 0;
+}
+
+int tegra_dc_rgb_remove(struct tegra_dc *dc)
+{
+	int err;
+
+	if (!dc->rgb)
+		return 0;
+
+	err = tegra_output_remove(dc->rgb);
 	if (err < 0)
 		return err;
-
-	dc->rgb = &rgb->output;
 
 	return 0;
 }
@@ -199,7 +269,7 @@ int tegra_dc_rgb_init(struct drm_device *drm, struct tegra_dc *dc)
 	 * RGB outputs are an exception, so we make sure they can be attached
 	 * to only their parent display controller.
 	 */
-	rgb->output.encoder.possible_crtcs = 1 << dc->pipe;
+	rgb->output.encoder.possible_crtcs = drm_crtc_mask(&dc->base);
 
 	return 0;
 }

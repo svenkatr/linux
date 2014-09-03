@@ -29,8 +29,6 @@
  *      BBuGetFrameTime        - Calculate data frame transmitting time
  *      BBvCalculateParameter   - Calculate PhyLength, PhyService and Phy Signal parameter for baseband Tx
  *      BBbVT3184Init          - VIA VT3184 baseband chip init code
- *      BBvLoopbackOn          - Turn on BaseBand Loopback mode
- *      BBvLoopbackOff         - Turn off BaseBand Loopback mode
  *
  * Revision History:
  *
@@ -47,26 +45,10 @@
 #include "datarate.h"
 #include "rndis.h"
 
-/*---------------------  Static Definitions -------------------------*/
 static int          msglevel                =MSG_LEVEL_INFO;
 //static int          msglevel                =MSG_LEVEL_DEBUG;
 
-/*---------------------  Static Classes  ----------------------------*/
-
-/*---------------------  Static Variables  --------------------------*/
-
-/*---------------------  Static Functions  --------------------------*/
-
-/*---------------------  Export Variables  --------------------------*/
-
-/*---------------------  Static Definitions -------------------------*/
-
-/*---------------------  Static Classes  ----------------------------*/
-
-/*---------------------  Static Variables  --------------------------*/
-
-
-BYTE abyVT3184_AGC[] = {
+static u8 abyVT3184_AGC[] = {
     0x00,   //0
     0x00,   //1
     0x02,   //2
@@ -133,8 +115,7 @@ BYTE abyVT3184_AGC[] = {
     0x3E    //3F
 };
 
-
-BYTE abyVT3184_AL2230[] = {
+static u8 abyVT3184_AL2230[] = {
         0x31,//00
         0x00,
         0x00,
@@ -393,10 +374,8 @@ BYTE abyVT3184_AL2230[] = {
         0x00
 };
 
-
-
 //{{RobertYu:20060515, new BB setting for VT3226D0
-BYTE abyVT3184_VT3226D0[] = {
+static u8 abyVT3184_VT3226D0[] = {
         0x31,//00
         0x00,
         0x00,
@@ -655,10 +634,8 @@ BYTE abyVT3184_VT3226D0[] = {
         0x00,
 };
 
-const WORD awcFrameTime[MAX_RATE] =
+static const u16 awcFrameTime[MAX_RATE] =
 {10, 20, 55, 110, 24, 36, 48, 72, 96, 144, 192, 216};
-
-/*---------------------  Static Functions  --------------------------*/
 
 /*
 static
@@ -674,7 +651,6 @@ void
 s_vClearSQ3Value(PSDevice pDevice);
 */
 
-/*---------------------  Export Variables  --------------------------*/
 /*
  * Description: Calculate data frame transmitting time
  *
@@ -690,11 +666,11 @@ s_vClearSQ3Value(PSDevice pDevice);
  *
  */
 unsigned int
-BBuGetFrameTime (
-     BYTE byPreambleType,
-     BYTE byPktType,
+BBuGetFrameTime(
+     u8 byPreambleType,
+     u8 byPktType,
      unsigned int cbFrameLength,
-     WORD wRate
+     u16 wRate
     )
 {
     unsigned int uFrameTime;
@@ -703,9 +679,7 @@ BBuGetFrameTime (
     unsigned int uRateIdx = (unsigned int)wRate;
     unsigned int uRate = 0;
 
-
     if (uRateIdx > RATE_54M) {
-        ASSERT(0);
         return 0;
     }
 
@@ -749,172 +723,163 @@ BBuGetFrameTime (
  *      cbFrameLength   - Tx Frame Length
  *      wRate           - Tx Rate
  *  Out:
- *      pwPhyLen        - pointer to Phy Length field
- *      pbyPhySrv       - pointer to Phy Service field
- *      pbyPhySgn       - pointer to Phy Signal field
+ *	struct vnt_phy_field *phy
+ * 			- pointer to Phy Length field
+ *			- pointer to Phy Service field
+ * 			- pointer to Phy Signal field
  *
  * Return Value: none
  *
  */
-void
-BBvCalculateParameter (
-      PSDevice pDevice,
-      unsigned int cbFrameLength,
-      WORD wRate,
-      BYTE byPacketType,
-     PWORD pwPhyLen,
-     PBYTE pbyPhySrv,
-     PBYTE pbyPhySgn
-    )
+void BBvCalculateParameter(struct vnt_private *pDevice, u32 cbFrameLength,
+	u16 wRate, u8 byPacketType, struct vnt_phy_field *phy)
 {
-    unsigned int cbBitCount;
-    unsigned int cbUsCount = 0;
-    unsigned int cbTmp;
-    BOOL bExtBit;
-    BYTE byPreambleType = pDevice->byPreambleType;
-    BOOL bCCK = pDevice->bCCK;
+	u32 cbBitCount;
+	u32 cbUsCount = 0;
+	u32 cbTmp;
+	int bExtBit;
+	u8 byPreambleType = pDevice->byPreambleType;
+	int bCCK = pDevice->bCCK;
 
     cbBitCount = cbFrameLength * 8;
-    bExtBit = FALSE;
+    bExtBit = false;
 
     switch (wRate) {
     case RATE_1M :
         cbUsCount = cbBitCount;
-        *pbyPhySgn = 0x00;
+	phy->signal = 0x00;
         break;
 
     case RATE_2M :
         cbUsCount = cbBitCount / 2;
         if (byPreambleType == 1)
-            *pbyPhySgn = 0x09;
+		phy->signal = 0x09;
         else // long preamble
-            *pbyPhySgn = 0x01;
+		phy->signal = 0x01;
         break;
 
     case RATE_5M :
-        if (bCCK == FALSE)
+        if (bCCK == false)
             cbBitCount ++;
         cbUsCount = (cbBitCount * 10) / 55;
         cbTmp = (cbUsCount * 55) / 10;
         if (cbTmp != cbBitCount)
             cbUsCount ++;
         if (byPreambleType == 1)
-            *pbyPhySgn = 0x0a;
+		phy->signal = 0x0a;
         else // long preamble
-            *pbyPhySgn = 0x02;
+		phy->signal = 0x02;
         break;
 
     case RATE_11M :
 
-        if (bCCK == FALSE)
+        if (bCCK == false)
             cbBitCount ++;
         cbUsCount = cbBitCount / 11;
         cbTmp = cbUsCount * 11;
         if (cbTmp != cbBitCount) {
             cbUsCount ++;
             if ((cbBitCount - cbTmp) <= 3)
-                bExtBit = TRUE;
+                bExtBit = true;
         }
         if (byPreambleType == 1)
-            *pbyPhySgn = 0x0b;
+		phy->signal = 0x0b;
         else // long preamble
-            *pbyPhySgn = 0x03;
+		phy->signal = 0x03;
         break;
 
     case RATE_6M :
         if(byPacketType == PK_TYPE_11A) {//11a, 5GHZ
-            *pbyPhySgn = 0x9B; //1001 1011
+		phy->signal = 0x9b;
         }
         else {//11g, 2.4GHZ
-            *pbyPhySgn = 0x8B; //1000 1011
+		phy->signal = 0x8b;
         }
         break;
 
     case RATE_9M :
         if(byPacketType == PK_TYPE_11A) {//11a, 5GHZ
-            *pbyPhySgn = 0x9F; //1001 1111
+		phy->signal = 0x9f;
         }
         else {//11g, 2.4GHZ
-            *pbyPhySgn = 0x8F; //1000 1111
+		phy->signal = 0x8f;
         }
         break;
 
     case RATE_12M :
         if(byPacketType == PK_TYPE_11A) {//11a, 5GHZ
-            *pbyPhySgn = 0x9A; //1001 1010
+		phy->signal = 0x9a;
         }
         else {//11g, 2.4GHZ
-            *pbyPhySgn = 0x8A; //1000 1010
+		phy->signal = 0x8a;
         }
         break;
 
     case RATE_18M :
         if(byPacketType == PK_TYPE_11A) {//11a, 5GHZ
-            *pbyPhySgn = 0x9E; //1001 1110
+		phy->signal = 0x9e;
         }
         else {//11g, 2.4GHZ
-            *pbyPhySgn = 0x8E; //1000 1110
+		phy->signal = 0x8e;
         }
         break;
 
     case RATE_24M :
         if(byPacketType == PK_TYPE_11A) {//11a, 5GHZ
-            *pbyPhySgn = 0x99; //1001 1001
+		phy->signal = 0x99;
         }
         else {//11g, 2.4GHZ
-            *pbyPhySgn = 0x89; //1000 1001
+		phy->signal = 0x89;
         }
         break;
 
     case RATE_36M :
         if(byPacketType == PK_TYPE_11A) {//11a, 5GHZ
-            *pbyPhySgn = 0x9D; //1001 1101
+		phy->signal = 0x9d;
         }
         else {//11g, 2.4GHZ
-            *pbyPhySgn = 0x8D; //1000 1101
+		phy->signal = 0x8d;
         }
         break;
 
     case RATE_48M :
         if(byPacketType == PK_TYPE_11A) {//11a, 5GHZ
-            *pbyPhySgn = 0x98; //1001 1000
+		phy->signal = 0x98;
         }
         else {//11g, 2.4GHZ
-            *pbyPhySgn = 0x88; //1000 1000
+		phy->signal = 0x88;
         }
         break;
 
     case RATE_54M :
         if (byPacketType == PK_TYPE_11A) {//11a, 5GHZ
-            *pbyPhySgn = 0x9C; //1001 1100
+		phy->signal = 0x9c;
         }
         else {//11g, 2.4GHZ
-            *pbyPhySgn = 0x8C; //1000 1100
+		phy->signal = 0x8c;
         }
         break;
 
     default :
         if (byPacketType == PK_TYPE_11A) {//11a, 5GHZ
-            *pbyPhySgn = 0x9C; //1001 1100
+		phy->signal = 0x9c;
         }
         else {//11g, 2.4GHZ
-            *pbyPhySgn = 0x8C; //1000 1100
+		phy->signal = 0x8c;
         }
         break;
     }
 
-    if (byPacketType == PK_TYPE_11B) {
-        *pbyPhySrv = 0x00;
-        if (bExtBit)
-            *pbyPhySrv = *pbyPhySrv | 0x80;
-        *pwPhyLen = (WORD) cbUsCount;
-    }
-    else {
-        *pbyPhySrv = 0x00;
-        *pwPhyLen = (WORD)cbFrameLength;
-    }
+	if (byPacketType == PK_TYPE_11B) {
+		phy->service = 0x00;
+		if (bExtBit)
+			phy->service |= 0x80;
+		phy->len = cpu_to_le16((u16)cbUsCount);
+	} else {
+		phy->service = 0x00;
+		phy->len = cpu_to_le16((u16)cbFrameLength);
+	}
 }
-
 
 /*
  * Description: Set Antenna mode
@@ -929,8 +894,7 @@ BBvCalculateParameter (
  * Return Value: none
  *
  */
-void
-BBvSetAntennaMode (PSDevice pDevice, BYTE byAntennaMode)
+void BBvSetAntennaMode(struct vnt_private *pDevice, u8 byAntennaMode)
 {
     switch (byAntennaMode) {
         case ANT_TXA:
@@ -945,10 +909,9 @@ BBvSetAntennaMode (PSDevice pDevice, BYTE byAntennaMode)
             break;
     }
 
-
     CONTROLnsRequestOut(pDevice,
                     MESSAGE_TYPE_SET_ANTMD,
-                    (WORD) byAntennaMode,
+                    (u16) byAntennaMode,
                     0,
                     0,
                     NULL);
@@ -968,274 +931,178 @@ BBvSetAntennaMode (PSDevice pDevice, BYTE byAntennaMode)
  *
  */
 
-BOOL BBbVT3184Init(PSDevice pDevice)
+int BBbVT3184Init(struct vnt_private *priv)
 {
-	int ntStatus;
-    WORD                    wLength;
-    PBYTE                   pbyAddr;
-    PBYTE                   pbyAgc;
-    WORD                    wLengthAgc;
-    BYTE                    abyArray[256];
+	int status;
+	u16 lenght;
+	u8 *addr;
+	u8 *agc;
+	u16 lenght_agc;
+	u8 array[256];
+	u8 data;
 
-    ntStatus = CONTROLnsRequestIn(pDevice,
-                                  MESSAGE_TYPE_READ,
-                                  0,
-                                  MESSAGE_REQUEST_EEPROM,
-                                  EEP_MAX_CONTEXT_SIZE,
-                                  pDevice->abyEEPROM);
-    if (ntStatus != STATUS_SUCCESS) {
-        return FALSE;
-    }
+	status = CONTROLnsRequestIn(priv, MESSAGE_TYPE_READ, 0,
+		MESSAGE_REQUEST_EEPROM, EEP_MAX_CONTEXT_SIZE,
+						priv->abyEEPROM);
+	if (status != STATUS_SUCCESS)
+		return false;
+
+	/* zonetype initial */
+	priv->byOriginalZonetype = priv->abyEEPROM[EEP_OFS_ZONETYPE];
+
+	if (priv->config_file.ZoneType >= 0) {
+		if ((priv->config_file.ZoneType == 0) &&
+			(priv->abyEEPROM[EEP_OFS_ZONETYPE] != 0x00)) {
+			priv->abyEEPROM[EEP_OFS_ZONETYPE] = 0;
+			priv->abyEEPROM[EEP_OFS_MAXCHANNEL] = 0x0B;
+			DBG_PRT(MSG_LEVEL_DEBUG, KERN_INFO
+						"Init Zone Type :USA\n");
+		} else if ((priv->config_file.ZoneType == 1) &&
+			(priv->abyEEPROM[EEP_OFS_ZONETYPE] != 0x01)) {
+			priv->abyEEPROM[EEP_OFS_ZONETYPE] = 0x01;
+			priv->abyEEPROM[EEP_OFS_MAXCHANNEL] = 0x0D;
+			DBG_PRT(MSG_LEVEL_DEBUG, KERN_INFO
+						"Init Zone Type :Japan\n");
+		} else if ((priv->config_file.ZoneType == 2) &&
+			(priv->abyEEPROM[EEP_OFS_ZONETYPE] != 0x02)) {
+			priv->abyEEPROM[EEP_OFS_ZONETYPE] = 0x02;
+			priv->abyEEPROM[EEP_OFS_MAXCHANNEL] = 0x0D;
+			DBG_PRT(MSG_LEVEL_DEBUG, KERN_INFO
+						"Init Zone Type :Europe\n");
+		} else {
+			if (priv->config_file.ZoneType !=
+					priv->abyEEPROM[EEP_OFS_ZONETYPE])
+				printk("zonetype in file[%02x]\
+					 mismatch with in EEPROM[%02x]\n",
+					priv->config_file.ZoneType,
+					priv->abyEEPROM[EEP_OFS_ZONETYPE]);
+			else
+				printk("Read Zonetype file success,\
+					use default zonetype setting[%02x]\n",
+					priv->config_file.ZoneType);
+		}
+	}
+
+	if (!priv->bZoneRegExist)
+		priv->byZoneType = priv->abyEEPROM[EEP_OFS_ZONETYPE];
+
+	priv->byRFType = priv->abyEEPROM[EEP_OFS_RFTYPE];
+
+	DBG_PRT(MSG_LEVEL_DEBUG, KERN_INFO"Zone Type %x\n",
+							priv->byZoneType);
+
+	DBG_PRT(MSG_LEVEL_DEBUG, KERN_INFO"RF Type %d\n", priv->byRFType);
+
+	if ((priv->byRFType == RF_AL2230) ||
+				(priv->byRFType == RF_AL2230S)) {
+		priv->byBBRxConf = abyVT3184_AL2230[10];
+		lenght = sizeof(abyVT3184_AL2230);
+		addr = abyVT3184_AL2230;
+		agc = abyVT3184_AGC;
+		lenght_agc = sizeof(abyVT3184_AGC);
+
+		priv->abyBBVGA[0] = 0x1C;
+		priv->abyBBVGA[1] = 0x10;
+		priv->abyBBVGA[2] = 0x0;
+		priv->abyBBVGA[3] = 0x0;
+		priv->ldBmThreshold[0] = -70;
+		priv->ldBmThreshold[1] = -48;
+		priv->ldBmThreshold[2] = 0;
+		priv->ldBmThreshold[3] = 0;
+	} else if (priv->byRFType == RF_AIROHA7230) {
+		priv->byBBRxConf = abyVT3184_AL2230[10];
+		lenght = sizeof(abyVT3184_AL2230);
+		addr = abyVT3184_AL2230;
+		agc = abyVT3184_AGC;
+		lenght_agc = sizeof(abyVT3184_AGC);
+
+		addr[0xd7] = 0x06;
+
+		priv->abyBBVGA[0] = 0x1c;
+		priv->abyBBVGA[1] = 0x10;
+		priv->abyBBVGA[2] = 0x0;
+		priv->abyBBVGA[3] = 0x0;
+		priv->ldBmThreshold[0] = -70;
+		priv->ldBmThreshold[1] = -48;
+		priv->ldBmThreshold[2] = 0;
+		priv->ldBmThreshold[3] = 0;
+	} else if ((priv->byRFType == RF_VT3226) ||
+			(priv->byRFType == RF_VT3226D0)) {
+		priv->byBBRxConf = abyVT3184_VT3226D0[10];
+		lenght = sizeof(abyVT3184_VT3226D0);
+		addr = abyVT3184_VT3226D0;
+		agc = abyVT3184_AGC;
+		lenght_agc = sizeof(abyVT3184_AGC);
+
+		priv->abyBBVGA[0] = 0x20;
+		priv->abyBBVGA[1] = 0x10;
+		priv->abyBBVGA[2] = 0x0;
+		priv->abyBBVGA[3] = 0x0;
+		priv->ldBmThreshold[0] = -70;
+		priv->ldBmThreshold[1] = -48;
+		priv->ldBmThreshold[2] = 0;
+		priv->ldBmThreshold[3] = 0;
+		/* Fix VT3226 DFC system timing issue */
+		MACvRegBitsOn(priv, MAC_REG_SOFTPWRCTL2, SOFTPWRCTL_RFLEOPT);
+	} else if ((priv->byRFType == RF_VT3342A0)) {
+		priv->byBBRxConf = abyVT3184_VT3226D0[10];
+		lenght = sizeof(abyVT3184_VT3226D0);
+		addr = abyVT3184_VT3226D0;
+		agc = abyVT3184_AGC;
+		lenght_agc = sizeof(abyVT3184_AGC);
+
+		priv->abyBBVGA[0] = 0x20;
+		priv->abyBBVGA[1] = 0x10;
+		priv->abyBBVGA[2] = 0x0;
+		priv->abyBBVGA[3] = 0x0;
+		priv->ldBmThreshold[0] = -70;
+		priv->ldBmThreshold[1] = -48;
+		priv->ldBmThreshold[2] = 0;
+		priv->ldBmThreshold[3] = 0;
+		/* Fix VT3226 DFC system timing issue */
+		MACvRegBitsOn(priv, MAC_REG_SOFTPWRCTL2, SOFTPWRCTL_RFLEOPT);
+	} else {
+		return true;
+	}
+
+	memcpy(array, addr, lenght);
+
+	CONTROLnsRequestOut(priv, MESSAGE_TYPE_WRITE, 0,
+		MESSAGE_REQUEST_BBREG, lenght, array);
+
+	memcpy(array, agc, lenght_agc);
+
+	CONTROLnsRequestOut(priv, MESSAGE_TYPE_WRITE, 0,
+		MESSAGE_REQUEST_BBAGC, lenght_agc, array);
+
+	if ((priv->byRFType == RF_VT3226) ||
+		(priv->byRFType == RF_VT3342A0)) {
+		ControlvWriteByte(priv, MESSAGE_REQUEST_MACREG,
+						MAC_REG_ITRTMSET, 0x23);
+		MACvRegBitsOn(priv, MAC_REG_PAPEDELAY, 0x01);
+	} else if (priv->byRFType == RF_VT3226D0) {
+		ControlvWriteByte(priv, MESSAGE_REQUEST_MACREG,
+						MAC_REG_ITRTMSET, 0x11);
+		MACvRegBitsOn(priv, MAC_REG_PAPEDELAY, 0x01);
+	}
+
+	ControlvWriteByte(priv, MESSAGE_REQUEST_BBREG, 0x04, 0x7f);
+	ControlvWriteByte(priv, MESSAGE_REQUEST_BBREG, 0x0d, 0x01);
+
+	RFbRFTableDownload(priv);
 
 
-//    if ((pDevice->abyEEPROM[EEP_OFS_RADIOCTL]&0x06)==0x04)
-//        return FALSE;
+	/* Fix for TX USB resets from vendors driver */
+	CONTROLnsRequestIn(priv, MESSAGE_TYPE_READ, USB_REG4,
+		MESSAGE_REQUEST_MEM, sizeof(data), &data);
 
-//zonetype initial
- pDevice->byOriginalZonetype = pDevice->abyEEPROM[EEP_OFS_ZONETYPE];
- if(pDevice->config_file.ZoneType >= 0) {         //read zonetype file ok!
-  if ((pDevice->config_file.ZoneType == 0)&&
-        (pDevice->abyEEPROM[EEP_OFS_ZONETYPE] !=0x00)){          //for USA
-    pDevice->abyEEPROM[EEP_OFS_ZONETYPE] = 0;
-    pDevice->abyEEPROM[EEP_OFS_MAXCHANNEL] = 0x0B;
-    DBG_PRT(MSG_LEVEL_DEBUG, KERN_INFO"Init Zone Type :USA\n");
-  }
- else if((pDevice->config_file.ZoneType == 1)&&
- 	     (pDevice->abyEEPROM[EEP_OFS_ZONETYPE]!=0x01)){   //for Japan
-    pDevice->abyEEPROM[EEP_OFS_ZONETYPE] = 0x01;
-    pDevice->abyEEPROM[EEP_OFS_MAXCHANNEL] = 0x0D;
-    DBG_PRT(MSG_LEVEL_DEBUG, KERN_INFO"Init Zone Type :Japan\n");
-  }
- else if((pDevice->config_file.ZoneType == 2)&&
- 	     (pDevice->abyEEPROM[EEP_OFS_ZONETYPE]!=0x02)){   //for Europe
-    pDevice->abyEEPROM[EEP_OFS_ZONETYPE] = 0x02;
-    pDevice->abyEEPROM[EEP_OFS_MAXCHANNEL] = 0x0D;
-    DBG_PRT(MSG_LEVEL_DEBUG, KERN_INFO"Init Zone Type :Europe\n");
-  }
-else {
-   if(pDevice->config_file.ZoneType !=pDevice->abyEEPROM[EEP_OFS_ZONETYPE])
-      printk("zonetype in file[%02x] mismatch with in EEPROM[%02x]\n",pDevice->config_file.ZoneType,pDevice->abyEEPROM[EEP_OFS_ZONETYPE]);
-   else
-      printk("Read Zonetype file success,use default zonetype setting[%02x]\n",pDevice->config_file.ZoneType);
- }
+	data |= 0x2;
+
+	CONTROLnsRequestOut(priv, MESSAGE_TYPE_WRITE, USB_REG4,
+		MESSAGE_REQUEST_MEM, sizeof(data), &data);
+
+	return true;
 }
-
-    if ( !pDevice->bZoneRegExist ) {
-        pDevice->byZoneType = pDevice->abyEEPROM[EEP_OFS_ZONETYPE];
-    }
-    pDevice->byRFType = pDevice->abyEEPROM[EEP_OFS_RFTYPE];
-
-    DBG_PRT(MSG_LEVEL_DEBUG, KERN_INFO"Zone Type %x\n", pDevice->byZoneType);
-    DBG_PRT(MSG_LEVEL_DEBUG, KERN_INFO"RF Type %d\n", pDevice->byRFType);
-
-    if ((pDevice->byRFType == RF_AL2230) || (pDevice->byRFType == RF_AL2230S)) {
-        pDevice->byBBRxConf = abyVT3184_AL2230[10];
-        wLength = sizeof(abyVT3184_AL2230);
-        pbyAddr = abyVT3184_AL2230;
-        pbyAgc = abyVT3184_AGC;
-        wLengthAgc = sizeof(abyVT3184_AGC);
-
-        pDevice->abyBBVGA[0] = 0x1C;
-        pDevice->abyBBVGA[1] = 0x10;
-        pDevice->abyBBVGA[2] = 0x0;
-        pDevice->abyBBVGA[3] = 0x0;
-        pDevice->ldBmThreshold[0] = -70;
-        pDevice->ldBmThreshold[1] = -48;
-        pDevice->ldBmThreshold[2] = 0;
-        pDevice->ldBmThreshold[3] = 0;
-    }
-    else if (pDevice->byRFType == RF_AIROHA7230) {
-        pDevice->byBBRxConf = abyVT3184_AL2230[10];
-        wLength = sizeof(abyVT3184_AL2230);
-        pbyAddr = abyVT3184_AL2230;
-        pbyAgc = abyVT3184_AGC;
-        wLengthAgc = sizeof(abyVT3184_AGC);
-
-        // Init ANT B select,TX Config CR09 = 0x61->0x45, 0x45->0x41(VC1/VC2 define, make the ANT_A, ANT_B inverted)
-        //pbyAddr[0x09] = 0x41;
-        // Init ANT B select,RX Config CR10 = 0x28->0x2A, 0x2A->0x28(VC1/VC2 define, make the ANT_A, ANT_B inverted)
-        //pbyAddr[0x0a] = 0x28;
-        // Select VC1/VC2, CR215 = 0x02->0x06
-        pbyAddr[0xd7] = 0x06;
-
-        pDevice->abyBBVGA[0] = 0x1C;
-        pDevice->abyBBVGA[1] = 0x10;
-        pDevice->abyBBVGA[2] = 0x0;
-        pDevice->abyBBVGA[3] = 0x0;
-        pDevice->ldBmThreshold[0] = -70;
-        pDevice->ldBmThreshold[1] = -48;
-        pDevice->ldBmThreshold[2] = 0;
-        pDevice->ldBmThreshold[3] = 0;
-    }
-    else if ( (pDevice->byRFType == RF_VT3226) || (pDevice->byRFType == RF_VT3226D0) ) {
-        pDevice->byBBRxConf = abyVT3184_VT3226D0[10];   //RobertYu:20060515
-        wLength = sizeof(abyVT3184_VT3226D0);           //RobertYu:20060515
-        pbyAddr = abyVT3184_VT3226D0;                   //RobertYu:20060515
-        pbyAgc = abyVT3184_AGC;
-        wLengthAgc = sizeof(abyVT3184_AGC);
-
-        pDevice->abyBBVGA[0] = 0x20; //RobertYu:20060104, reguest by Jack
-        pDevice->abyBBVGA[1] = 0x10;
-        pDevice->abyBBVGA[2] = 0x0;
-        pDevice->abyBBVGA[3] = 0x0;
-        pDevice->ldBmThreshold[0] = -70;
-        pDevice->ldBmThreshold[1] = -48;
-        pDevice->ldBmThreshold[2] = 0;
-        pDevice->ldBmThreshold[3] = 0;
-        // Fix VT3226 DFC system timing issue
-        MACvRegBitsOn(pDevice, MAC_REG_SOFTPWRCTL2, SOFTPWRCTL_RFLEOPT);
-    //}}
-    //{{RobertYu:20060609
-    } else if ( (pDevice->byRFType == RF_VT3342A0) ) {
-        pDevice->byBBRxConf = abyVT3184_VT3226D0[10];
-        wLength = sizeof(abyVT3184_VT3226D0);
-        pbyAddr = abyVT3184_VT3226D0;
-        pbyAgc = abyVT3184_AGC;
-        wLengthAgc = sizeof(abyVT3184_AGC);
-
-        pDevice->abyBBVGA[0] = 0x20;
-        pDevice->abyBBVGA[1] = 0x10;
-        pDevice->abyBBVGA[2] = 0x0;
-        pDevice->abyBBVGA[3] = 0x0;
-        pDevice->ldBmThreshold[0] = -70;
-        pDevice->ldBmThreshold[1] = -48;
-        pDevice->ldBmThreshold[2] = 0;
-        pDevice->ldBmThreshold[3] = 0;
-        // Fix VT3226 DFC system timing issue
-        MACvRegBitsOn(pDevice, MAC_REG_SOFTPWRCTL2, SOFTPWRCTL_RFLEOPT);
-    //}}
-    } else {
-        return TRUE;
-    }
-
-   memcpy(abyArray, pbyAddr, wLength);
-   CONTROLnsRequestOut(pDevice,
-                    MESSAGE_TYPE_WRITE,
-                    0,
-                    MESSAGE_REQUEST_BBREG,
-                    wLength,
-                    abyArray
-                    );
-
-   memcpy(abyArray, pbyAgc, wLengthAgc);
-   CONTROLnsRequestOut(pDevice,
-                    MESSAGE_TYPE_WRITE,
-                    0,
-                    MESSAGE_REQUEST_BBAGC,
-                    wLengthAgc,
-                    abyArray
-                    );
-
-
-    if ((pDevice->byRFType == RF_VT3226) || //RobertYu:20051116, 20060111 remove VT3226D0
-         (pDevice->byRFType == RF_VT3342A0)  //RobertYu:20060609
-         ) {
-        ControlvWriteByte(pDevice,MESSAGE_REQUEST_MACREG,MAC_REG_ITRTMSET,0x23);
-        MACvRegBitsOn(pDevice,MAC_REG_PAPEDELAY,0x01);
-    }
-    else if (pDevice->byRFType == RF_VT3226D0)
-    {
-        ControlvWriteByte(pDevice,MESSAGE_REQUEST_MACREG,MAC_REG_ITRTMSET,0x11);
-        MACvRegBitsOn(pDevice,MAC_REG_PAPEDELAY,0x01);
-    }
-
-
-    ControlvWriteByte(pDevice,MESSAGE_REQUEST_BBREG,0x04,0x7F);
-    ControlvWriteByte(pDevice,MESSAGE_REQUEST_BBREG,0x0D,0x01);
-
-    RFbRFTableDownload(pDevice);
-    return TRUE;//ntStatus;
-}
-
-
-/*
- * Description: Turn on BaseBand Loopback mode
- *
- * Parameters:
- *  In:
- *      pDevice         - Device Structure
- *
- *  Out:
- *      none
- *
- * Return Value: none
- *
- */
-void BBvLoopbackOn (PSDevice pDevice)
-{
-    BYTE      byData;
-
-    //CR C9 = 0x00
-    ControlvReadByte (pDevice, MESSAGE_REQUEST_BBREG, 0xC9, &pDevice->byBBCRc9);//CR201
-    ControlvWriteByte(pDevice, MESSAGE_REQUEST_BBREG, 0xC9, 0);
-    ControlvReadByte (pDevice, MESSAGE_REQUEST_BBREG, 0x4D, &pDevice->byBBCR4d);//CR77
-    ControlvWriteByte(pDevice, MESSAGE_REQUEST_BBREG, 0x4D, 0x90);
-
-    //CR 88 = 0x02(CCK), 0x03(OFDM)
-    ControlvReadByte (pDevice, MESSAGE_REQUEST_BBREG, 0x88, &pDevice->byBBCR88);//CR136
-
-    if (pDevice->wCurrentRate <= RATE_11M) { //CCK
-        // Enable internal digital loopback: CR33 |= 0000 0001
-        ControlvReadByte (pDevice, MESSAGE_REQUEST_BBREG, 0x21, &byData);//CR33
-        ControlvWriteByte(pDevice, MESSAGE_REQUEST_BBREG, 0x21, (BYTE)(byData | 0x01));//CR33
-        // CR154 = 0x00
-        ControlvWriteByte(pDevice, MESSAGE_REQUEST_BBREG, 0x9A, 0);   //CR154
-
-        ControlvWriteByte(pDevice, MESSAGE_REQUEST_BBREG, 0x88, 0x02);//CR239
-    }
-    else { //OFDM
-        // Enable internal digital loopback:CR154 |= 0000 0001
-        ControlvReadByte (pDevice, MESSAGE_REQUEST_BBREG, 0x9A, &byData);//CR154
-        ControlvWriteByte(pDevice, MESSAGE_REQUEST_BBREG, 0x9A, (BYTE)(byData | 0x01));//CR154
-        // CR33 = 0x00
-        ControlvWriteByte(pDevice, MESSAGE_REQUEST_BBREG, 0x21, 0);   //CR33
-
-        ControlvWriteByte(pDevice, MESSAGE_REQUEST_BBREG, 0x88, 0x03);//CR239
-    }
-
-    //CR14 = 0x00
-    ControlvWriteByte(pDevice, MESSAGE_REQUEST_BBREG, 0x0E, 0);//CR14
-
-    // Disable TX_IQUN
-    ControlvReadByte (pDevice, MESSAGE_REQUEST_BBREG, 0x09, &pDevice->byBBCR09);
-    ControlvWriteByte(pDevice, MESSAGE_REQUEST_BBREG, 0x09, (BYTE)(pDevice->byBBCR09 & 0xDE));
-}
-
-/*
- * Description: Turn off BaseBand Loopback mode
- *
- * Parameters:
- *  In:
- *      pDevice         - Device Structure
- *
- *  Out:
- *      none
- *
- * Return Value: none
- *
- */
-void BBvLoopbackOff (PSDevice pDevice)
-{
-    BYTE      byData;
-
-    ControlvWriteByte(pDevice, MESSAGE_REQUEST_BBREG, 0xC9, pDevice->byBBCRc9);//CR201
-    ControlvWriteByte(pDevice, MESSAGE_REQUEST_BBREG, 0x88, pDevice->byBBCR88);//CR136
-    ControlvWriteByte(pDevice, MESSAGE_REQUEST_BBREG, 0x09, pDevice->byBBCR09);//CR136
-    ControlvWriteByte(pDevice, MESSAGE_REQUEST_BBREG, 0x4D, pDevice->byBBCR4d);//CR77
-
-    if (pDevice->wCurrentRate <= RATE_11M) { // CCK
-        // Set the CR33 Bit2 to disable internal Loopback.
-        ControlvReadByte (pDevice, MESSAGE_REQUEST_BBREG, 0x21, &byData);//CR33
-        ControlvWriteByte(pDevice, MESSAGE_REQUEST_BBREG, 0x21, (BYTE)(byData & 0xFE));//CR33
-	} else { /* OFDM */
-        ControlvReadByte (pDevice, MESSAGE_REQUEST_BBREG, 0x9A, &byData);//CR154
-        ControlvWriteByte(pDevice, MESSAGE_REQUEST_BBREG, 0x9A, (BYTE)(byData & 0xFE));//CR154
-    }
-    ControlvReadByte (pDevice, MESSAGE_REQUEST_BBREG, 0x0E, &byData);//CR14
-    ControlvWriteByte(pDevice, MESSAGE_REQUEST_BBREG, 0x0E, (BYTE)(byData | 0x80));//CR14
-
-}
-
 
 /*
  * Description: Set ShortSlotTime mode
@@ -1249,10 +1116,9 @@ void BBvLoopbackOff (PSDevice pDevice)
  * Return Value: none
  *
  */
-void
-BBvSetShortSlotTime (PSDevice pDevice)
+void BBvSetShortSlotTime(struct vnt_private *pDevice)
 {
-    BYTE byBBVGA=0;
+    u8 byBBVGA=0;
 
 	if (pDevice->bShortSlotTime)
         pDevice->byBBRxConf &= 0xDF;//1101 1111
@@ -1266,8 +1132,7 @@ BBvSetShortSlotTime (PSDevice pDevice)
     ControlvWriteByte(pDevice, MESSAGE_REQUEST_BBREG, 0x0A, pDevice->byBBRxConf);
 }
 
-
-void BBvSetVGAGainOffset(PSDevice pDevice, BYTE byData)
+void BBvSetVGAGainOffset(struct vnt_private *pDevice, u8 byData)
 {
 
     ControlvWriteByte(pDevice, MESSAGE_REQUEST_BBREG, 0xE7, byData);
@@ -1279,28 +1144,6 @@ void BBvSetVGAGainOffset(PSDevice pDevice, BYTE byData)
 		pDevice->byBBRxConf |= 0x20; /* 0010 0000 */
 
     ControlvWriteByte(pDevice, MESSAGE_REQUEST_BBREG, 0x0A, pDevice->byBBRxConf);//CR10
-}
-
-
-/*
- * Description: Baseband SoftwareReset
- *
- * Parameters:
- *  In:
- *      dwIoBase    - I/O base address
- *  Out:
- *      none
- *
- * Return Value: none
- *
- */
-void
-BBvSoftwareReset (PSDevice pDevice)
-{
-    ControlvWriteByte(pDevice, MESSAGE_REQUEST_BBREG, 0x50, 0x40);
-    ControlvWriteByte(pDevice, MESSAGE_REQUEST_BBREG, 0x50, 0);
-    ControlvWriteByte(pDevice, MESSAGE_REQUEST_BBREG, 0x9C, 0x01);
-    ControlvWriteByte(pDevice, MESSAGE_REQUEST_BBREG, 0x9C, 0);
 }
 
 /*
@@ -1315,22 +1158,19 @@ BBvSoftwareReset (PSDevice pDevice)
  * Return Value: none
  *
  */
-void
-BBvSetDeepSleep (PSDevice pDevice)
+void BBvSetDeepSleep(struct vnt_private *pDevice)
 {
     ControlvWriteByte(pDevice, MESSAGE_REQUEST_BBREG, 0x0c, 0x17);//CR12
     ControlvWriteByte(pDevice, MESSAGE_REQUEST_BBREG, 0x0D, 0xB9);//CR13
 }
 
-void
-BBvExitDeepSleep (PSDevice pDevice)
+void BBvExitDeepSleep(struct vnt_private *pDevice)
 {
     ControlvWriteByte(pDevice, MESSAGE_REQUEST_BBREG, 0x0C, 0x00);//CR12
     ControlvWriteByte(pDevice, MESSAGE_REQUEST_BBREG, 0x0D, 0x01);//CR13
 }
 
-
-static unsigned long s_ulGetLowSQ3(PSDevice pDevice)
+static unsigned long s_ulGetLowSQ3(struct vnt_private *pDevice)
 {
 	int ii;
 	unsigned long ulSQ3 = 0;
@@ -1349,7 +1189,7 @@ static unsigned long s_ulGetLowSQ3(PSDevice pDevice)
     return ulSQ3;
 }
 
-static unsigned long s_ulGetRatio(PSDevice pDevice)
+static unsigned long s_ulGetRatio(struct vnt_private *pDevice)
 {
 	int ii, jj;
 	unsigned long ulRatio = 0;
@@ -1376,10 +1216,7 @@ static unsigned long s_ulGetRatio(PSDevice pDevice)
     return ulRatio;
 }
 
-
-static
-void
-s_vClearSQ3Value (PSDevice pDevice)
+static void s_vClearSQ3Value(struct vnt_private *pDevice)
 {
     int ii;
     pDevice->uDiversityCnt = 0;
@@ -1389,7 +1226,6 @@ s_vClearSQ3Value (PSDevice pDevice)
         pDevice->aulSQ3Val[ii] = 0;
     }
 }
-
 
 /*
  * Description: Antenna Diversity
@@ -1406,8 +1242,8 @@ s_vClearSQ3Value (PSDevice pDevice)
  *
  */
 
-void
-BBvAntennaDiversity (PSDevice pDevice, BYTE byRxRate, BYTE bySQ3)
+void BBvAntennaDiversity(struct vnt_private *pDevice,
+	u8 byRxRate, u8 bySQ3)
 {
 
     pDevice->uDiversityCnt++;
@@ -1522,7 +1358,6 @@ BBvAntennaDiversity (PSDevice pDevice, BYTE byRxRate, BYTE bySQ3)
     } //byAntennaState
 }
 
-
 /*+
  *
  * Description:
@@ -1541,9 +1376,8 @@ BBvAntennaDiversity (PSDevice pDevice, BYTE byRxRate, BYTE bySQ3)
  *
 -*/
 
-void TimerSQ3CallBack(void *hDeviceContext)
+void TimerSQ3CallBack(struct vnt_private *pDevice)
 {
-    PSDevice        pDevice = (PSDevice)hDeviceContext;
 
     DBG_PRT(MSG_LEVEL_DEBUG, KERN_INFO"TimerSQ3CallBack...");
     spin_lock_irq(&pDevice->lock);
@@ -1556,10 +1390,8 @@ void TimerSQ3CallBack(void *hDeviceContext)
     add_timer(&pDevice->TimerSQ3Tmax3);
     add_timer(&pDevice->TimerSQ3Tmax2);
 
-
     spin_unlock_irq(&pDevice->lock);
 }
-
 
 /*+
  *
@@ -1579,9 +1411,8 @@ void TimerSQ3CallBack(void *hDeviceContext)
  *
 -*/
 
-void TimerSQ3Tmax3CallBack(void *hDeviceContext)
+void TimerSQ3Tmax3CallBack(struct vnt_private *pDevice)
 {
-    PSDevice        pDevice = (PSDevice)hDeviceContext;
 
     DBG_PRT(MSG_LEVEL_DEBUG, KERN_INFO"TimerSQ3Tmax3CallBack...");
     spin_lock_irq(&pDevice->lock);
@@ -1607,12 +1438,8 @@ void TimerSQ3Tmax3CallBack(void *hDeviceContext)
     spin_unlock_irq(&pDevice->lock);
 }
 
-void
-BBvUpdatePreEDThreshold(
-      PSDevice    pDevice,
-      BOOL        bScanning)
+void BBvUpdatePreEDThreshold(struct vnt_private *pDevice, int bScanning)
 {
-
 
     switch(pDevice->byRFType)
     {
@@ -1623,7 +1450,6 @@ BBvUpdatePreEDThreshold(
 
             if( bScanning )
             {   // need Max sensitivity //RSSI -69, -70,....
-                if(pDevice->byBBPreEDIndex == 0) break;
                 pDevice->byBBPreEDIndex = 0;
                 ControlvWriteByte(pDevice, MESSAGE_REQUEST_BBREG, 0xC9, 0x00); //CR201(0xC9)
                 ControlvWriteByte(pDevice, MESSAGE_REQUEST_BBREG, 0xCE, 0x30); //CR206(0xCE)
@@ -1766,7 +1592,6 @@ BBvUpdatePreEDThreshold(
 
             if( bScanning )
             {   // need Max sensitivity  //RSSI -69, -70, ...
-                if(pDevice->byBBPreEDIndex == 0) break;
                 pDevice->byBBPreEDIndex = 0;
                 ControlvWriteByte(pDevice, MESSAGE_REQUEST_BBREG, 0xC9, 0x00); //CR201(0xC9)
                 ControlvWriteByte(pDevice, MESSAGE_REQUEST_BBREG, 0xCE, 0x24); //CR206(0xCE)
@@ -1918,7 +1743,6 @@ BBvUpdatePreEDThreshold(
         case RF_VT3342A0: //RobertYu:20060627, testing table
             if( bScanning )
             {   // need Max sensitivity  //RSSI -67, -68, ...
-                if(pDevice->byBBPreEDIndex == 0) break;
                 pDevice->byBBPreEDIndex = 0;
                 ControlvWriteByte(pDevice, MESSAGE_REQUEST_BBREG, 0xC9, 0x00); //CR201(0xC9)
                 ControlvWriteByte(pDevice, MESSAGE_REQUEST_BBREG, 0xCE, 0x38); //CR206(0xCE)

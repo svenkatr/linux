@@ -11,11 +11,11 @@
 
 INT ProcessGetHostMibs(struct bcm_mini_adapter *Adapter, struct bcm_host_stats_mibs *pstHostMibs)
 {
-	S_SERVICEFLOW_ENTRY *pstServiceFlowEntry = NULL;
-	S_PHS_RULE *pstPhsRule = NULL;
-	S_CLASSIFIER_TABLE *pstClassifierTable = NULL;
-	S_CLASSIFIER_ENTRY *pstClassifierRule = NULL;
-	PPHS_DEVICE_EXTENSION pDeviceExtension = (PPHS_DEVICE_EXTENSION) &Adapter->stBCMPhsContext;
+	struct bcm_phs_entry *pstServiceFlowEntry = NULL;
+	struct bcm_phs_rule *pstPhsRule = NULL;
+	struct bcm_phs_classifier_table *pstClassifierTable = NULL;
+	struct bcm_phs_classifier_entry *pstClassifierRule = NULL;
+	struct bcm_phs_extension *pDeviceExtension = (struct bcm_phs_extension *) &Adapter->stBCMPhsContext;
 
 	UINT nClassifierIndex = 0, nPhsTableIndex = 0, nSfIndex = 0, uiIndex = 0;
 
@@ -27,9 +27,9 @@ INT ProcessGetHostMibs(struct bcm_mini_adapter *Adapter, struct bcm_host_stats_m
 	/* Copy the classifier Table */
 	for (nClassifierIndex = 0; nClassifierIndex < MAX_CLASSIFIERS; nClassifierIndex++) {
 		if (Adapter->astClassifierTable[nClassifierIndex].bUsed == TRUE)
-			memcpy((PVOID) & pstHostMibs->
+			memcpy((PVOID) &pstHostMibs->
 			       astClassifierTable[nClassifierIndex],
-			       (PVOID) & Adapter->
+			       (PVOID) &Adapter->
 			       astClassifierTable[nClassifierIndex],
 			       sizeof(struct bcm_mibs_classifier_rule));
 	}
@@ -37,8 +37,8 @@ INT ProcessGetHostMibs(struct bcm_mini_adapter *Adapter, struct bcm_host_stats_m
 	/* Copy the SF Table */
 	for (nSfIndex = 0; nSfIndex < NO_OF_QUEUES; nSfIndex++) {
 		if (Adapter->PackInfo[nSfIndex].bValid) {
-			memcpy((PVOID) & pstHostMibs->astSFtable[nSfIndex],
-			       (PVOID) & Adapter->PackInfo[nSfIndex],
+			memcpy((PVOID) &pstHostMibs->astSFtable[nSfIndex],
+			       (PVOID) &Adapter->PackInfo[nSfIndex],
 				sizeof(struct bcm_mibs_table));
 		} else {
 			/* If index in not valid,
@@ -70,7 +70,7 @@ INT ProcessGetHostMibs(struct bcm_mini_adapter *Adapter, struct bcm_host_stats_m
 
 				memcpy(&pstHostMibs->
 				       astPhsRulesTable[nPhsTableIndex].u8PHSI,
-				       &pstPhsRule->u8PHSI, sizeof(S_PHS_RULE));
+				       &pstPhsRule->u8PHSI, sizeof(struct bcm_phs_rule));
 				nPhsTableIndex++;
 
 			}

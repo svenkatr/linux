@@ -3,7 +3,7 @@
  *
  * Copyright (C) 2006 Corentin LABBE <corentin.labbe@geomatys.fr>
  *
- * Based on LM83 Driver by Jean Delvare <khali@linux-fr.org>
+ * Based on LM83 Driver by Jean Delvare <jdelvare@suse.de>
  *
  * Give only processor, motherboard temperatures and fan tachs
  * Very rare chip please let me know if you use it
@@ -224,8 +224,9 @@ static ssize_t set_fan_div(struct device *dev,
 		break;
 	default:
 		mutex_unlock(&data->update_lock);
-		dev_err(&client->dev, "fan_div value %ld not "
-			"supported. Choose one of 1, 2 or 4!\n", val);
+		dev_err(&client->dev,
+			"fan_div value %ld not supported. Choose one of 1, 2 or 4!\n",
+			val);
 		return -EINVAL;
 	}
 	/* Update the value */
@@ -326,8 +327,8 @@ static int adm1029_detect(struct i2c_client *client,
 		 * There are no "official" CHIP ID, so actually
 		 * we use Major/Minor revision for that
 		 */
-		pr_info("adm1029: Unknown major revision %x, "
-			"please let us know\n", chip_id);
+		pr_info("Unknown major revision %x, please let us know\n",
+			chip_id);
 		return -ENODEV;
 	}
 

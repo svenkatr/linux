@@ -15,7 +15,6 @@
 #include <linux/module.h>
 #include <linux/pci.h>
 #include <linux/slab.h>
-#include <linux/init.h>
 #include <linux/agp_backend.h>
 #include <asm/sn/addrs.h>
 #include <asm/sn/io.h>
@@ -270,7 +269,7 @@ const struct agp_bridge_driver sgi_tioca_driver = {
 	.num_aperture_sizes = 1,
 };
 
-static int __devinit agp_sgi_init(void)
+static int agp_sgi_init(void)
 {
 	unsigned int j;
 	struct tioca_kernel *info;

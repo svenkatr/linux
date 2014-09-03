@@ -11,7 +11,6 @@
 
 #include <linux/kernel.h>
 #include <linux/errno.h>
-#include <linux/init.h>
 #include <linux/slab.h>
 #include <linux/module.h>
 #include <linux/kref.h>
@@ -407,8 +406,6 @@ static int yurex_release(struct inode *inode, struct file *file)
 	if (dev == NULL)
 		return -ENODEV;
 
-	yurex_fasync(-1, file, 0);
-
 	/* decrement the count on our device */
 	kref_put(&dev->kref, yurex_delete);
 	return 0;
@@ -466,7 +463,7 @@ static ssize_t yurex_write(struct file *file, const char *user_buffer, size_t co
 		goto error;
 
 	mutex_lock(&dev->io_mutex);
-	if (!dev->interface) {		/* alreaday disconnected */
+	if (!dev->interface) {		/* already disconnected */
 		mutex_unlock(&dev->io_mutex);
 		retval = -ENODEV;
 		goto error;

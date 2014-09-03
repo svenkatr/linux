@@ -14,7 +14,6 @@
 #include <linux/module.h>
 #include <linux/kernel.h>
 #include <linux/pci.h>
-#include <linux/init.h>
 #include <linux/slab.h>
 
 #include <linux/mtd/mtd.h>
@@ -253,8 +252,7 @@ static struct pci_device_id mtd_pci_ids[] = {
  * Generic code follows.
  */
 
-static int
-mtd_pci_probe(struct pci_dev *dev, const struct pci_device_id *id)
+static int mtd_pci_probe(struct pci_dev *dev, const struct pci_device_id *id)
 {
 	struct mtd_pci_info *info = (struct mtd_pci_info *)id->driver_data;
 	struct map_pci_info *map = NULL;
@@ -284,8 +282,7 @@ mtd_pci_probe(struct pci_dev *dev, const struct pci_device_id *id)
 	if (err)
 		goto release;
 
-	/* tsk - do_map_probe should take const char * */
-	mtd = do_map_probe((char *)info->map_name, &map->map);
+	mtd = do_map_probe(info->map_name, &map->map);
 	err = -ENODEV;
 	if (!mtd)
 		goto release;
@@ -308,8 +305,7 @@ out:
 	return err;
 }
 
-static void
-mtd_pci_remove(struct pci_dev *dev)
+static void mtd_pci_remove(struct pci_dev *dev)
 {
 	struct mtd_info *mtd = pci_get_drvdata(dev);
 	struct map_pci_info *map = mtd->priv;
@@ -319,7 +315,6 @@ mtd_pci_remove(struct pci_dev *dev)
 	map->exit(dev, map);
 	kfree(map);
 
-	pci_set_drvdata(dev, NULL);
 	pci_release_regions(dev);
 }
 

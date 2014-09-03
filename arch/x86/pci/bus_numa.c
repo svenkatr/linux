@@ -10,14 +10,21 @@ static struct pci_root_info *x86_find_pci_root_info(int bus)
 {
 	struct pci_root_info *info;
 
-	if (list_empty(&pci_root_infos))
-		return NULL;
-
 	list_for_each_entry(info, &pci_root_infos, list)
 		if (info->busn.start == bus)
 			return info;
 
 	return NULL;
+}
+
+int x86_pci_root_bus_node(int bus)
+{
+	struct pci_root_info *info = x86_find_pci_root_info(bus);
+
+	if (!info)
+		return NUMA_NO_NODE;
+
+	return info->node;
 }
 
 void x86_pci_root_bus_resources(int bus, struct list_head *resources)
@@ -93,8 +100,8 @@ struct pci_root_info __init *alloc_pci_root_info(int bus_min, int bus_max,
 	return info;
 }
 
-void __devinit update_res(struct pci_root_info *info, resource_size_t start,
-			  resource_size_t end, unsigned long flags, int merge)
+void update_res(struct pci_root_info *info, resource_size_t start,
+		resource_size_t end, unsigned long flags, int merge)
 {
 	struct resource *res;
 	struct pci_root_res *root_res;

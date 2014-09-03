@@ -143,7 +143,7 @@ static struct irqaction call_function_ipi = {
 static irqreturn_t smp_ipi_timer_interrupt(int irq, void *dev_id);
 static struct irqaction local_timer_ipi = {
 	.handler	= smp_ipi_timer_interrupt,
-	.flags		= IRQF_DISABLED | IRQF_NOBALANCING,
+	.flags		= IRQF_NOBALANCING,
 	.name		= "smp local timer IPI"
 };
 #endif
@@ -675,7 +675,7 @@ int __init start_secondary(void *unused)
 #ifdef CONFIG_GENERIC_CLOCKEVENTS
 	init_clockevents();
 #endif
-	cpu_idle();
+	cpu_startup_entry(CPUHP_ONLINE);
 	return 0;
 }
 
@@ -905,7 +905,7 @@ void __init smp_cpus_done(unsigned int max_cpus)
  * Set up the cpu_online_mask, cpu_callout_map and cpu_callin_map of the boot
  * processor (CPU 0).
  */
-void __devinit smp_prepare_boot_cpu(void)
+void smp_prepare_boot_cpu(void)
 {
 	cpumask_set_cpu(0, &cpu_callout_map);
 	cpumask_set_cpu(0, &cpu_callin_map);
@@ -930,13 +930,11 @@ void initialize_secondary(void)
  * __cpu_up - Set smp_commenced_mask for the nominated CPU
  * @cpu: The target CPU.
  */
-int __devinit __cpu_up(unsigned int cpu, struct task_struct *tidle)
+int __cpu_up(unsigned int cpu, struct task_struct *tidle)
 {
 	int timeout;
 
 #ifdef CONFIG_HOTPLUG_CPU
-	if (num_online_cpus() == 1)
-		disable_hlt();
 	if (sleep_mode[cpu])
 		run_wakeup_cpu(cpu);
 #endif /* CONFIG_HOTPLUG_CPU */
@@ -1003,9 +1001,6 @@ int __cpu_disable(void)
 void __cpu_die(unsigned int cpu)
 {
 	run_sleep_cpu(cpu);
-
-	if (num_online_cpus() == 1)
-		enable_hlt();
 }
 
 #ifdef CONFIG_MN10300_CACHE_ENABLED

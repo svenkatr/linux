@@ -19,7 +19,9 @@
 #include <linux/of_gpio.h>
 #include <linux/spi/spi.h>
 #include <linux/spi/spi_bitbang.h>
-#include <linux/pinctrl/consumer.h>
+#include <linux/dmaengine.h>
+#include <linux/dma-direction.h>
+#include <linux/dma-mapping.h>
 
 #define DRIVER_NAME "sirfsoc_spi"
 
@@ -120,14 +122,25 @@
 #define SIRFSOC_SPI_FIFO_HC(x)		(((x) & 0x3F) << 20)
 #define SIRFSOC_SPI_FIFO_THD(x)		(((x) & 0xFF) << 2)
 
+/*
+ * only if the rx/tx buffer and transfer size are 4-bytes aligned, we use dma
+ * due to the limitation of dma controller
+ */
+
+#define ALIGNED(x) (!((u32)x & 0x3))
+#define IS_DMA_VALID(x) (x && ALIGNED(x->tx_buf) && ALIGNED(x->rx_buf) && \
+	ALIGNED(x->len) && (x->len < 2 * PAGE_SIZE))
+
+#define SIRFSOC_MAX_CMD_BYTES	4
+
 struct sirfsoc_spi {
 	struct spi_bitbang bitbang;
-	struct completion done;
+	struct completion rx_done;
+	struct completion tx_done;
 
 	void __iomem *base;
 	u32 ctrl_freq;  /* SPI controller clock speed */
 	struct clk *clk;
-	struct pinctrl *p;
 
 	/* rx & tx bufs from the spi_transfer */
 	const void *tx;
@@ -139,11 +152,22 @@ struct sirfsoc_spi {
 	void (*tx_word) (struct sirfsoc_spi *);
 
 	/* number of words left to be tranmitted/received */
-	unsigned int left_tx_cnt;
-	unsigned int left_rx_cnt;
+	unsigned int left_tx_word;
+	unsigned int left_rx_word;
 
-	/* tasklet to push tx msg into FIFO */
-	struct tasklet_struct tasklet_tx;
+	/* rx & tx DMA channels */
+	struct dma_chan *rx_chan;
+	struct dma_chan *tx_chan;
+	dma_addr_t src_start;
+	dma_addr_t dst_start;
+	void *dummypage;
+	int word_width; /* in bytes */
+
+	/*
+	 * if tx size is not more than 4 and rx size is NULL, use
+	 * command model
+	 */
+	bool	tx_by_cmd;
 
 	int chipselect[0];
 };
@@ -160,7 +184,7 @@ static void spi_sirfsoc_rx_word_u8(struct sirfsoc_spi *sspi)
 		sspi->rx = rx;
 	}
 
-	sspi->left_rx_cnt--;
+	sspi->left_rx_word--;
 }
 
 static void spi_sirfsoc_tx_word_u8(struct sirfsoc_spi *sspi)
@@ -174,7 +198,7 @@ static void spi_sirfsoc_tx_word_u8(struct sirfsoc_spi *sspi)
 	}
 
 	writel(data, sspi->base + SIRFSOC_SPI_TXFIFO_DATA);
-	sspi->left_tx_cnt--;
+	sspi->left_tx_word--;
 }
 
 static void spi_sirfsoc_rx_word_u16(struct sirfsoc_spi *sspi)
@@ -189,7 +213,7 @@ static void spi_sirfsoc_rx_word_u16(struct sirfsoc_spi *sspi)
 		sspi->rx = rx;
 	}
 
-	sspi->left_rx_cnt--;
+	sspi->left_rx_word--;
 }
 
 static void spi_sirfsoc_tx_word_u16(struct sirfsoc_spi *sspi)
@@ -203,7 +227,7 @@ static void spi_sirfsoc_tx_word_u16(struct sirfsoc_spi *sspi)
 	}
 
 	writel(data, sspi->base + SIRFSOC_SPI_TXFIFO_DATA);
-	sspi->left_tx_cnt--;
+	sspi->left_tx_word--;
 }
 
 static void spi_sirfsoc_rx_word_u32(struct sirfsoc_spi *sspi)
@@ -218,7 +242,7 @@ static void spi_sirfsoc_rx_word_u32(struct sirfsoc_spi *sspi)
 		sspi->rx = rx;
 	}
 
-	sspi->left_rx_cnt--;
+	sspi->left_rx_word--;
 
 }
 
@@ -233,18 +257,7 @@ static void spi_sirfsoc_tx_word_u32(struct sirfsoc_spi *sspi)
 	}
 
 	writel(data, sspi->base + SIRFSOC_SPI_TXFIFO_DATA);
-	sspi->left_tx_cnt--;
-}
-
-static void spi_sirfsoc_tasklet_tx(unsigned long arg)
-{
-	struct sirfsoc_spi *sspi = (struct sirfsoc_spi *)arg;
-
-	/* Fill Tx FIFO while there are left words to be transmitted */
-	while (!((readl(sspi->base + SIRFSOC_SPI_TXFIFO_STATUS) &
-			SIRFSOC_SPI_FIFO_FULL)) &&
-			sspi->left_tx_cnt)
-		sspi->tx_word(sspi);
+	sspi->left_tx_word--;
 }
 
 static irqreturn_t spi_sirfsoc_irq(int irq, void *dev_id)
@@ -254,33 +267,46 @@ static irqreturn_t spi_sirfsoc_irq(int irq, void *dev_id)
 
 	writel(spi_stat, sspi->base + SIRFSOC_SPI_INT_STATUS);
 
+	if (sspi->tx_by_cmd && (spi_stat & SIRFSOC_SPI_FRM_END)) {
+		complete(&sspi->tx_done);
+		writel(0x0, sspi->base + SIRFSOC_SPI_INT_EN);
+		return IRQ_HANDLED;
+	}
+
 	/* Error Conditions */
 	if (spi_stat & SIRFSOC_SPI_RX_OFLOW ||
 			spi_stat & SIRFSOC_SPI_TX_UFLOW) {
-		complete(&sspi->done);
+		complete(&sspi->rx_done);
 		writel(0x0, sspi->base + SIRFSOC_SPI_INT_EN);
 	}
 
-	if (spi_stat & SIRFSOC_SPI_FRM_END) {
+	if (spi_stat & (SIRFSOC_SPI_FRM_END
+			| SIRFSOC_SPI_RXFIFO_THD_REACH))
 		while (!((readl(sspi->base + SIRFSOC_SPI_RXFIFO_STATUS)
 				& SIRFSOC_SPI_FIFO_EMPTY)) &&
-				sspi->left_rx_cnt)
+				sspi->left_rx_word)
 			sspi->rx_word(sspi);
 
-		/* Received all words */
-		if ((sspi->left_rx_cnt == 0) && (sspi->left_tx_cnt == 0)) {
-			complete(&sspi->done);
-			writel(0x0, sspi->base + SIRFSOC_SPI_INT_EN);
-		}
+	if (spi_stat & (SIRFSOC_SPI_TXFIFO_EMPTY |
+			SIRFSOC_SPI_TXFIFO_THD_REACH))
+		while (!((readl(sspi->base + SIRFSOC_SPI_TXFIFO_STATUS)
+				& SIRFSOC_SPI_FIFO_FULL)) &&
+				sspi->left_tx_word)
+			sspi->tx_word(sspi);
+
+	/* Received all words */
+	if ((sspi->left_rx_word == 0) && (sspi->left_tx_word == 0)) {
+		complete(&sspi->rx_done);
+		writel(0x0, sspi->base + SIRFSOC_SPI_INT_EN);
 	}
-
-	if (spi_stat & SIRFSOC_SPI_RXFIFO_THD_REACH ||
-		spi_stat & SIRFSOC_SPI_TXFIFO_THD_REACH ||
-		spi_stat & SIRFSOC_SPI_RX_FIFO_FULL ||
-		spi_stat & SIRFSOC_SPI_TXFIFO_EMPTY)
-		tasklet_schedule(&sspi->tasklet_tx);
-
 	return IRQ_HANDLED;
+}
+
+static void spi_sirfsoc_dma_fini_callback(void *data)
+{
+	struct completion *dma_complete = data;
+
+	complete(dma_complete);
 }
 
 static int spi_sirfsoc_transfer(struct spi_device *spi, struct spi_transfer *t)
@@ -289,26 +315,58 @@ static int spi_sirfsoc_transfer(struct spi_device *spi, struct spi_transfer *t)
 	int timeout = t->len * 10;
 	sspi = spi_master_get_devdata(spi->master);
 
-	sspi->tx = t->tx_buf;
-	sspi->rx = t->rx_buf;
-	sspi->left_tx_cnt = sspi->left_rx_cnt = t->len;
-	INIT_COMPLETION(sspi->done);
+	sspi->tx = t->tx_buf ? t->tx_buf : sspi->dummypage;
+	sspi->rx = t->rx_buf ? t->rx_buf : sspi->dummypage;
+	sspi->left_tx_word = sspi->left_rx_word = t->len / sspi->word_width;
+	reinit_completion(&sspi->rx_done);
+	reinit_completion(&sspi->tx_done);
 
 	writel(SIRFSOC_SPI_INT_MASK_ALL, sspi->base + SIRFSOC_SPI_INT_STATUS);
 
-	if (t->len == 1) {
+	/*
+	 * fill tx_buf into command register and wait for its completion
+	 */
+	if (sspi->tx_by_cmd) {
+		u32 cmd;
+		memcpy(&cmd, sspi->tx, t->len);
+
+		if (sspi->word_width == 1 && !(spi->mode & SPI_LSB_FIRST))
+			cmd = cpu_to_be32(cmd) >>
+				((SIRFSOC_MAX_CMD_BYTES - t->len) * 8);
+		if (sspi->word_width == 2 && t->len == 4 &&
+				(!(spi->mode & SPI_LSB_FIRST)))
+			cmd = ((cmd & 0xffff) << 16) | (cmd >> 16);
+
+		writel(cmd, sspi->base + SIRFSOC_SPI_CMD);
+		writel(SIRFSOC_SPI_FRM_END_INT_EN,
+			sspi->base + SIRFSOC_SPI_INT_EN);
+		writel(SIRFSOC_SPI_CMD_TX_EN,
+			sspi->base + SIRFSOC_SPI_TX_RX_EN);
+
+		if (wait_for_completion_timeout(&sspi->tx_done, timeout) == 0) {
+			dev_err(&spi->dev, "transfer timeout\n");
+			return 0;
+		}
+
+		return t->len;
+	}
+
+	if (sspi->left_tx_word == 1) {
 		writel(readl(sspi->base + SIRFSOC_SPI_CTRL) |
 			SIRFSOC_SPI_ENA_AUTO_CLR,
 			sspi->base + SIRFSOC_SPI_CTRL);
 		writel(0, sspi->base + SIRFSOC_SPI_TX_DMA_IO_LEN);
 		writel(0, sspi->base + SIRFSOC_SPI_RX_DMA_IO_LEN);
-	} else if ((t->len > 1) && (t->len < SIRFSOC_SPI_DAT_FRM_LEN_MAX)) {
+	} else if ((sspi->left_tx_word > 1) && (sspi->left_tx_word <
+				SIRFSOC_SPI_DAT_FRM_LEN_MAX)) {
 		writel(readl(sspi->base + SIRFSOC_SPI_CTRL) |
 				SIRFSOC_SPI_MUL_DAT_MODE |
 				SIRFSOC_SPI_ENA_AUTO_CLR,
 			sspi->base + SIRFSOC_SPI_CTRL);
-		writel(t->len - 1, sspi->base + SIRFSOC_SPI_TX_DMA_IO_LEN);
-		writel(t->len - 1, sspi->base + SIRFSOC_SPI_RX_DMA_IO_LEN);
+		writel(sspi->left_tx_word - 1,
+				sspi->base + SIRFSOC_SPI_TX_DMA_IO_LEN);
+		writel(sspi->left_tx_word - 1,
+				sspi->base + SIRFSOC_SPI_RX_DMA_IO_LEN);
 	} else {
 		writel(readl(sspi->base + SIRFSOC_SPI_CTRL),
 			sspi->base + SIRFSOC_SPI_CTRL);
@@ -321,17 +379,64 @@ static int spi_sirfsoc_transfer(struct spi_device *spi, struct spi_transfer *t)
 	writel(SIRFSOC_SPI_FIFO_START, sspi->base + SIRFSOC_SPI_RXFIFO_OP);
 	writel(SIRFSOC_SPI_FIFO_START, sspi->base + SIRFSOC_SPI_TXFIFO_OP);
 
-	/* Send the first word to trigger the whole tx/rx process */
-	sspi->tx_word(sspi);
+	if (IS_DMA_VALID(t)) {
+		struct dma_async_tx_descriptor *rx_desc, *tx_desc;
 
-	writel(SIRFSOC_SPI_RX_OFLOW_INT_EN | SIRFSOC_SPI_TX_UFLOW_INT_EN |
-		SIRFSOC_SPI_RXFIFO_THD_INT_EN | SIRFSOC_SPI_TXFIFO_THD_INT_EN |
-		SIRFSOC_SPI_FRM_END_INT_EN | SIRFSOC_SPI_RXFIFO_FULL_INT_EN |
-		SIRFSOC_SPI_TXFIFO_EMPTY_INT_EN, sspi->base + SIRFSOC_SPI_INT_EN);
+		sspi->dst_start = dma_map_single(&spi->dev, sspi->rx, t->len, DMA_FROM_DEVICE);
+		rx_desc = dmaengine_prep_slave_single(sspi->rx_chan,
+			sspi->dst_start, t->len, DMA_DEV_TO_MEM,
+			DMA_PREP_INTERRUPT | DMA_CTRL_ACK);
+		rx_desc->callback = spi_sirfsoc_dma_fini_callback;
+		rx_desc->callback_param = &sspi->rx_done;
+
+		sspi->src_start = dma_map_single(&spi->dev, (void *)sspi->tx, t->len, DMA_TO_DEVICE);
+		tx_desc = dmaengine_prep_slave_single(sspi->tx_chan,
+			sspi->src_start, t->len, DMA_MEM_TO_DEV,
+			DMA_PREP_INTERRUPT | DMA_CTRL_ACK);
+		tx_desc->callback = spi_sirfsoc_dma_fini_callback;
+		tx_desc->callback_param = &sspi->tx_done;
+
+		dmaengine_submit(tx_desc);
+		dmaengine_submit(rx_desc);
+		dma_async_issue_pending(sspi->tx_chan);
+		dma_async_issue_pending(sspi->rx_chan);
+	} else {
+		/* Send the first word to trigger the whole tx/rx process */
+		sspi->tx_word(sspi);
+
+		writel(SIRFSOC_SPI_RX_OFLOW_INT_EN | SIRFSOC_SPI_TX_UFLOW_INT_EN |
+			SIRFSOC_SPI_RXFIFO_THD_INT_EN | SIRFSOC_SPI_TXFIFO_THD_INT_EN |
+			SIRFSOC_SPI_FRM_END_INT_EN | SIRFSOC_SPI_RXFIFO_FULL_INT_EN |
+			SIRFSOC_SPI_TXFIFO_EMPTY_INT_EN, sspi->base + SIRFSOC_SPI_INT_EN);
+	}
+
 	writel(SIRFSOC_SPI_RX_EN | SIRFSOC_SPI_TX_EN, sspi->base + SIRFSOC_SPI_TX_RX_EN);
 
-	if (wait_for_completion_timeout(&sspi->done, timeout) == 0)
+	if (!IS_DMA_VALID(t)) { /* for PIO */
+		if (wait_for_completion_timeout(&sspi->rx_done, timeout) == 0)
+			dev_err(&spi->dev, "transfer timeout\n");
+	} else if (wait_for_completion_timeout(&sspi->rx_done, timeout) == 0) {
 		dev_err(&spi->dev, "transfer timeout\n");
+		dmaengine_terminate_all(sspi->rx_chan);
+	} else
+		sspi->left_rx_word = 0;
+
+	/*
+	 * we only wait tx-done event if transferring by DMA. for PIO,
+	 * we get rx data by writing tx data, so if rx is done, tx has
+	 * done earlier
+	 */
+	if (IS_DMA_VALID(t)) {
+		if (wait_for_completion_timeout(&sspi->tx_done, timeout) == 0) {
+			dev_err(&spi->dev, "transfer timeout\n");
+			dmaengine_terminate_all(sspi->tx_chan);
+		}
+	}
+
+	if (IS_DMA_VALID(t)) {
+		dma_unmap_single(&spi->dev, sspi->src_start, t->len, DMA_TO_DEVICE);
+		dma_unmap_single(&spi->dev, sspi->dst_start, t->len, DMA_FROM_DEVICE);
+	}
 
 	/* TX, RX FIFO stop */
 	writel(0, sspi->base + SIRFSOC_SPI_RXFIFO_OP);
@@ -339,7 +444,7 @@ static int spi_sirfsoc_transfer(struct spi_device *spi, struct spi_transfer *t)
 	writel(0, sspi->base + SIRFSOC_SPI_TX_RX_EN);
 	writel(0, sspi->base + SIRFSOC_SPI_INT_EN);
 
-	return t->len - sspi->left_rx_cnt;
+	return t->len - sspi->left_rx_word * sspi->word_width;
 }
 
 static void spi_sirfsoc_chipselect(struct spi_device *spi, int value)
@@ -348,7 +453,6 @@ static void spi_sirfsoc_chipselect(struct spi_device *spi, int value)
 
 	if (sspi->chipselect[spi->chip_select] == 0) {
 		u32 regval = readl(sspi->base + SIRFSOC_SPI_CTRL);
-		regval |= SIRFSOC_SPI_CS_IO_OUT;
 		switch (value) {
 		case BITBANG_CS_ACTIVE:
 			if (spi->mode & SPI_CS_HIGH)
@@ -366,7 +470,16 @@ static void spi_sirfsoc_chipselect(struct spi_device *spi, int value)
 		writel(regval, sspi->base + SIRFSOC_SPI_CTRL);
 	} else {
 		int gpio = sspi->chipselect[spi->chip_select];
-		gpio_direction_output(gpio, spi->mode & SPI_CS_HIGH ? 0 : 1);
+		switch (value) {
+		case BITBANG_CS_ACTIVE:
+			gpio_direction_output(gpio,
+					spi->mode & SPI_CS_HIGH ? 1 : 0);
+			break;
+		case BITBANG_CS_INACTIVE:
+			gpio_direction_output(gpio,
+					spi->mode & SPI_CS_HIGH ? 0 : 1);
+			break;
+		}
 	}
 }
 
@@ -382,15 +495,10 @@ spi_sirfsoc_setup_transfer(struct spi_device *spi, struct spi_transfer *t)
 
 	sspi = spi_master_get_devdata(spi->master);
 
-	bits_per_word = t && t->bits_per_word ? t->bits_per_word :
-		spi->bits_per_word;
+	bits_per_word = (t) ? t->bits_per_word : spi->bits_per_word;
 	hz = t && t->speed_hz ? t->speed_hz : spi->max_speed_hz;
 
-	/* Enable IO mode for RX, TX */
-	writel(SIRFSOC_SPI_IO_MODE_SEL, sspi->base + SIRFSOC_SPI_TX_DMA_IO_CTRL);
-	writel(SIRFSOC_SPI_IO_MODE_SEL, sspi->base + SIRFSOC_SPI_RX_DMA_IO_CTRL);
 	regval = (sspi->ctrl_freq / (2 * hz)) - 1;
-
 	if (regval > 0xFFFF || regval < 0) {
 		dev_err(&spi->dev, "Speed %d not supported\n", hz);
 		return -EINVAL;
@@ -401,10 +509,6 @@ spi_sirfsoc_setup_transfer(struct spi_device *spi, struct spi_transfer *t)
 		regval |= SIRFSOC_SPI_TRAN_DAT_FORMAT_8;
 		sspi->rx_word = spi_sirfsoc_rx_word_u8;
 		sspi->tx_word = spi_sirfsoc_tx_word_u8;
-		txfifo_ctrl = SIRFSOC_SPI_FIFO_THD(SIRFSOC_SPI_FIFO_SIZE / 2) |
-					SIRFSOC_SPI_FIFO_WIDTH_BYTE;
-		rxfifo_ctrl = SIRFSOC_SPI_FIFO_THD(SIRFSOC_SPI_FIFO_SIZE / 2) |
-					SIRFSOC_SPI_FIFO_WIDTH_BYTE;
 		break;
 	case 12:
 	case 16:
@@ -412,25 +516,21 @@ spi_sirfsoc_setup_transfer(struct spi_device *spi, struct spi_transfer *t)
 			SIRFSOC_SPI_TRAN_DAT_FORMAT_16;
 		sspi->rx_word = spi_sirfsoc_rx_word_u16;
 		sspi->tx_word = spi_sirfsoc_tx_word_u16;
-		txfifo_ctrl = SIRFSOC_SPI_FIFO_THD(SIRFSOC_SPI_FIFO_SIZE / 2) |
-					SIRFSOC_SPI_FIFO_WIDTH_WORD;
-		rxfifo_ctrl = SIRFSOC_SPI_FIFO_THD(SIRFSOC_SPI_FIFO_SIZE / 2) |
-					SIRFSOC_SPI_FIFO_WIDTH_WORD;
 		break;
 	case 32:
 		regval |= SIRFSOC_SPI_TRAN_DAT_FORMAT_32;
 		sspi->rx_word = spi_sirfsoc_rx_word_u32;
 		sspi->tx_word = spi_sirfsoc_tx_word_u32;
-		txfifo_ctrl = SIRFSOC_SPI_FIFO_THD(SIRFSOC_SPI_FIFO_SIZE / 2) |
-					SIRFSOC_SPI_FIFO_WIDTH_DWORD;
-		rxfifo_ctrl = SIRFSOC_SPI_FIFO_THD(SIRFSOC_SPI_FIFO_SIZE / 2) |
-					SIRFSOC_SPI_FIFO_WIDTH_DWORD;
 		break;
 	default:
-		dev_err(&spi->dev, "Bits per word %d not supported\n",
-		       bits_per_word);
-		return -EINVAL;
+		BUG();
 	}
+
+	sspi->word_width = DIV_ROUND_UP(bits_per_word, 8);
+	txfifo_ctrl = SIRFSOC_SPI_FIFO_THD(SIRFSOC_SPI_FIFO_SIZE / 2) |
+					   sspi->word_width;
+	rxfifo_ctrl = SIRFSOC_SPI_FIFO_THD(SIRFSOC_SPI_FIFO_SIZE / 2) |
+					   sspi->word_width;
 
 	if (!(spi->mode & SPI_CS_HIGH))
 		regval |= SIRFSOC_SPI_CS_IDLE_STAT;
@@ -460,21 +560,38 @@ spi_sirfsoc_setup_transfer(struct spi_device *spi, struct spi_transfer *t)
 	writel(txfifo_ctrl, sspi->base + SIRFSOC_SPI_TXFIFO_CTRL);
 	writel(rxfifo_ctrl, sspi->base + SIRFSOC_SPI_RXFIFO_CTRL);
 
+	if (t && t->tx_buf && !t->rx_buf && (t->len <= SIRFSOC_MAX_CMD_BYTES)) {
+		regval |= (SIRFSOC_SPI_CMD_BYTE_NUM((t->len - 1)) |
+				SIRFSOC_SPI_CMD_MODE);
+		sspi->tx_by_cmd = true;
+	} else {
+		regval &= ~SIRFSOC_SPI_CMD_MODE;
+		sspi->tx_by_cmd = false;
+	}
+	/*
+	 * set spi controller in RISC chipselect mode, we are controlling CS by
+	 * software BITBANG_CS_ACTIVE and BITBANG_CS_INACTIVE.
+	 */
+	regval |= SIRFSOC_SPI_CS_IO_MODE;
 	writel(regval, sspi->base + SIRFSOC_SPI_CTRL);
+
+	if (IS_DMA_VALID(t)) {
+		/* Enable DMA mode for RX, TX */
+		writel(0, sspi->base + SIRFSOC_SPI_TX_DMA_IO_CTRL);
+		writel(SIRFSOC_SPI_RX_DMA_FLUSH, sspi->base + SIRFSOC_SPI_RX_DMA_IO_CTRL);
+	} else {
+		/* Enable IO mode for RX, TX */
+		writel(SIRFSOC_SPI_IO_MODE_SEL, sspi->base + SIRFSOC_SPI_TX_DMA_IO_CTRL);
+		writel(SIRFSOC_SPI_IO_MODE_SEL, sspi->base + SIRFSOC_SPI_RX_DMA_IO_CTRL);
+	}
+
 	return 0;
 }
 
 static int spi_sirfsoc_setup(struct spi_device *spi)
 {
-	struct sirfsoc_spi *sspi;
-
 	if (!spi->max_speed_hz)
 		return -EINVAL;
-
-	sspi = spi_master_get_devdata(spi->master);
-
-	if (!spi->bits_per_word)
-		spi->bits_per_word = 8;
 
 	return spi_sirfsoc_setup_transfer(spi, NULL);
 }
@@ -503,12 +620,6 @@ static int spi_sirfsoc_probe(struct platform_device *pdev)
 	platform_set_drvdata(pdev, master);
 	sspi = spi_master_get_devdata(master);
 
-	mem_res = platform_get_resource(pdev, IORESOURCE_MEM, 0);
-	if (!mem_res) {
-		dev_err(&pdev->dev, "Unable to get IO resource\n");
-		ret = -ENODEV;
-		goto free_master;
-	}
 	master->num_chipselect = num_cs;
 
 	for (i = 0; i < master->num_chipselect; i++) {
@@ -535,10 +646,10 @@ static int spi_sirfsoc_probe(struct platform_device *pdev)
 		}
 	}
 
-	sspi->base = devm_request_and_ioremap(&pdev->dev, mem_res);
-	if (!sspi->base) {
-		dev_err(&pdev->dev, "IO remap failed!\n");
-		ret = -ENOMEM;
+	mem_res = platform_get_resource(pdev, IORESOURCE_MEM, 0);
+	sspi->base = devm_ioremap_resource(&pdev->dev, mem_res);
+	if (IS_ERR(sspi->base)) {
+		ret = PTR_ERR(sspi->base);
 		goto free_master;
 	}
 
@@ -552,31 +663,41 @@ static int spi_sirfsoc_probe(struct platform_device *pdev)
 	if (ret)
 		goto free_master;
 
-	sspi->bitbang.master = spi_master_get(master);
+	sspi->bitbang.master = master;
 	sspi->bitbang.chipselect = spi_sirfsoc_chipselect;
 	sspi->bitbang.setup_transfer = spi_sirfsoc_setup_transfer;
 	sspi->bitbang.txrx_bufs = spi_sirfsoc_transfer;
 	sspi->bitbang.master->setup = spi_sirfsoc_setup;
 	master->bus_num = pdev->id;
+	master->mode_bits = SPI_CPOL | SPI_CPHA | SPI_LSB_FIRST | SPI_CS_HIGH;
+	master->bits_per_word_mask = SPI_BPW_MASK(8) | SPI_BPW_MASK(12) |
+					SPI_BPW_MASK(16) | SPI_BPW_MASK(32);
 	sspi->bitbang.master->dev.of_node = pdev->dev.of_node;
 
-	sspi->p = pinctrl_get_select_default(&pdev->dev);
-	ret = IS_ERR(sspi->p);
-	if (ret)
+	/* request DMA channels */
+	sspi->rx_chan = dma_request_slave_channel(&pdev->dev, "rx");
+	if (!sspi->rx_chan) {
+		dev_err(&pdev->dev, "can not allocate rx dma channel\n");
+		ret = -ENODEV;
 		goto free_master;
+	}
+	sspi->tx_chan = dma_request_slave_channel(&pdev->dev, "tx");
+	if (!sspi->tx_chan) {
+		dev_err(&pdev->dev, "can not allocate tx dma channel\n");
+		ret = -ENODEV;
+		goto free_rx_dma;
+	}
 
 	sspi->clk = clk_get(&pdev->dev, NULL);
 	if (IS_ERR(sspi->clk)) {
-		ret = -EINVAL;
-		goto free_pin;
+		ret = PTR_ERR(sspi->clk);
+		goto free_tx_dma;
 	}
-	clk_enable(sspi->clk);
+	clk_prepare_enable(sspi->clk);
 	sspi->ctrl_freq = clk_get_rate(sspi->clk);
 
-	init_completion(&sspi->done);
-
-	tasklet_init(&sspi->tasklet_tx, spi_sirfsoc_tasklet_tx,
-		     (unsigned long)sspi);
+	init_completion(&sspi->rx_done);
+	init_completion(&sspi->tx_done);
 
 	writel(SIRFSOC_SPI_FIFO_RESET, sspi->base + SIRFSOC_SPI_RXFIFO_OP);
 	writel(SIRFSOC_SPI_FIFO_RESET, sspi->base + SIRFSOC_SPI_TXFIFO_OP);
@@ -585,19 +706,28 @@ static int spi_sirfsoc_probe(struct platform_device *pdev)
 	/* We are not using dummy delay between command and data */
 	writel(0, sspi->base + SIRFSOC_SPI_DUMMY_DELAY_CTL);
 
+	sspi->dummypage = kmalloc(2 * PAGE_SIZE, GFP_KERNEL);
+	if (!sspi->dummypage) {
+		ret = -ENOMEM;
+		goto free_clk;
+	}
+
 	ret = spi_bitbang_start(&sspi->bitbang);
 	if (ret)
-		goto free_clk;
+		goto free_dummypage;
 
 	dev_info(&pdev->dev, "registerred, bus number = %d\n", master->bus_num);
 
 	return 0;
-
+free_dummypage:
+	kfree(sspi->dummypage);
 free_clk:
-	clk_disable(sspi->clk);
+	clk_disable_unprepare(sspi->clk);
 	clk_put(sspi->clk);
-free_pin:
-	pinctrl_put(sspi->p);
+free_tx_dma:
+	dma_release_channel(sspi->tx_chan);
+free_rx_dma:
+	dma_release_channel(sspi->rx_chan);
 free_master:
 	spi_master_put(master);
 err_cs:
@@ -618,19 +748,25 @@ static int  spi_sirfsoc_remove(struct platform_device *pdev)
 		if (sspi->chipselect[i] > 0)
 			gpio_free(sspi->chipselect[i]);
 	}
-	clk_disable(sspi->clk);
+	kfree(sspi->dummypage);
+	clk_disable_unprepare(sspi->clk);
 	clk_put(sspi->clk);
-	pinctrl_put(sspi->p);
+	dma_release_channel(sspi->rx_chan);
+	dma_release_channel(sspi->tx_chan);
 	spi_master_put(master);
 	return 0;
 }
 
-#ifdef CONFIG_PM
+#ifdef CONFIG_PM_SLEEP
 static int spi_sirfsoc_suspend(struct device *dev)
 {
-	struct platform_device *pdev = to_platform_device(dev);
-	struct spi_master *master = platform_get_drvdata(pdev);
+	struct spi_master *master = dev_get_drvdata(dev);
 	struct sirfsoc_spi *sspi = spi_master_get_devdata(master);
+	int ret;
+
+	ret = spi_master_suspend(master);
+	if (ret)
+		return ret;
 
 	clk_disable(sspi->clk);
 	return 0;
@@ -638,8 +774,7 @@ static int spi_sirfsoc_suspend(struct device *dev)
 
 static int spi_sirfsoc_resume(struct device *dev)
 {
-	struct platform_device *pdev = to_platform_device(dev);
-	struct spi_master *master = platform_get_drvdata(pdev);
+	struct spi_master *master = dev_get_drvdata(dev);
 	struct sirfsoc_spi *sspi = spi_master_get_devdata(master);
 
 	clk_enable(sspi->clk);
@@ -648,28 +783,25 @@ static int spi_sirfsoc_resume(struct device *dev)
 	writel(SIRFSOC_SPI_FIFO_START, sspi->base + SIRFSOC_SPI_RXFIFO_OP);
 	writel(SIRFSOC_SPI_FIFO_START, sspi->base + SIRFSOC_SPI_TXFIFO_OP);
 
-	return 0;
+	return spi_master_resume(master);
 }
-
-static const struct dev_pm_ops spi_sirfsoc_pm_ops = {
-	.suspend = spi_sirfsoc_suspend,
-	.resume = spi_sirfsoc_resume,
-};
 #endif
+
+static SIMPLE_DEV_PM_OPS(spi_sirfsoc_pm_ops, spi_sirfsoc_suspend,
+			 spi_sirfsoc_resume);
 
 static const struct of_device_id spi_sirfsoc_of_match[] = {
 	{ .compatible = "sirf,prima2-spi", },
+	{ .compatible = "sirf,marco-spi", },
 	{}
 };
-MODULE_DEVICE_TABLE(of, sirfsoc_spi_of_match);
+MODULE_DEVICE_TABLE(of, spi_sirfsoc_of_match);
 
 static struct platform_driver spi_sirfsoc_driver = {
 	.driver = {
 		.name = DRIVER_NAME,
 		.owner = THIS_MODULE,
-#ifdef CONFIG_PM
 		.pm     = &spi_sirfsoc_pm_ops,
-#endif
 		.of_match_table = spi_sirfsoc_of_match,
 	},
 	.probe = spi_sirfsoc_probe,

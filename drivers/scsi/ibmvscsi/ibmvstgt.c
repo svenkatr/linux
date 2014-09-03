@@ -589,7 +589,7 @@ static int crq_queue_create(struct crq_queue *queue, struct srp_target *target)
 	}
 
 	err = request_irq(vport->dma_dev->irq, &ibmvstgt_interrupt,
-			  IRQF_DISABLED, "ibmvstgt", target);
+			  0, "ibmvstgt", target);
 	if (err)
 		goto req_irq_failed;
 
@@ -907,7 +907,7 @@ static int ibmvstgt_remove(struct vio_dev *dev)
 	return 0;
 }
 
-static struct vio_device_id ibmvstgt_device_table[] __devinitdata = {
+static struct vio_device_id ibmvstgt_device_table[] = {
 	{"v-scsi-host", "IBM,v-scsi-host"},
 	{"",""}
 };

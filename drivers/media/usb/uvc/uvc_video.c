@@ -556,7 +556,7 @@ static u16 uvc_video_clock_host_sof(const struct uvc_clock_sample *sample)
  *
  * SOF = ((SOF2 - SOF1) * PTS + SOF1 * STC2 - SOF2 * STC1) / (STC2 - STC1)   (1)
  *
- * to avoid loosing precision in the division. Similarly, the host timestamp is
+ * to avoid losing precision in the division. Similarly, the host timestamp is
  * computed with
  *
  * TS = ((TS2 - TS1) * PTS + TS1 * SOF2 - TS2 * SOF1) / (SOF2 - SOF1)	     (2)
@@ -680,7 +680,8 @@ void uvc_video_clock_update(struct uvc_streaming *stream,
 		  stream->dev->name,
 		  sof >> 16, div_u64(((u64)sof & 0xffff) * 1000000LLU, 65536),
 		  y, ts.tv_sec, ts.tv_nsec / NSEC_PER_USEC,
-		  v4l2_buf->timestamp.tv_sec, v4l2_buf->timestamp.tv_usec,
+		  v4l2_buf->timestamp.tv_sec,
+		  (unsigned long)v4l2_buf->timestamp.tv_usec,
 		  x1, first->host_sof, first->dev_sof,
 		  x2, last->host_sof, last->dev_sof, y1, y2);
 
@@ -1452,6 +1453,9 @@ static unsigned int uvc_endpoint_max_bpi(struct usb_device *dev,
 	case USB_SPEED_HIGH:
 		psize = usb_endpoint_maxp(&ep->desc);
 		return (psize & 0x07ff) * (1 + ((psize >> 11) & 3));
+	case USB_SPEED_WIRELESS:
+		psize = usb_endpoint_maxp(&ep->desc);
+		return psize;
 	default:
 		psize = usb_endpoint_maxp(&ep->desc);
 		return psize & 0x07ff;
@@ -1846,7 +1850,25 @@ int uvc_video_enable(struct uvc_streaming *stream, int enable)
 
 	if (!enable) {
 		uvc_uninit_video(stream, 1);
-		usb_set_interface(stream->dev->udev, stream->intfnum, 0);
+		if (stream->intf->num_altsetting > 1) {
+			usb_set_interface(stream->dev->udev,
+					  stream->intfnum, 0);
+		} else {
+			/* UVC doesn't specify how to inform a bulk-based device
+			 * when the video stream is stopped. Windows sends a
+			 * CLEAR_FEATURE(HALT) request to the video streaming
+			 * bulk endpoint, mimic the same behaviour.
+			 */
+			unsigned int epnum = stream->header.bEndpointAddress
+					   & USB_ENDPOINT_NUMBER_MASK;
+			unsigned int dir = stream->header.bEndpointAddress
+					 & USB_ENDPOINT_DIR_MASK;
+			unsigned int pipe;
+
+			pipe = usb_sndbulkpipe(stream->dev->udev, epnum) | dir;
+			usb_clear_halt(stream->dev->udev, pipe);
+		}
+
 		uvc_queue_enable(&stream->queue, 0);
 		uvc_video_clock_cleanup(stream);
 		return 0;

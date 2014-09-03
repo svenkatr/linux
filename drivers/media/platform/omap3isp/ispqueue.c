@@ -366,7 +366,7 @@ static int isp_video_buffer_prepare_pfnmap(struct isp_video_buffer *buf)
 	unsigned long this_pfn;
 	unsigned long start;
 	unsigned long end;
-	dma_addr_t pa;
+	dma_addr_t pa = 0;
 	int ret = -EFAULT;
 
 	start = buf->vbuf.m.userptr;
@@ -419,7 +419,7 @@ done:
 static int isp_video_buffer_prepare_vm_flags(struct isp_video_buffer *buf)
 {
 	struct vm_area_struct *vma;
-	pgprot_t vm_page_prot;
+	pgprot_t uninitialized_var(vm_page_prot);
 	unsigned long start;
 	unsigned long end;
 	int ret = -EFAULT;
@@ -553,8 +553,10 @@ static void isp_video_buffer_query(struct isp_video_buffer *buf,
 	switch (buf->state) {
 	case ISP_BUF_STATE_ERROR:
 		vbuf->flags |= V4L2_BUF_FLAG_ERROR;
+		/* Fallthrough */
 	case ISP_BUF_STATE_DONE:
 		vbuf->flags |= V4L2_BUF_FLAG_DONE;
+		break;
 	case ISP_BUF_STATE_QUEUED:
 	case ISP_BUF_STATE_ACTIVE:
 		vbuf->flags |= V4L2_BUF_FLAG_QUEUED;
@@ -595,7 +597,7 @@ static int isp_video_buffer_wait(struct isp_video_buffer *buf, int nonblocking)
  * isp_video_queue_free - Free video buffers memory
  *
  * Buffers can only be freed if the queue isn't streaming and if no buffer is
- * mapped to userspace. Return -EBUSY if those conditions aren't statisfied.
+ * mapped to userspace. Return -EBUSY if those conditions aren't satisfied.
  *
  * This function must be called with the queue lock held.
  */
@@ -674,6 +676,7 @@ static int isp_video_queue_alloc(struct isp_video_queue *queue,
 		buf->vbuf.index = i;
 		buf->vbuf.length = size;
 		buf->vbuf.type = queue->type;
+		buf->vbuf.flags = V4L2_BUF_FLAG_TIMESTAMP_MONOTONIC;
 		buf->vbuf.field = V4L2_FIELD_NONE;
 		buf->vbuf.memory = memory;
 

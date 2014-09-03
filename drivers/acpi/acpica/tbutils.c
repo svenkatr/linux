@@ -1,11 +1,11 @@
 /******************************************************************************
  *
- * Module Name: tbutils   - table utilities
+ * Module Name: tbutils - ACPI Table utilities
  *
  *****************************************************************************/
 
 /*
- * Copyright (C) 2000 - 2012, Intel Corp.
+ * Copyright (C) 2000 - 2014, Intel Corp.
  * All rights reserved.
  *
  * Redistribution and use in source and binary forms, with or without
@@ -49,74 +49,10 @@
 ACPI_MODULE_NAME("tbutils")
 
 /* Local prototypes */
-static void acpi_tb_fix_string(char *string, acpi_size length);
-
-static void
-acpi_tb_cleanup_table_header(struct acpi_table_header *out_header,
-			     struct acpi_table_header *header);
+static acpi_status acpi_tb_validate_xsdt(acpi_physical_address address);
 
 static acpi_physical_address
 acpi_tb_get_root_table_entry(u8 *table_entry, u32 table_entry_size);
-
-/*******************************************************************************
- *
- * FUNCTION:    acpi_tb_check_xsdt
- *
- * PARAMETERS:  address                    - Pointer to the XSDT
- *
- * RETURN:      status
- *		AE_OK - XSDT is okay
- *		AE_NO_MEMORY - can't map XSDT
- *		AE_INVALID_TABLE_LENGTH - invalid table length
- *		AE_NULL_ENTRY - XSDT has NULL entry
- *
- * DESCRIPTION: validate XSDT
-******************************************************************************/
-
-static acpi_status
-acpi_tb_check_xsdt(acpi_physical_address address)
-{
-	struct acpi_table_header *table;
-	u32 length;
-	u64 xsdt_entry_address;
-	u8 *table_entry;
-	u32 table_count;
-	int i;
-
-	table = acpi_os_map_memory(address, sizeof(struct acpi_table_header));
-	if (!table)
-		return AE_NO_MEMORY;
-
-	length = table->length;
-	acpi_os_unmap_memory(table, sizeof(struct acpi_table_header));
-	if (length < sizeof(struct acpi_table_header))
-		return AE_INVALID_TABLE_LENGTH;
-
-	table = acpi_os_map_memory(address, length);
-	if (!table)
-		return AE_NO_MEMORY;
-
-	/* Calculate the number of tables described in XSDT */
-	table_count =
-		(u32) ((table->length -
-		sizeof(struct acpi_table_header)) / sizeof(u64));
-	table_entry =
-		ACPI_CAST_PTR(u8, table) + sizeof(struct acpi_table_header);
-	for (i = 0; i < table_count; i++) {
-		ACPI_MOVE_64_TO_64(&xsdt_entry_address, table_entry);
-		if (!xsdt_entry_address) {
-			/* XSDT has NULL entry */
-			break;
-		}
-		table_entry += sizeof(u64);
-	}
-	acpi_os_unmap_memory(table, length);
-
-	if (i < table_count)
-		return AE_NULL_ENTRY;
-	else
-		return AE_OK;
-}
 
 #if (!ACPI_REDUCED_HARDWARE)
 /*******************************************************************************
@@ -147,7 +83,7 @@ acpi_status acpi_tb_initialize_facs(void)
 					 ACPI_CAST_INDIRECT_PTR(struct
 								acpi_table_header,
 								&acpi_gbl_FACS));
-	return status;
+	return (status);
 }
 #endif				/* !ACPI_REDUCED_HARDWARE */
 
@@ -172,189 +108,6 @@ u8 acpi_tb_tables_loaded(void)
 	}
 
 	return (FALSE);
-}
-
-/*******************************************************************************
- *
- * FUNCTION:    acpi_tb_fix_string
- *
- * PARAMETERS:  string              - String to be repaired
- *              length              - Maximum length
- *
- * RETURN:      None
- *
- * DESCRIPTION: Replace every non-printable or non-ascii byte in the string
- *              with a question mark '?'.
- *
- ******************************************************************************/
-
-static void acpi_tb_fix_string(char *string, acpi_size length)
-{
-
-	while (length && *string) {
-		if (!ACPI_IS_PRINT(*string)) {
-			*string = '?';
-		}
-		string++;
-		length--;
-	}
-}
-
-/*******************************************************************************
- *
- * FUNCTION:    acpi_tb_cleanup_table_header
- *
- * PARAMETERS:  out_header          - Where the cleaned header is returned
- *              header              - Input ACPI table header
- *
- * RETURN:      Returns the cleaned header in out_header
- *
- * DESCRIPTION: Copy the table header and ensure that all "string" fields in
- *              the header consist of printable characters.
- *
- ******************************************************************************/
-
-static void
-acpi_tb_cleanup_table_header(struct acpi_table_header *out_header,
-			     struct acpi_table_header *header)
-{
-
-	ACPI_MEMCPY(out_header, header, sizeof(struct acpi_table_header));
-
-	acpi_tb_fix_string(out_header->signature, ACPI_NAME_SIZE);
-	acpi_tb_fix_string(out_header->oem_id, ACPI_OEM_ID_SIZE);
-	acpi_tb_fix_string(out_header->oem_table_id, ACPI_OEM_TABLE_ID_SIZE);
-	acpi_tb_fix_string(out_header->asl_compiler_id, ACPI_NAME_SIZE);
-}
-
-/*******************************************************************************
- *
- * FUNCTION:    acpi_tb_print_table_header
- *
- * PARAMETERS:  address             - Table physical address
- *              header              - Table header
- *
- * RETURN:      None
- *
- * DESCRIPTION: Print an ACPI table header. Special cases for FACS and RSDP.
- *
- ******************************************************************************/
-
-void
-acpi_tb_print_table_header(acpi_physical_address address,
-			   struct acpi_table_header *header)
-{
-	struct acpi_table_header local_header;
-
-	/*
-	 * The reason that the Address is cast to a void pointer is so that we
-	 * can use %p which will work properly on both 32-bit and 64-bit hosts.
-	 */
-	if (ACPI_COMPARE_NAME(header->signature, ACPI_SIG_FACS)) {
-
-		/* FACS only has signature and length fields */
-
-		ACPI_INFO((AE_INFO, "%4.4s %p %05X",
-			   header->signature, ACPI_CAST_PTR(void, address),
-			   header->length));
-	} else if (ACPI_COMPARE_NAME(header->signature, ACPI_SIG_RSDP)) {
-
-		/* RSDP has no common fields */
-
-		ACPI_MEMCPY(local_header.oem_id,
-			    ACPI_CAST_PTR(struct acpi_table_rsdp,
-					  header)->oem_id, ACPI_OEM_ID_SIZE);
-		acpi_tb_fix_string(local_header.oem_id, ACPI_OEM_ID_SIZE);
-
-		ACPI_INFO((AE_INFO, "RSDP %p %05X (v%.2d %6.6s)",
-			   ACPI_CAST_PTR (void, address),
-			   (ACPI_CAST_PTR(struct acpi_table_rsdp, header)->
-			    revision >
-			    0) ? ACPI_CAST_PTR(struct acpi_table_rsdp,
-					       header)->length : 20,
-			   ACPI_CAST_PTR(struct acpi_table_rsdp,
-					 header)->revision,
-			   local_header.oem_id));
-	} else {
-		/* Standard ACPI table with full common header */
-
-		acpi_tb_cleanup_table_header(&local_header, header);
-
-		ACPI_INFO((AE_INFO,
-			   "%4.4s %p %05X (v%.2d %6.6s %8.8s %08X %4.4s %08X)",
-			   local_header.signature, ACPI_CAST_PTR(void, address),
-			   local_header.length, local_header.revision,
-			   local_header.oem_id, local_header.oem_table_id,
-			   local_header.oem_revision,
-			   local_header.asl_compiler_id,
-			   local_header.asl_compiler_revision));
-
-	}
-}
-
-/*******************************************************************************
- *
- * FUNCTION:    acpi_tb_validate_checksum
- *
- * PARAMETERS:  table               - ACPI table to verify
- *              length              - Length of entire table
- *
- * RETURN:      Status
- *
- * DESCRIPTION: Verifies that the table checksums to zero. Optionally returns
- *              exception on bad checksum.
- *
- ******************************************************************************/
-
-acpi_status acpi_tb_verify_checksum(struct acpi_table_header *table, u32 length)
-{
-	u8 checksum;
-
-	/* Compute the checksum on the table */
-
-	checksum = acpi_tb_checksum(ACPI_CAST_PTR(u8, table), length);
-
-	/* Checksum ok? (should be zero) */
-
-	if (checksum) {
-		ACPI_BIOS_WARNING((AE_INFO,
-				   "Incorrect checksum in table [%4.4s] - 0x%2.2X, "
-				   "should be 0x%2.2X",
-				   table->signature, table->checksum,
-				   (u8)(table->checksum - checksum)));
-
-#if (ACPI_CHECKSUM_ABORT)
-
-		return (AE_BAD_CHECKSUM);
-#endif
-	}
-
-	return (AE_OK);
-}
-
-/*******************************************************************************
- *
- * FUNCTION:    acpi_tb_checksum
- *
- * PARAMETERS:  buffer          - Pointer to memory region to be checked
- *              length          - Length of this memory region
- *
- * RETURN:      Checksum (u8)
- *
- * DESCRIPTION: Calculates circular checksum of memory region.
- *
- ******************************************************************************/
-
-u8 acpi_tb_checksum(u8 *buffer, u32 length)
-{
-	u8 sum = 0;
-	u8 *end = buffer + length;
-
-	while (buffer < end) {
-		sum = (u8) (sum + *(buffer++));
-	}
-
-	return (sum);
 }
 
 /*******************************************************************************
@@ -539,7 +292,7 @@ acpi_tb_install_table(acpi_physical_address address,
 		acpi_tb_delete_table(table_desc);
 	}
 
-      unmap_and_exit:
+unmap_and_exit:
 
 	/* Always unmap the table header that we mapped above */
 
@@ -572,7 +325,7 @@ acpi_tb_get_root_table_entry(u8 *table_entry, u32 table_entry_size)
 	 * Get the table physical address (32-bit for RSDT, 64-bit for XSDT):
 	 * Note: Addresses are 32-bit aligned (not 64) in both RSDT and XSDT
 	 */
-	if (table_entry_size == sizeof(u32)) {
+	if (table_entry_size == ACPI_RSDT_ENTRY_SIZE) {
 		/*
 		 * 32-bit platform, RSDT: Return 32-bit table entry
 		 * 64-bit platform, RSDT: Expand 32-bit to 64-bit and return
@@ -604,6 +357,87 @@ acpi_tb_get_root_table_entry(u8 *table_entry, u32 table_entry_size)
 
 /*******************************************************************************
  *
+ * FUNCTION:    acpi_tb_validate_xsdt
+ *
+ * PARAMETERS:  address             - Physical address of the XSDT (from RSDP)
+ *
+ * RETURN:      Status. AE_OK if the table appears to be valid.
+ *
+ * DESCRIPTION: Validate an XSDT to ensure that it is of minimum size and does
+ *              not contain any NULL entries. A problem that is seen in the
+ *              field is that the XSDT exists, but is actually useless because
+ *              of one or more (or all) NULL entries.
+ *
+ ******************************************************************************/
+
+static acpi_status acpi_tb_validate_xsdt(acpi_physical_address xsdt_address)
+{
+	struct acpi_table_header *table;
+	u8 *next_entry;
+	acpi_physical_address address;
+	u32 length;
+	u32 entry_count;
+	acpi_status status;
+	u32 i;
+
+	/* Get the XSDT length */
+
+	table =
+	    acpi_os_map_memory(xsdt_address, sizeof(struct acpi_table_header));
+	if (!table) {
+		return (AE_NO_MEMORY);
+	}
+
+	length = table->length;
+	acpi_os_unmap_memory(table, sizeof(struct acpi_table_header));
+
+	/*
+	 * Minimum XSDT length is the size of the standard ACPI header
+	 * plus one physical address entry
+	 */
+	if (length < (sizeof(struct acpi_table_header) + ACPI_XSDT_ENTRY_SIZE)) {
+		return (AE_INVALID_TABLE_LENGTH);
+	}
+
+	/* Map the entire XSDT */
+
+	table = acpi_os_map_memory(xsdt_address, length);
+	if (!table) {
+		return (AE_NO_MEMORY);
+	}
+
+	/* Get the number of entries and pointer to first entry */
+
+	status = AE_OK;
+	next_entry = ACPI_ADD_PTR(u8, table, sizeof(struct acpi_table_header));
+	entry_count = (u32)((table->length - sizeof(struct acpi_table_header)) /
+			    ACPI_XSDT_ENTRY_SIZE);
+
+	/* Validate each entry (physical address) within the XSDT */
+
+	for (i = 0; i < entry_count; i++) {
+		address =
+		    acpi_tb_get_root_table_entry(next_entry,
+						 ACPI_XSDT_ENTRY_SIZE);
+		if (!address) {
+
+			/* Detected a NULL entry, XSDT is invalid */
+
+			status = AE_NULL_ENTRY;
+			break;
+		}
+
+		next_entry += ACPI_XSDT_ENTRY_SIZE;
+	}
+
+	/* Unmap table */
+
+	acpi_os_unmap_memory(table, length);
+	return (status);
+}
+
+/*******************************************************************************
+ *
  * FUNCTION:    acpi_tb_parse_root_table
  *
  * PARAMETERS:  rsdp                    - Pointer to the RSDP
@@ -619,8 +453,7 @@ acpi_tb_get_root_table_entry(u8 *table_entry, u32 table_entry_size)
  *
  ******************************************************************************/
 
-acpi_status __init
-acpi_tb_parse_root_table(acpi_physical_address rsdp_address)
+acpi_status __init acpi_tb_parse_root_table(acpi_physical_address rsdp_address)
 {
 	struct acpi_table_rsdp *rsdp;
 	u32 table_entry_size;
@@ -628,16 +461,15 @@ acpi_tb_parse_root_table(acpi_physical_address rsdp_address)
 	u32 table_count;
 	struct acpi_table_header *table;
 	acpi_physical_address address;
-	acpi_physical_address uninitialized_var(rsdt_address);
+	acpi_physical_address rsdt_address;
 	u32 length;
 	u8 *table_entry;
 	acpi_status status;
 
 	ACPI_FUNCTION_TRACE(tb_parse_root_table);
 
-	/*
-	 * Map the entire RSDP and extract the address of the RSDT or XSDT
-	 */
+	/* Map the entire RSDP and extract the address of the RSDT or XSDT */
+
 	rsdp = acpi_os_map_memory(rsdp_address, sizeof(struct acpi_table_rsdp));
 	if (!rsdp) {
 		return_ACPI_STATUS(AE_NO_MEMORY);
@@ -647,24 +479,25 @@ acpi_tb_parse_root_table(acpi_physical_address rsdp_address)
 				   ACPI_CAST_PTR(struct acpi_table_header,
 						 rsdp));
 
-	/* Differentiate between RSDT and XSDT root tables */
+	/* Use XSDT if present and not overridden. Otherwise, use RSDT */
 
-	if (rsdp->revision > 1 && rsdp->xsdt_physical_address
-			&& !acpi_rsdt_forced) {
+	if ((rsdp->revision > 1) &&
+	    rsdp->xsdt_physical_address && !acpi_gbl_do_not_use_xsdt) {
 		/*
-		 * Root table is an XSDT (64-bit physical addresses). We must use the
-		 * XSDT if the revision is > 1 and the XSDT pointer is present, as per
-		 * the ACPI specification.
+		 * RSDP contains an XSDT (64-bit physical addresses). We must use
+		 * the XSDT if the revision is > 1 and the XSDT pointer is present,
+		 * as per the ACPI specification.
 		 */
 		address = (acpi_physical_address) rsdp->xsdt_physical_address;
-		table_entry_size = sizeof(u64);
-		rsdt_address = (acpi_physical_address)
-					rsdp->rsdt_physical_address;
+		rsdt_address =
+		    (acpi_physical_address) rsdp->rsdt_physical_address;
+		table_entry_size = ACPI_XSDT_ENTRY_SIZE;
 	} else {
 		/* Root table is an RSDT (32-bit physical addresses) */
 
 		address = (acpi_physical_address) rsdp->rsdt_physical_address;
-		table_entry_size = sizeof(u32);
+		rsdt_address = address;
+		table_entry_size = ACPI_RSDT_ENTRY_SIZE;
 	}
 
 	/*
@@ -673,15 +506,24 @@ acpi_tb_parse_root_table(acpi_physical_address rsdp_address)
 	 */
 	acpi_os_unmap_memory(rsdp, sizeof(struct acpi_table_rsdp));
 
-	if (table_entry_size == sizeof(u64)) {
-		if (acpi_tb_check_xsdt(address) == AE_NULL_ENTRY) {
-			/* XSDT has NULL entry, RSDT is used */
+	/*
+	 * If it is present and used, validate the XSDT for access/size
+	 * and ensure that all table entries are at least non-NULL
+	 */
+	if (table_entry_size == ACPI_XSDT_ENTRY_SIZE) {
+		status = acpi_tb_validate_xsdt(address);
+		if (ACPI_FAILURE(status)) {
+			ACPI_BIOS_WARNING((AE_INFO,
+					   "XSDT is invalid (%s), using RSDT",
+					   acpi_format_exception(status)));
+
+			/* Fall back to the RSDT */
+
 			address = rsdt_address;
-			table_entry_size = sizeof(u32);
-			ACPI_WARNING((AE_INFO, "BIOS XSDT has NULL entry, "
-					"using RSDT"));
+			table_entry_size = ACPI_RSDT_ENTRY_SIZE;
 		}
 	}
+
 	/* Map the RSDT/XSDT table header to get the full table length */
 
 	table = acpi_os_map_memory(address, sizeof(struct acpi_table_header));
@@ -691,12 +533,14 @@ acpi_tb_parse_root_table(acpi_physical_address rsdp_address)
 
 	acpi_tb_print_table_header(address, table);
 
-	/* Get the length of the full table, verify length and map entire table */
-
+	/*
+	 * Validate length of the table, and map entire table.
+	 * Minimum length table must contain at least one entry.
+	 */
 	length = table->length;
 	acpi_os_unmap_memory(table, sizeof(struct acpi_table_header));
 
-	if (length < sizeof(struct acpi_table_header)) {
+	if (length < (sizeof(struct acpi_table_header) + table_entry_size)) {
 		ACPI_BIOS_ERROR((AE_INFO,
 				 "Invalid table length 0x%X in RSDT/XSDT",
 				 length));
@@ -716,22 +560,21 @@ acpi_tb_parse_root_table(acpi_physical_address rsdp_address)
 		return_ACPI_STATUS(status);
 	}
 
-	/* Calculate the number of tables described in the root table */
+	/* Get the number of entries and pointer to first entry */
 
 	table_count = (u32)((table->length - sizeof(struct acpi_table_header)) /
 			    table_entry_size);
+	table_entry = ACPI_ADD_PTR(u8, table, sizeof(struct acpi_table_header));
+
 	/*
 	 * First two entries in the table array are reserved for the DSDT
 	 * and FACS, which are not actually present in the RSDT/XSDT - they
 	 * come from the FADT
 	 */
-	table_entry =
-	    ACPI_CAST_PTR(u8, table) + sizeof(struct acpi_table_header);
 	acpi_gbl_root_table_list.current_table_count = 2;
 
-	/*
-	 * Initialize the root table array from the RSDT/XSDT
-	 */
+	/* Initialize the root table array from the RSDT/XSDT */
+
 	for (i = 0; i < table_count; i++) {
 		if (acpi_gbl_root_table_list.current_table_count >=
 		    acpi_gbl_root_table_list.max_table_count) {
@@ -774,7 +617,7 @@ acpi_tb_parse_root_table(acpi_physical_address rsdp_address)
 		acpi_tb_install_table(acpi_gbl_root_table_list.tables[i].
 				      address, NULL, i);
 
-		/* Special case for FADT - get the DSDT and FACS */
+		/* Special case for FADT - validate it then get the DSDT and FACS */
 
 		if (ACPI_COMPARE_NAME
 		    (&acpi_gbl_root_table_list.tables[i].signature,

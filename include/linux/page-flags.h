@@ -228,9 +228,9 @@ PAGEFLAG(OwnerPriv1, owner_priv_1) TESTCLEARFLAG(OwnerPriv1, owner_priv_1)
 TESTPAGEFLAG(Writeback, writeback) TESTSCFLAG(Writeback, writeback)
 PAGEFLAG(MappedToDisk, mappedtodisk)
 
-/* PG_readahead is only used for file reads; PG_reclaim is only for writes */
+/* PG_readahead is only used for reads; PG_reclaim is only for writes */
 PAGEFLAG(Reclaim, reclaim) TESTCLEARFLAG(Reclaim, reclaim)
-PAGEFLAG(Readahead, reclaim)		/* Reminder to do async read-ahead */
+PAGEFLAG(Readahead, reclaim) TESTCLEARFLAG(Readahead, reclaim)
 
 #ifdef CONFIG_HIGHMEM
 /*
@@ -303,21 +303,13 @@ static inline void __SetPageUptodate(struct page *page)
 
 static inline void SetPageUptodate(struct page *page)
 {
-#ifdef CONFIG_S390
-	if (!test_and_set_bit(PG_uptodate, &page->flags))
-		page_set_storage_key(page_to_phys(page), PAGE_DEFAULT_KEY, 0);
-#else
 	/*
 	 * Memory barrier must be issued before setting the PG_uptodate bit,
 	 * so that all previous stores issued in order to bring the page
 	 * uptodate are actually visible before PageUptodate becomes true.
-	 *
-	 * s390 doesn't need an explicit smp_wmb here because the test and
-	 * set bit already provides full barriers.
 	 */
 	smp_wmb();
 	set_bit(PG_uptodate, &(page)->flags);
-#endif
 }
 
 CLEARPAGEFLAG(Uptodate, uptodate)
@@ -337,7 +329,9 @@ static inline void set_page_writeback(struct page *page)
  * System with lots of page flags available. This allows separate
  * flags for PageHead() and PageTail() checks of compound pages so that bit
  * tests can be used in performance sensitive paths. PageCompound is
- * generally not used in hot code paths.
+ * generally not used in hot code paths except arch/powerpc/mm/init_64.c
+ * and arch/powerpc/kvm/book3s_64_vio_hv.c which use it to detect huge pages
+ * and avoid handling those in real mode.
  */
 __PAGEFLAG(Head, head) CLEARPAGEFLAG(Head, head)
 __PAGEFLAG(Tail, tail)
@@ -362,7 +356,7 @@ static inline void ClearPageCompound(struct page *page)
  * pages on the LRU and/or pagecache.
  */
 TESTPAGEFLAG(Compound, compound)
-__PAGEFLAG(Head, compound)
+__SETPAGEFLAG(Head, compound)  __CLEARPAGEFLAG(Head, compound)
 
 /*
  * PG_reclaim is used in combination with PG_compound to mark the
@@ -374,7 +368,13 @@ __PAGEFLAG(Head, compound)
  * PG_compound & PG_reclaim	=> Tail page
  * PG_compound & ~PG_reclaim	=> Head page
  */
+#define PG_head_mask ((1L << PG_compound))
 #define PG_head_tail_mask ((1L << PG_compound) | (1L << PG_reclaim))
+
+static inline int PageHead(struct page *page)
+{
+	return ((page->flags & PG_head_tail_mask) == PG_head_mask);
+}
 
 static inline int PageTail(struct page *page)
 {
@@ -412,7 +412,7 @@ static inline void ClearPageCompound(struct page *page)
  */
 static inline int PageTransHuge(struct page *page)
 {
-	VM_BUG_ON(PageTail(page));
+	VM_BUG_ON_PAGE(PageTail(page), page);
 	return PageHead(page);
 }
 
@@ -460,25 +460,25 @@ static inline int PageTransTail(struct page *page)
  */
 static inline int PageSlabPfmemalloc(struct page *page)
 {
-	VM_BUG_ON(!PageSlab(page));
+	VM_BUG_ON_PAGE(!PageSlab(page), page);
 	return PageActive(page);
 }
 
 static inline void SetPageSlabPfmemalloc(struct page *page)
 {
-	VM_BUG_ON(!PageSlab(page));
+	VM_BUG_ON_PAGE(!PageSlab(page), page);
 	SetPageActive(page);
 }
 
 static inline void __ClearPageSlabPfmemalloc(struct page *page)
 {
-	VM_BUG_ON(!PageSlab(page));
+	VM_BUG_ON_PAGE(!PageSlab(page), page);
 	__ClearPageActive(page);
 }
 
 static inline void ClearPageSlabPfmemalloc(struct page *page)
 {
-	VM_BUG_ON(!PageSlab(page));
+	VM_BUG_ON_PAGE(!PageSlab(page), page);
 	ClearPageActive(page);
 }
 

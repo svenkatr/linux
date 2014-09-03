@@ -139,11 +139,12 @@ static ssize_t udf_file_aio_write(struct kiocb *iocb, const struct iovec *iov,
 {
 	ssize_t retval;
 	struct file *file = iocb->ki_filp;
-	struct inode *inode = file->f_path.dentry->d_inode;
+	struct inode *inode = file_inode(file);
 	int err, pos;
-	size_t count = iocb->ki_left;
+	size_t count = iocb->ki_nbytes;
 	struct udf_inode_info *iinfo = UDF_I(inode);
 
+	mutex_lock(&inode->i_mutex);
 	down_write(&iinfo->i_data_sem);
 	if (iinfo->i_alloc_type == ICBTAG_FLAG_AD_IN_ICB) {
 		if (file->f_flags & O_APPEND)
@@ -156,6 +157,7 @@ static ssize_t udf_file_aio_write(struct kiocb *iocb, const struct iovec *iov,
 						pos + count)) {
 			err = udf_expand_file_adinicb(inode);
 			if (err) {
+				mutex_unlock(&inode->i_mutex);
 				udf_debug("udf_expand_adinicb: err=%d\n", err);
 				return err;
 			}
@@ -169,16 +171,24 @@ static ssize_t udf_file_aio_write(struct kiocb *iocb, const struct iovec *iov,
 	} else
 		up_write(&iinfo->i_data_sem);
 
-	retval = generic_file_aio_write(iocb, iov, nr_segs, ppos);
-	if (retval > 0)
+	retval = __generic_file_aio_write(iocb, iov, nr_segs);
+	mutex_unlock(&inode->i_mutex);
+
+	if (retval > 0) {
+		ssize_t err;
+
 		mark_inode_dirty(inode);
+		err = generic_write_sync(file, iocb->ki_pos - retval, retval);
+		if (err < 0)
+			retval = err;
+	}
 
 	return retval;
 }
 
 long udf_ioctl(struct file *filp, unsigned int cmd, unsigned long arg)
 {
-	struct inode *inode = filp->f_dentry->d_inode;
+	struct inode *inode = file_inode(filp);
 	long old_block, new_block;
 	int result = -EINVAL;
 
@@ -204,7 +214,7 @@ long udf_ioctl(struct file *filp, unsigned int cmd, unsigned long arg)
 		goto out;
 	case UDF_RELOCATE_BLOCKS:
 		if (!capable(CAP_SYS_ADMIN)) {
-			result = -EACCES;
+			result = -EPERM;
 			goto out;
 		}
 		if (get_user(old_block, (long __user *)arg)) {

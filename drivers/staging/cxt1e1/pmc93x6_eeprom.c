@@ -34,13 +34,6 @@
 #define FALSE  0
 #endif
 
-#ifdef SBE_INCLUDE_SYMBOLS
-#define STATIC
-#else
-#define STATIC  static
-#endif
-
-
 /*------------------------------------------------------------------------
  *      EEPROM address definitions
  *------------------------------------------------------------------------
@@ -97,7 +90,7 @@ static int  ByteReverseBuilt = FALSE;
  *------------------------------------------------------------------------
  */
 
-short       mfg_template[sizeof (FLD_TYPE2)] =
+static u8 mfg_template[sizeof(FLD_TYPE2)] =
 {
     PROM_FORMAT_TYPE2,          /* type; */
     0x00, 0x1A,                 /* length[2]; */
@@ -120,7 +113,7 @@ short       mfg_template[sizeof (FLD_TYPE2)] =
  *      (the MSB becomes the LSB etc.).
  */
 
-STATIC void
+static void
 BuildByteReverse (void)
 {
     long        half;           /* Used to build by powers to 2 */
@@ -141,7 +134,7 @@ BuildByteReverse (void)
  *------------------------------------------------------------------------
  */
 
-STATIC void
+static void
 eeprom_delay (void)
 {
     int         timeout;
@@ -224,7 +217,7 @@ eeprom_get_byte (long addr)
  *      Issue the EEPROM command to disable writes.
  */
 
-STATIC void
+static void
 disable_pmc_eeprom (long addr)
 {
     eeprom_put_byte (addr, EPROM_EWDS, SIZE_ADDR_OP);
@@ -241,7 +234,7 @@ disable_pmc_eeprom (long addr)
  *      Issue the EEPROM command to enable writes.
  */
 
-STATIC void
+static void
 enable_pmc_eeprom (long addr)
 {
     eeprom_put_byte (addr, EPROM_EWEN, SIZE_ADDR_OP);
@@ -498,13 +491,11 @@ pmc_init_seeprom (u_int32_t addr, u_int32_t serialNum)
     PROMFORMAT  buffer;         /* Memory image of structure */
     u_int32_t   crc;            /* CRC of structure */
     time_t      createTime;
-    int         i;
 
     createTime = get_seconds ();
 
     /* use template data */
-    for (i = 0; i < sizeof (FLD_TYPE2); ++i)
-        buffer.bytes[i] = mfg_template[i];
+    memcpy(&buffer.fldType2, mfg_template, sizeof(buffer.fldType2));
 
     /* Update serial number field in buffer */
     pmcSetBuffValue (&buffer.fldType2.Serial[3], serialNum, 3);

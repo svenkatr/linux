@@ -1,5 +1,5 @@
 /*
- * 	PCI searching functions.
+ *	PCI searching functions.
  *
  *	Copyright (C) 1993 -- 1997 Drew Eckhardt, Frederic Potter,
  *					David Mosberger-Tang
@@ -54,14 +54,14 @@ pci_find_upstream_pcie_bridge(struct pci_dev *pdev)
 
 static struct pci_bus *pci_do_find_bus(struct pci_bus *bus, unsigned char busnr)
 {
-	struct pci_bus* child;
-	struct list_head *tmp;
+	struct pci_bus *child;
+	struct pci_bus *tmp;
 
 	if(bus->number == busnr)
 		return bus;
 
-	list_for_each(tmp, &bus->children) {
-		child = pci_do_find_bus(pci_bus_b(tmp), busnr);
+	list_for_each_entry(tmp, &bus->children, node) {
+		child = pci_do_find_bus(tmp, busnr);
 		if(child)
 			return child;
 	}
@@ -96,12 +96,12 @@ struct pci_bus * pci_find_bus(int domain, int busnr)
  * pci_find_next_bus - begin or continue searching for a PCI bus
  * @from: Previous PCI bus found, or %NULL for new search.
  *
- * Iterates through the list of known PCI busses.  A new search is
+ * Iterates through the list of known PCI buses.  A new search is
  * initiated by passing %NULL as the @from argument.  Otherwise if
  * @from is not %NULL, searches continue from next device on the
  * global list.
  */
-struct pci_bus * 
+struct pci_bus *
 pci_find_next_bus(const struct pci_bus *from)
 {
 	struct list_head *n;
@@ -111,7 +111,7 @@ pci_find_next_bus(const struct pci_bus *from)
 	down_read(&pci_bus_sem);
 	n = from ? from->node.next : pci_root_buses.next;
 	if (n != &pci_root_buses)
-		b = pci_bus_b(n);
+		b = list_entry(n, struct pci_bus, node);
 	up_read(&pci_bus_sem);
 	return b;
 }
@@ -119,11 +119,11 @@ pci_find_next_bus(const struct pci_bus *from)
 /**
  * pci_get_slot - locate PCI device for a given PCI slot
  * @bus: PCI bus on which desired PCI device resides
- * @devfn: encodes number of PCI slot in which the desired PCI 
- * device resides and the logical device number within that slot 
+ * @devfn: encodes number of PCI slot in which the desired PCI
+ * device resides and the logical device number within that slot
  * in case of multi-function devices.
  *
- * Given a PCI bus and slot/function number, the desired PCI device 
+ * Given a PCI bus and slot/function number, the desired PCI device
  * is located in the list of PCI devices.
  * If the device is found, its reference count is increased and this
  * function returns a pointer to its data structure.  The caller must
@@ -319,13 +319,13 @@ int pci_dev_present(const struct pci_device_id *ids)
 	WARN_ON(in_interrupt());
 	while (ids->vendor || ids->subvendor || ids->class_mask) {
 		found = pci_get_dev_by_id(ids, NULL);
-		if (found)
-			goto exit;
+		if (found) {
+			pci_dev_put(found);
+			return 1;
+		}
 		ids++;
 	}
-exit:
-	if (found)
-		return 1;
+
 	return 0;
 }
 EXPORT_SYMBOL(pci_dev_present);

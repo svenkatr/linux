@@ -370,7 +370,7 @@ err:
 	return -ENOMEM;
 }
 
-void bot_cleanup_old_alt(struct f_uas *fu)
+static void bot_cleanup_old_alt(struct f_uas *fu)
 {
 	if (!(fu->flags & USBG_ENABLED))
 		return;
@@ -472,7 +472,7 @@ static int usbg_bot_setup(struct usb_function *f,
 		bot_enqueue_cmd_cbw(fu);
 		return 0;
 		break;
-	};
+	}
 	return -ENOTSUPP;
 }
 
@@ -617,7 +617,7 @@ static void uasp_status_data_cmpl(struct usb_ep *ep, struct usb_request *req)
 
 	default:
 		BUG();
-	};
+	}
 	return;
 
 cleanup:
@@ -1467,9 +1467,13 @@ static int usbg_get_cmd_state(struct se_cmd *se_cmd)
 	return 0;
 }
 
-static int usbg_queue_tm_rsp(struct se_cmd *se_cmd)
+static void usbg_queue_tm_rsp(struct se_cmd *se_cmd)
 {
-	return 0;
+}
+
+static void usbg_aborted_task(struct se_cmd *se_cmd)
+{
+	return;
 }
 
 static const char *usbg_check_wwn(const char *name)
@@ -1614,7 +1618,7 @@ static struct se_wwn *usbg_make_tport(
 		return ERR_PTR(-ENOMEM);
 	}
 	tport->tport_wwpn = wwpn;
-	snprintf(tport->tport_name, sizeof(tport->tport_name), wnn_name);
+	snprintf(tport->tport_name, sizeof(tport->tport_name), "%s", wnn_name);
 	return &tport->tport_wwn;
 }
 
@@ -1727,7 +1731,7 @@ static int tcm_usbg_make_nexus(struct usbg_tpg *tpg, char *name)
 		pr_err("Unable to allocate struct tcm_vhost_nexus\n");
 		goto err_unlock;
 	}
-	tv_nexus->tvn_se_sess = transport_init_session();
+	tv_nexus->tvn_se_sess = transport_init_session(TARGET_PROT_NORMAL);
 	if (IS_ERR(tv_nexus->tvn_se_sess))
 		goto err_free;
 
@@ -1794,9 +1798,10 @@ static int tcm_usbg_drop_nexus(struct usbg_tpg *tpg)
 	tpg->tpg_nexus = NULL;
 
 	kfree(tv_nexus);
+	ret = 0;
 out:
 	mutex_unlock(&tpg->tpg_mutex);
-	return 0;
+	return ret;
 }
 
 static ssize_t tcm_usbg_tpg_store_nexus(
@@ -1897,6 +1902,7 @@ static struct target_core_fabric_ops usbg_ops = {
 	.queue_data_in			= usbg_send_read_response,
 	.queue_status			= usbg_send_status_response,
 	.queue_tm_rsp			= usbg_queue_tm_rsp,
+	.aborted_task			= usbg_aborted_task,
 	.check_stop_free		= usbg_check_stop_free,
 
 	.fabric_make_wwn		= usbg_make_tport,
@@ -1923,15 +1929,15 @@ static int usbg_register_configfs(void)
 	}
 
 	fabric->tf_ops = usbg_ops;
-	TF_CIT_TMPL(fabric)->tfc_wwn_cit.ct_attrs = usbg_wwn_attrs;
-	TF_CIT_TMPL(fabric)->tfc_tpg_base_cit.ct_attrs = usbg_base_attrs;
-	TF_CIT_TMPL(fabric)->tfc_tpg_attrib_cit.ct_attrs = NULL;
-	TF_CIT_TMPL(fabric)->tfc_tpg_param_cit.ct_attrs = NULL;
-	TF_CIT_TMPL(fabric)->tfc_tpg_np_base_cit.ct_attrs = NULL;
-	TF_CIT_TMPL(fabric)->tfc_tpg_nacl_base_cit.ct_attrs = NULL;
-	TF_CIT_TMPL(fabric)->tfc_tpg_nacl_attrib_cit.ct_attrs = NULL;
-	TF_CIT_TMPL(fabric)->tfc_tpg_nacl_auth_cit.ct_attrs = NULL;
-	TF_CIT_TMPL(fabric)->tfc_tpg_nacl_param_cit.ct_attrs = NULL;
+	fabric->tf_cit_tmpl.tfc_wwn_cit.ct_attrs = usbg_wwn_attrs;
+	fabric->tf_cit_tmpl.tfc_tpg_base_cit.ct_attrs = usbg_base_attrs;
+	fabric->tf_cit_tmpl.tfc_tpg_attrib_cit.ct_attrs = NULL;
+	fabric->tf_cit_tmpl.tfc_tpg_param_cit.ct_attrs = NULL;
+	fabric->tf_cit_tmpl.tfc_tpg_np_base_cit.ct_attrs = NULL;
+	fabric->tf_cit_tmpl.tfc_tpg_nacl_base_cit.ct_attrs = NULL;
+	fabric->tf_cit_tmpl.tfc_tpg_nacl_attrib_cit.ct_attrs = NULL;
+	fabric->tf_cit_tmpl.tfc_tpg_nacl_auth_cit.ct_attrs = NULL;
+	fabric->tf_cit_tmpl.tfc_tpg_nacl_param_cit.ct_attrs = NULL;
 	ret = target_fabric_configfs_register(fabric);
 	if (ret < 0) {
 		printk(KERN_ERR "target_fabric_configfs_register() failed"

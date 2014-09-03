@@ -1,5 +1,4 @@
-/*
- * PTP Hardware Clock (PHC) driver for the Intel 82576 and 82580
+/* PTP Hardware Clock (PHC) driver for the Intel 82576 and 82580
  *
  * Copyright (C) 2011 Richard Cochran <richardcochran@gmail.com>
  *
@@ -13,21 +12,20 @@
  * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
  * GNU General Public License for more details.
  *
- * You should have received a copy of the GNU General Public License along
- * with this program; if not, write to the Free Software Foundation, Inc.,
- * 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301 USA.
+ * You should have received a copy of the GNU General Public License along with
+ * this program; if not, see <http://www.gnu.org/licenses/>.
  */
 #include <linux/module.h>
 #include <linux/device.h>
 #include <linux/pci.h>
+#include <linux/ptp_classify.h>
 
 #include "igb.h"
 
 #define INCVALUE_MASK		0x7fffffff
 #define ISGN			0x80000000
 
-/*
- * The 82580 timesync updates the system timer every 8ns by 8ns,
+/* The 82580 timesync updates the system timer every 8ns by 8ns,
  * and this update value cannot be reprogrammed.
  *
  * Neither the 82576 nor the 82580 offer registers wide enough to hold
@@ -70,15 +68,15 @@
  */
 
 #define IGB_SYSTIM_OVERFLOW_PERIOD	(HZ * 60 * 9)
+#define IGB_PTP_TX_TIMEOUT		(HZ * 15)
 #define INCPERIOD_82576			(1 << E1000_TIMINCA_16NS_SHIFT)
 #define INCVALUE_82576_MASK		((1 << E1000_TIMINCA_16NS_SHIFT) - 1)
 #define INCVALUE_82576			(16 << IGB_82576_TSYNC_SHIFT)
 #define IGB_NBITS_82580			40
 
-/*
- * SYSTIM read access for the 82576
- */
+static void igb_ptp_tx_hwtstamp(struct igb_adapter *adapter);
 
+/* SYSTIM read access for the 82576 */
 static cycle_t igb_ptp_read_82576(const struct cyclecounter *cc)
 {
 	struct igb_adapter *igb = container_of(cc, struct igb_adapter, cc);
@@ -95,23 +93,19 @@ static cycle_t igb_ptp_read_82576(const struct cyclecounter *cc)
 	return val;
 }
 
-/*
- * SYSTIM read access for the 82580
- */
-
+/* SYSTIM read access for the 82580 */
 static cycle_t igb_ptp_read_82580(const struct cyclecounter *cc)
 {
 	struct igb_adapter *igb = container_of(cc, struct igb_adapter, cc);
 	struct e1000_hw *hw = &igb->hw;
+	u32 lo, hi;
 	u64 val;
-	u32 lo, hi, jk;
 
-	/*
-	 * The timestamp latches on lowest register read. For the 82580
+	/* The timestamp latches on lowest register read. For the 82580
 	 * the lowest register is SYSTIMR instead of SYSTIML.  However we only
 	 * need to provide nanosecond resolution, so we just ignore it.
 	 */
-	jk = rd32(E1000_SYSTIMR);
+	rd32(E1000_SYSTIMR);
 	lo = rd32(E1000_SYSTIML);
 	hi = rd32(E1000_SYSTIMH);
 
@@ -121,21 +115,17 @@ static cycle_t igb_ptp_read_82580(const struct cyclecounter *cc)
 	return val;
 }
 
-/*
- * SYSTIM read access for I210/I211
- */
-
+/* SYSTIM read access for I210/I211 */
 static void igb_ptp_read_i210(struct igb_adapter *adapter, struct timespec *ts)
 {
 	struct e1000_hw *hw = &adapter->hw;
-	u32 sec, nsec, jk;
+	u32 sec, nsec;
 
-	/*
-	 * The timestamp latches on lowest register read. For I210/I211, the
+	/* The timestamp latches on lowest register read. For I210/I211, the
 	 * lowest register is SYSTIMR. Since we only need to provide nanosecond
 	 * resolution, we can ignore it.
 	 */
-	jk = rd32(E1000_SYSTIMR);
+	rd32(E1000_SYSTIMR);
 	nsec = rd32(E1000_SYSTIML);
 	sec = rd32(E1000_SYSTIMH);
 
@@ -148,8 +138,7 @@ static void igb_ptp_write_i210(struct igb_adapter *adapter,
 {
 	struct e1000_hw *hw = &adapter->hw;
 
-	/*
-	 * Writing the SYSTIMR register is not necessary as it only provides
+	/* Writing the SYSTIMR register is not necessary as it only provides
 	 * sub-nanosecond resolution.
 	 */
 	wr32(E1000_SYSTIML, ts->tv_nsec);
@@ -183,6 +172,7 @@ static void igb_ptp_systim_to_hwtstamp(struct igb_adapter *adapter,
 	switch (adapter->hw.mac.type) {
 	case e1000_82576:
 	case e1000_82580:
+	case e1000_i354:
 	case e1000_i350:
 		spin_lock_irqsave(&adapter->tmreg_lock, flags);
 
@@ -205,10 +195,7 @@ static void igb_ptp_systim_to_hwtstamp(struct igb_adapter *adapter,
 	}
 }
 
-/*
- * PTP clock operations
- */
-
+/* PTP clock operations */
 static int igb_ptp_adjfreq_82576(struct ptp_clock_info *ptp, s32 ppb)
 {
 	struct igb_adapter *igb = container_of(ptp, struct igb_adapter,
@@ -385,8 +372,8 @@ static int igb_ptp_enable(struct ptp_clock_info *ptp,
  *
  * This work function polls the TSYNCTXCTL valid bit to determine when a
  * timestamp has been taken for the current stored skb.
- */
-void igb_ptp_tx_work(struct work_struct *work)
+ **/
+static void igb_ptp_tx_work(struct work_struct *work)
 {
 	struct igb_adapter *adapter = container_of(work, struct igb_adapter,
 						   ptp_tx_work);
@@ -395,6 +382,16 @@ void igb_ptp_tx_work(struct work_struct *work)
 
 	if (!adapter->ptp_tx_skb)
 		return;
+
+	if (time_is_before_jiffies(adapter->ptp_tx_start +
+				   IGB_PTP_TX_TIMEOUT)) {
+		dev_kfree_skb_any(adapter->ptp_tx_skb);
+		adapter->ptp_tx_skb = NULL;
+		clear_bit_unlock(__IGB_PTP_TX_IN_PROGRESS, &adapter->state);
+		adapter->tx_hwtstamp_timeouts++;
+		dev_warn(&adapter->pdev->dev, "clearing Tx timestamp hang\n");
+		return;
+	}
 
 	tsynctxctl = rd32(E1000_TSYNCTXCTL);
 	if (tsynctxctl & E1000_TSYNCTXCTL_VALID)
@@ -419,14 +416,54 @@ static void igb_ptp_overflow_check(struct work_struct *work)
 }
 
 /**
+ * igb_ptp_rx_hang - detect error case when Rx timestamp registers latched
+ * @adapter: private network adapter structure
+ *
+ * This watchdog task is scheduled to detect error case where hardware has
+ * dropped an Rx packet that was timestamped when the ring is full. The
+ * particular error is rare but leaves the device in a state unable to timestamp
+ * any future packets.
+ **/
+void igb_ptp_rx_hang(struct igb_adapter *adapter)
+{
+	struct e1000_hw *hw = &adapter->hw;
+	u32 tsyncrxctl = rd32(E1000_TSYNCRXCTL);
+	unsigned long rx_event;
+
+	if (hw->mac.type != e1000_82576)
+		return;
+
+	/* If we don't have a valid timestamp in the registers, just update the
+	 * timeout counter and exit
+	 */
+	if (!(tsyncrxctl & E1000_TSYNCRXCTL_VALID)) {
+		adapter->last_rx_ptp_check = jiffies;
+		return;
+	}
+
+	/* Determine the most recent watchdog or rx_timestamp event */
+	rx_event = adapter->last_rx_ptp_check;
+	if (time_after(adapter->last_rx_timestamp, rx_event))
+		rx_event = adapter->last_rx_timestamp;
+
+	/* Only need to read the high RXSTMP register to clear the lock */
+	if (time_is_before_jiffies(rx_event + 5 * HZ)) {
+		rd32(E1000_RXSTMPH);
+		adapter->last_rx_ptp_check = jiffies;
+		adapter->rx_hwtstamp_cleared++;
+		dev_warn(&adapter->pdev->dev, "clearing Rx timestamp hang\n");
+	}
+}
+
+/**
  * igb_ptp_tx_hwtstamp - utility function which checks for TX time stamp
  * @adapter: Board private structure.
  *
  * If we were asked to do hardware stamping and such a time stamp is
  * available, then it must have been for this skb here because we only
  * allow only one such packet into the queue.
- */
-void igb_ptp_tx_hwtstamp(struct igb_adapter *adapter)
+ **/
+static void igb_ptp_tx_hwtstamp(struct igb_adapter *adapter)
 {
 	struct e1000_hw *hw = &adapter->hw;
 	struct skb_shared_hwtstamps shhwtstamps;
@@ -439,6 +476,7 @@ void igb_ptp_tx_hwtstamp(struct igb_adapter *adapter)
 	skb_tstamp_tx(adapter->ptp_tx_skb, &shhwtstamps);
 	dev_kfree_skb_any(adapter->ptp_tx_skb);
 	adapter->ptp_tx_skb = NULL;
+	clear_bit_unlock(__IGB_PTP_TX_IN_PROGRESS, &adapter->state);
 }
 
 /**
@@ -450,15 +488,14 @@ void igb_ptp_tx_hwtstamp(struct igb_adapter *adapter)
  * This function is meant to retrieve a timestamp from the first buffer of an
  * incoming frame.  The value is stored in little endian format starting on
  * byte 8.
- */
+ **/
 void igb_ptp_rx_pktstamp(struct igb_q_vector *q_vector,
 			 unsigned char *va,
 			 struct sk_buff *skb)
 {
 	__le64 *regval = (__le64 *)va;
 
-	/*
-	 * The timestamp is recorded in little endian format.
+	/* The timestamp is recorded in little endian format.
 	 * DWORD: 0        1        2        3
 	 * Field: Reserved Reserved SYSTIML  SYSTIMH
 	 */
@@ -473,7 +510,7 @@ void igb_ptp_rx_pktstamp(struct igb_q_vector *q_vector,
  *
  * This function is meant to retrieve a timestamp from the internal registers
  * of the adapter and store it in the skb.
- */
+ **/
 void igb_ptp_rx_rgtstamp(struct igb_q_vector *q_vector,
 			 struct sk_buff *skb)
 {
@@ -481,8 +518,7 @@ void igb_ptp_rx_rgtstamp(struct igb_q_vector *q_vector,
 	struct e1000_hw *hw = &adapter->hw;
 	u64 regval;
 
-	/*
-	 * If this bit is set, then the RX registers contain the time stamp. No
+	/* If this bit is set, then the RX registers contain the time stamp. No
 	 * other packet will be time stamped until we read these registers, so
 	 * read the registers to make them available again. Because only one
 	 * packet can be time stamped at a time, we know that the register
@@ -499,13 +535,34 @@ void igb_ptp_rx_rgtstamp(struct igb_q_vector *q_vector,
 	regval |= (u64)rd32(E1000_RXSTMPH) << 32;
 
 	igb_ptp_systim_to_hwtstamp(adapter, skb_hwtstamps(skb), regval);
+
+	/* Update the last_rx_timestamp timer in order to enable watchdog check
+	 * for error case of latched timestamp on a dropped packet.
+	 */
+	adapter->last_rx_timestamp = jiffies;
 }
 
 /**
- * igb_ptp_hwtstamp_ioctl - control hardware time stamping
+ * igb_ptp_get_ts_config - get hardware time stamping config
  * @netdev:
  * @ifreq:
- * @cmd:
+ *
+ * Get the hwtstamp_config settings to return to the user. Rather than attempt
+ * to deconstruct the settings from the registers, just return a shadow copy
+ * of the last known settings.
+ **/
+int igb_ptp_get_ts_config(struct net_device *netdev, struct ifreq *ifr)
+{
+	struct igb_adapter *adapter = netdev_priv(netdev);
+	struct hwtstamp_config *config = &adapter->tstamp_config;
+
+	return copy_to_user(ifr->ifr_data, config, sizeof(*config)) ?
+		-EFAULT : 0;
+}
+/**
+ * igb_ptp_set_ts_config - control hardware time stamping
+ * @netdev:
+ * @ifreq:
  *
  * Outgoing time stamping can be enabled and disabled. Play nice and
  * disable it when requested, although it shouldn't case any overhead
@@ -518,14 +575,12 @@ void igb_ptp_rx_rgtstamp(struct igb_q_vector *q_vector,
  * type has to be specified. Matching the kind of event packet is
  * not supported, with the exception of "all V2 events regardless of
  * level 2 or 4".
- *
  **/
-int igb_ptp_hwtstamp_ioctl(struct net_device *netdev,
-			   struct ifreq *ifr, int cmd)
+int igb_ptp_set_ts_config(struct net_device *netdev, struct ifreq *ifr)
 {
 	struct igb_adapter *adapter = netdev_priv(netdev);
 	struct e1000_hw *hw = &adapter->hw;
-	struct hwtstamp_config config;
+	struct hwtstamp_config *config = &adapter->tstamp_config;
 	u32 tsync_tx_ctl = E1000_TSYNCTXCTL_ENABLED;
 	u32 tsync_rx_ctl = E1000_TSYNCRXCTL_ENABLED;
 	u32 tsync_rx_cfg = 0;
@@ -533,14 +588,14 @@ int igb_ptp_hwtstamp_ioctl(struct net_device *netdev,
 	bool is_l2 = false;
 	u32 regval;
 
-	if (copy_from_user(&config, ifr->ifr_data, sizeof(config)))
+	if (copy_from_user(config, ifr->ifr_data, sizeof(*config)))
 		return -EFAULT;
 
 	/* reserved for future extensions */
-	if (config.flags)
+	if (config->flags)
 		return -EINVAL;
 
-	switch (config.tx_type) {
+	switch (config->tx_type) {
 	case HWTSTAMP_TX_OFF:
 		tsync_tx_ctl = 0;
 	case HWTSTAMP_TX_ON:
@@ -549,7 +604,7 @@ int igb_ptp_hwtstamp_ioctl(struct net_device *netdev,
 		return -ERANGE;
 	}
 
-	switch (config.rx_filter) {
+	switch (config->rx_filter) {
 	case HWTSTAMP_FILTER_NONE:
 		tsync_rx_ctl = 0;
 		break;
@@ -573,7 +628,7 @@ int igb_ptp_hwtstamp_ioctl(struct net_device *netdev,
 	case HWTSTAMP_FILTER_PTP_V2_L2_DELAY_REQ:
 	case HWTSTAMP_FILTER_PTP_V2_L4_DELAY_REQ:
 		tsync_rx_ctl |= E1000_TSYNCRXCTL_TYPE_EVENT_V2;
-		config.rx_filter = HWTSTAMP_FILTER_PTP_V2_EVENT;
+		config->rx_filter = HWTSTAMP_FILTER_PTP_V2_EVENT;
 		is_l2 = true;
 		is_l4 = true;
 		break;
@@ -584,12 +639,12 @@ int igb_ptp_hwtstamp_ioctl(struct net_device *netdev,
 		 */
 		if (hw->mac.type != e1000_82576) {
 			tsync_rx_ctl |= E1000_TSYNCRXCTL_TYPE_ALL;
-			config.rx_filter = HWTSTAMP_FILTER_ALL;
+			config->rx_filter = HWTSTAMP_FILTER_ALL;
 			break;
 		}
 		/* fall through */
 	default:
-		config.rx_filter = HWTSTAMP_FILTER_NONE;
+		config->rx_filter = HWTSTAMP_FILTER_NONE;
 		return -ERANGE;
 	}
 
@@ -599,15 +654,14 @@ int igb_ptp_hwtstamp_ioctl(struct net_device *netdev,
 		return 0;
 	}
 
-	/*
-	 * Per-packet timestamping only works if all packets are
+	/* Per-packet timestamping only works if all packets are
 	 * timestamped, so enable timestamping in all packets as
-	 * long as one rx filter was configured.
+	 * long as one Rx filter was configured.
 	 */
 	if ((hw->mac.type >= e1000_82580) && tsync_rx_ctl) {
 		tsync_rx_ctl = E1000_TSYNCRXCTL_ENABLED;
 		tsync_rx_ctl |= E1000_TSYNCRXCTL_TYPE_ALL;
-		config.rx_filter = HWTSTAMP_FILTER_ALL;
+		config->rx_filter = HWTSTAMP_FILTER_ALL;
 		is_l2 = true;
 		is_l4 = true;
 
@@ -643,7 +697,6 @@ int igb_ptp_hwtstamp_ioctl(struct net_device *netdev,
 	else
 		wr32(E1000_ETQF(3), 0);
 
-#define PTP_PORT 319
 	/* L4 Queue Filter[3]: filter by destination port and protocol */
 	if (is_l4) {
 		u32 ftqf = (IPPROTO_UDP /* UDP */
@@ -652,12 +705,12 @@ int igb_ptp_hwtstamp_ioctl(struct net_device *netdev,
 			| E1000_FTQF_MASK); /* mask all inputs */
 		ftqf &= ~E1000_FTQF_MASK_PROTO_BP; /* enable protocol check */
 
-		wr32(E1000_IMIR(3), htons(PTP_PORT));
+		wr32(E1000_IMIR(3), htons(PTP_EV_PORT));
 		wr32(E1000_IMIREXT(3),
 		     (E1000_IMIREXT_SIZE_BP | E1000_IMIREXT_CTRL_BP));
 		if (hw->mac.type == e1000_82576) {
 			/* enable source port check */
-			wr32(E1000_SPQF(3), htons(PTP_PORT));
+			wr32(E1000_SPQF(3), htons(PTP_EV_PORT));
 			ftqf &= ~E1000_FTQF_MASK_SOURCE_PORT_BP;
 		}
 		wr32(E1000_FTQF(3), ftqf);
@@ -672,7 +725,7 @@ int igb_ptp_hwtstamp_ioctl(struct net_device *netdev,
 	regval = rd32(E1000_RXSTMPL);
 	regval = rd32(E1000_RXSTMPH);
 
-	return copy_to_user(ifr->ifr_data, &config, sizeof(config)) ?
+	return copy_to_user(ifr->ifr_data, config, sizeof(*config)) ?
 		-EFAULT : 0;
 }
 
@@ -685,7 +738,7 @@ void igb_ptp_init(struct igb_adapter *adapter)
 	case e1000_82576:
 		snprintf(adapter->ptp_caps.name, 16, "%pm", netdev->dev_addr);
 		adapter->ptp_caps.owner = THIS_MODULE;
-		adapter->ptp_caps.max_adj = 1000000000;
+		adapter->ptp_caps.max_adj = 999999881;
 		adapter->ptp_caps.n_ext_ts = 0;
 		adapter->ptp_caps.pps = 0;
 		adapter->ptp_caps.adjfreq = igb_ptp_adjfreq_82576;
@@ -701,6 +754,7 @@ void igb_ptp_init(struct igb_adapter *adapter)
 		wr32(E1000_TIMINCA, INCPERIOD_82576 | INCVALUE_82576);
 		break;
 	case e1000_82580:
+	case e1000_i354:
 	case e1000_i350:
 		snprintf(adapter->ptp_caps.name, 16, "%pm", netdev->dev_addr);
 		adapter->ptp_caps.owner = THIS_MODULE;
@@ -762,7 +816,7 @@ void igb_ptp_init(struct igb_adapter *adapter)
 
 	/* Initialize the time sync interrupts for devices that support it. */
 	if (hw->mac.type >= e1000_82580) {
-		wr32(E1000_TSIM, E1000_TSIM_TXTS);
+		wr32(E1000_TSIM, TSYNC_INTERRUPTS);
 		wr32(E1000_IMS, E1000_IMS_TS);
 	}
 
@@ -789,6 +843,7 @@ void igb_ptp_stop(struct igb_adapter *adapter)
 	switch (adapter->hw.mac.type) {
 	case e1000_82576:
 	case e1000_82580:
+	case e1000_i354:
 	case e1000_i350:
 		cancel_delayed_work_sync(&adapter->ptp_overflow_work);
 		break;
@@ -801,6 +856,11 @@ void igb_ptp_stop(struct igb_adapter *adapter)
 	}
 
 	cancel_work_sync(&adapter->ptp_tx_work);
+	if (adapter->ptp_tx_skb) {
+		dev_kfree_skb_any(adapter->ptp_tx_skb);
+		adapter->ptp_tx_skb = NULL;
+		clear_bit_unlock(__IGB_PTP_TX_IN_PROGRESS, &adapter->state);
+	}
 
 	if (adapter->ptp_clock) {
 		ptp_clock_unregister(adapter->ptp_clock);
@@ -823,18 +883,22 @@ void igb_ptp_reset(struct igb_adapter *adapter)
 	if (!(adapter->flags & IGB_FLAG_PTP))
 		return;
 
+	/* reset the tstamp_config */
+	memset(&adapter->tstamp_config, 0, sizeof(adapter->tstamp_config));
+
 	switch (adapter->hw.mac.type) {
 	case e1000_82576:
 		/* Dial the nominal frequency. */
 		wr32(E1000_TIMINCA, INCPERIOD_82576 | INCVALUE_82576);
 		break;
 	case e1000_82580:
+	case e1000_i354:
 	case e1000_i350:
 	case e1000_i210:
 	case e1000_i211:
 		/* Enable the timer functions and interrupts. */
 		wr32(E1000_TSAUXC, 0x0);
-		wr32(E1000_TSIM, E1000_TSIM_TXTS);
+		wr32(E1000_TSIM, TSYNC_INTERRUPTS);
 		wr32(E1000_IMS, E1000_IMS_TS);
 		break;
 	default:

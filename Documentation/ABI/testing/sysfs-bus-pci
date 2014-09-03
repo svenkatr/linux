@@ -64,25 +64,21 @@ Description:
 		Writing a non-zero value to this attribute will
 		force a rescan of all PCI buses in the system, and
 		re-discover previously removed devices.
-		Depends on CONFIG_HOTPLUG.
 
 What:		/sys/bus/pci/devices/.../msi_irqs/
 Date:		September, 2011
 Contact:	Neil Horman <nhorman@tuxdriver.com>
 Description:
 		The /sys/devices/.../msi_irqs directory contains a variable set
-		of sub-directories, with each sub-directory being named after a
-		corresponding msi irq vector allocated to that device.  Each
-		numbered sub-directory N contains attributes of that irq.
-		Note that this directory is not created for device drivers which
-		do not support msi irqs
+		of files, with each file being named after a corresponding msi
+		irq vector allocated to that device.
 
-What:		/sys/bus/pci/devices/.../msi_irqs/<N>/mode
+What:		/sys/bus/pci/devices/.../msi_irqs/<N>
 Date:		September 2011
 Contact:	Neil Horman <nhorman@tuxdriver.com>
 Description:
 		This attribute indicates the mode that the irq vector named by
-		the parent directory is in (msi vs. msix)
+		the file is in (msi vs. msix)
 
 What:		/sys/bus/pci/devices/.../remove
 Date:		January 2009
@@ -90,7 +86,6 @@ Contact:	Linux PCI developers <linux-pci@vger.kernel.org>
 Description:
 		Writing a non-zero value to this attribute will
 		hot-remove the PCI device and any of its children.
-		Depends on CONFIG_HOTPLUG.
 
 What:		/sys/bus/pci/devices/.../pci_bus/.../rescan
 Date:		May 2011
@@ -99,7 +94,7 @@ Description:
 		Writing a non-zero value to this attribute will
 		force a rescan of the bus and all child buses,
 		and re-discover devices removed earlier from this
-		part of the device tree.  Depends on CONFIG_HOTPLUG.
+		part of the device tree.
 
 What:		/sys/bus/pci/devices/.../rescan
 Date:		January 2009
@@ -109,7 +104,6 @@ Description:
 		force a rescan of the device's parent bus and all
 		child buses, and re-discover devices removed earlier
 		from this part of the device tree.
-		Depends on CONFIG_HOTPLUG.
 
 What:		/sys/bus/pci/devices/.../reset
 Date:		July 2009
@@ -123,7 +117,7 @@ Description:
 
 What:		/sys/bus/pci/devices/.../vpd
 Date:		February 2008
-Contact:	Ben Hutchings <bhutchings@solarflare.com>
+Contact:	Ben Hutchings <bwh@kernel.org>
 Description:
 		A file named vpd in a device directory will be a
 		binary file containing the Vital Product Data for the

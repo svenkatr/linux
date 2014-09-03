@@ -1,6 +1,6 @@
 /*
  * lm92 - Hardware monitoring driver
- * Copyright (C) 2005-2008  Jean Delvare <khali@linux-fr.org>
+ * Copyright (C) 2005-2008  Jean Delvare <jdelvare@suse.de>
  *
  * Based on the lm90 driver, with some ideas taken from the lm_sensors
  * lm92 driver as well.
@@ -380,7 +380,6 @@ static int lm92_probe(struct i2c_client *new_client,
 		return -ENOMEM;
 
 	i2c_set_clientdata(new_client, data);
-	data->valid = 0;
 	mutex_init(&data->update_lock);
 
 	/* Initialize the chipset */
@@ -440,6 +439,6 @@ static struct i2c_driver lm92_driver = {
 
 module_i2c_driver(lm92_driver);
 
-MODULE_AUTHOR("Jean Delvare <khali@linux-fr.org>");
+MODULE_AUTHOR("Jean Delvare <jdelvare@suse.de>");
 MODULE_DESCRIPTION("LM92/MAX6635 driver");
 MODULE_LICENSE("GPL");

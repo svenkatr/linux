@@ -24,10 +24,32 @@ static int	total_ref_count;
 static int perf_trace_event_perm(struct ftrace_event_call *tp_event,
 				 struct perf_event *p_event)
 {
+	if (tp_event->perf_perm) {
+		int ret = tp_event->perf_perm(tp_event, p_event);
+		if (ret)
+			return ret;
+	}
+
 	/* The ftrace function trace is allowed only for root. */
-	if (ftrace_event_is_function(tp_event) &&
-	    perf_paranoid_kernel() && !capable(CAP_SYS_ADMIN))
-		return -EPERM;
+	if (ftrace_event_is_function(tp_event)) {
+		if (perf_paranoid_tracepoint_raw() && !capable(CAP_SYS_ADMIN))
+			return -EPERM;
+
+		/*
+		 * We don't allow user space callchains for  function trace
+		 * event, due to issues with page faults while tracing page
+		 * fault handler and its overall trickiness nature.
+		 */
+		if (!p_event->attr.exclude_callchain_user)
+			return -EINVAL;
+
+		/*
+		 * Same reason to disable user stack dump as for user space
+		 * callchains above.
+		 */
+		if (p_event->attr.sample_type & PERF_SAMPLE_STACK_USER)
+			return -EINVAL;
+	}
 
 	/* No tracing, just counting, so no obvious leak */
 	if (!(p_event->attr.sample_type & PERF_SAMPLE_RAW))
@@ -173,7 +195,7 @@ static int perf_trace_event_init(struct ftrace_event_call *tp_event,
 int perf_trace_init(struct perf_event *p_event)
 {
 	struct ftrace_event_call *tp_event;
-	int event_id = p_event->attr.config;
+	u64 event_id = p_event->attr.config;
 	int ret = -EINVAL;
 
 	mutex_lock(&event_mutex);
@@ -236,6 +258,10 @@ __kprobes void *perf_trace_buf_prepare(int size, unsigned short type,
 
 	BUILD_BUG_ON(PERF_MAX_TRACE_SIZE % sizeof(unsigned long));
 
+	if (WARN_ONCE(size > PERF_MAX_TRACE_SIZE,
+			"perf buffer not large enough"))
+		return NULL;
+
 	pc = preempt_count();
 
 	*rctxp = perf_swevent_get_recursion_context();
@@ -266,6 +292,10 @@ perf_ftrace_function_call(unsigned long ip, unsigned long parent_ip,
 	struct pt_regs regs;
 	int rctx;
 
+	head = this_cpu_ptr(event_function.perf_events);
+	if (hlist_empty(head))
+		return;
+
 #define ENTRY_SIZE (ALIGN(sizeof(struct ftrace_entry) + sizeof(u32), \
 		    sizeof(u64)) - sizeof(u32))
 
@@ -279,8 +309,6 @@ perf_ftrace_function_call(unsigned long ip, unsigned long parent_ip,
 
 	entry->ip = ip;
 	entry->parent_ip = parent_ip;
-
-	head = this_cpu_ptr(event_function.perf_events);
 	perf_trace_buf_submit(entry, ENTRY_SIZE, rctx, 0,
 			      1, &regs, head, NULL);
 

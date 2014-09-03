@@ -30,6 +30,7 @@
 #include <linux/mutex.h>
 #include <linux/module.h>
 #include <linux/spinlock.h>
+#include <linux/wait.h>
 #include <asm/io.h>
 #include <asm/dbdma.h>
 #include <asm/prom.h>
@@ -251,7 +252,7 @@ static int fd_eject(struct floppy_state *fs);
 static int floppy_ioctl(struct block_device *bdev, fmode_t mode,
 			unsigned int cmd, unsigned long param);
 static int floppy_open(struct block_device *bdev, fmode_t mode);
-static int floppy_release(struct gendisk *disk, fmode_t mode);
+static void floppy_release(struct gendisk *disk, fmode_t mode);
 static unsigned int floppy_check_events(struct gendisk *disk,
 					unsigned int clearing);
 static int floppy_revalidate(struct gendisk *disk);
@@ -840,14 +841,17 @@ static int grab_drive(struct floppy_state *fs, enum swim_state state,
 	spin_lock_irqsave(&swim3_lock, flags);
 	if (fs->state != idle && fs->state != available) {
 		++fs->wanted;
-		while (fs->state != available) {
+		/* this will enable irqs in order to sleep */
+		if (!interruptible)
+			wait_event_lock_irq(fs->wait,
+                                        fs->state == available,
+                                        swim3_lock);
+		else if (wait_event_interruptible_lock_irq(fs->wait,
+					fs->state == available,
+					swim3_lock)) {
+			--fs->wanted;
 			spin_unlock_irqrestore(&swim3_lock, flags);
-			if (interruptible && signal_pending(current)) {
-				--fs->wanted;
-				return -EINTR;
-			}
-			interruptible_sleep_on(&fs->wait);
-			spin_lock_irqsave(&swim3_lock, flags);
+			return -EINTR;
 		}
 		--fs->wanted;
 	}
@@ -1017,7 +1021,7 @@ static int floppy_unlocked_open(struct block_device *bdev, fmode_t mode)
 	return ret;
 }
 
-static int floppy_release(struct gendisk *disk, fmode_t mode)
+static void floppy_release(struct gendisk *disk, fmode_t mode)
 {
 	struct floppy_state *fs = disk->private_data;
 	struct swim3 __iomem *sw = fs->swim3;
@@ -1029,7 +1033,6 @@ static int floppy_release(struct gendisk *disk, fmode_t mode)
 		swim3_select(fs, RELAX);
 	}
 	mutex_unlock(&swim3_mutex);
-	return 0;
 }
 
 static unsigned int floppy_check_events(struct gendisk *disk,
@@ -1090,10 +1093,13 @@ static const struct block_device_operations floppy_fops = {
 static void swim3_mb_event(struct macio_dev* mdev, int mb_state)
 {
 	struct floppy_state *fs = macio_get_drvdata(mdev);
-	struct swim3 __iomem *sw = fs->swim3;
+	struct swim3 __iomem *sw;
 
 	if (!fs)
 		return;
+
+	sw = fs->swim3;
+
 	if (mb_state != MB_FD)
 		return;
 
@@ -1194,7 +1200,8 @@ static int swim3_add_device(struct macio_dev *mdev, int index)
 	return rc;
 }
 
-static int __devinit swim3_attach(struct macio_dev *mdev, const struct of_device_id *match)
+static int swim3_attach(struct macio_dev *mdev,
+			const struct of_device_id *match)
 {
 	struct gendisk *disk;
 	int index, rc;

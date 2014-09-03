@@ -1,6 +1,6 @@
 /******************************************************************************
  *
- * Copyright(c) 2003 - 2012 Intel Corporation. All rights reserved.
+ * Copyright(c) 2003 - 2014 Intel Corporation. All rights reserved.
  *
  * Portions of this file are derived from the ipw3945 project, as well
  * as portions of the ieee80211 subsystem header files.
@@ -137,10 +137,6 @@ static inline int iwl_queue_dec_wrap(int index, int n_bd)
 struct iwl_cmd_meta {
 	/* only for SYNC commands, iff the reply skb is wanted */
 	struct iwl_host_cmd *source;
-
-	DEFINE_DMA_UNMAP_ADDR(mapping);
-	DEFINE_DMA_UNMAP_LEN(len);
-
 	u32 flags;
 };
 
@@ -182,25 +178,46 @@ struct iwl_queue {
 #define TFD_TX_CMD_SLOTS 256
 #define TFD_CMD_SLOTS 32
 
+/*
+ * The FH will write back to the first TB only, so we need
+ * to copy some data into the buffer regardless of whether
+ * it should be mapped or not. This indicates how big the
+ * first TB must be to include the scratch buffer. Since
+ * the scratch is 4 bytes at offset 12, it's 16 now. If we
+ * make it bigger then allocations will be bigger and copy
+ * slower, so that's probably not useful.
+ */
+#define IWL_HCMD_SCRATCHBUF_SIZE	16
+
 struct iwl_pcie_txq_entry {
 	struct iwl_device_cmd *cmd;
-	struct iwl_device_cmd *copy_cmd;
 	struct sk_buff *skb;
 	/* buffer to free after command completes */
 	const void *free_buf;
 	struct iwl_cmd_meta meta;
 };
 
+struct iwl_pcie_txq_scratch_buf {
+	struct iwl_cmd_header hdr;
+	u8 buf[8];
+	__le32 scratch;
+};
+
 /**
  * struct iwl_txq - Tx Queue for DMA
  * @q: generic Rx/Tx queue descriptor
  * @tfds: transmit frame descriptors (DMA memory)
+ * @scratchbufs: start of command headers, including scratch buffers, for
+ *	the writeback -- this is DMA memory and an array holding one buffer
+ *	for each command on the queue
+ * @scratchbufs_dma: DMA address for the scratchbufs start
  * @entries: transmit entries (driver state)
  * @lock: queue lock
  * @stuck_timer: timer that fires if queue gets stuck
  * @trans_pcie: pointer back to transport (for timer)
  * @need_update: indicates need to update read/write index
  * @active: stores if queue is active
+ * @ampdu: true if this queue is an ampdu queue for an specific RA/TID
  *
  * A Tx queue consists of circular buffer of BDs (a.k.a. TFDs, transmit frame
  * descriptors) and required locking structures.
@@ -208,13 +225,23 @@ struct iwl_pcie_txq_entry {
 struct iwl_txq {
 	struct iwl_queue q;
 	struct iwl_tfd *tfds;
+	struct iwl_pcie_txq_scratch_buf *scratchbufs;
+	dma_addr_t scratchbufs_dma;
 	struct iwl_pcie_txq_entry *entries;
 	spinlock_t lock;
 	struct timer_list stuck_timer;
 	struct iwl_trans_pcie *trans_pcie;
 	u8 need_update;
 	u8 active;
+	bool ampdu;
 };
+
+static inline dma_addr_t
+iwl_pcie_get_scratchbuf_dma(struct iwl_txq *txq, int idx)
+{
+	return txq->scratchbufs_dma +
+	       sizeof(struct iwl_pcie_txq_scratch_buf) * idx;
+}
 
 /**
  * struct iwl_trans_pcie - PCIe transport specific data
@@ -222,8 +249,6 @@ struct iwl_txq {
  * @rx_replenish: work that will be called when buffers need to be allocated
  * @drv - pointer to iwl_drv
  * @trans: pointer to the generic transport area
- * @irq - the irq number for the device
- * @irq_requested: true when the irq has been requested
  * @scd_base_addr: scheduler sram base address in SRAM
  * @scd_bc_tbls: pointer to the byte count table of the scheduler
  * @kw: keep warm address
@@ -231,11 +256,13 @@ struct iwl_txq {
  * @hw_base: pci hardware address support
  * @ucode_write_complete: indicates that the ucode has been copied.
  * @ucode_write_waitq: wait queue for uCode load
- * @status - transport specific status flags
  * @cmd_queue - command queue number
  * @rx_buf_size_8k: 8 kB RX buffer size
+ * @bc_table_dword: true if the BC table expects DWORD (as opposed to bytes)
  * @rx_page_order: page order for receive buffer size
  * @wd_timeout: queue watchdog timeout (jiffies)
+ * @reg_lock: protect hw register access
+ * @cmd_in_flight: true when we have a host command in flight
  */
 struct iwl_trans_pcie {
 	struct iwl_rxq rxq;
@@ -247,13 +274,9 @@ struct iwl_trans_pcie {
 	__le32 *ict_tbl;
 	dma_addr_t ict_tbl_dma;
 	int ict_index;
-	u32 inta;
 	bool use_ict;
-	bool irq_requested;
-	struct tasklet_struct irq_tasklet;
 	struct isr_statistics isr_stats;
 
-	unsigned int irq;
 	spinlock_t irq_lock;
 	u32 inta_mask;
 	u32 scd_base_addr;
@@ -272,37 +295,23 @@ struct iwl_trans_pcie {
 	wait_queue_head_t ucode_write_waitq;
 	wait_queue_head_t wait_command_queue;
 
-	unsigned long status;
 	u8 cmd_queue;
 	u8 cmd_fifo;
 	u8 n_no_reclaim_cmds;
 	u8 no_reclaim_cmds[MAX_NO_RECLAIM_CMDS];
 
 	bool rx_buf_size_8k;
+	bool bc_table_dword;
 	u32 rx_page_order;
 
-	const char **command_names;
+	const char *const *command_names;
 
 	/* queue watchdog */
 	unsigned long wd_timeout;
-};
 
-/**
- * enum iwl_pcie_status: status of the PCIe transport
- * @STATUS_HCMD_ACTIVE: a SYNC command is being processed
- * @STATUS_DEVICE_ENABLED: APM is enabled
- * @STATUS_TPOWER_PMI: the device might be asleep (need to wake it up)
- * @STATUS_INT_ENABLED: interrupts are enabled
- * @STATUS_RFKILL: the HW RFkill switch is in KILL position
- * @STATUS_FW_ERROR: the fw is in error state
- */
-enum iwl_pcie_status {
-	STATUS_HCMD_ACTIVE,
-	STATUS_DEVICE_ENABLED,
-	STATUS_TPOWER_PMI,
-	STATUS_INT_ENABLED,
-	STATUS_RFKILL,
-	STATUS_FW_ERROR,
+	/*protect hw register */
+	spinlock_t reg_lock;
+	bool cmd_in_flight;
 };
 
 #define IWL_TRANS_GET_PCIE_TRANS(_iwl_trans) \
@@ -328,14 +337,14 @@ void iwl_trans_pcie_free(struct iwl_trans *trans);
 * RX
 ******************************************************/
 int iwl_pcie_rx_init(struct iwl_trans *trans);
-void iwl_pcie_tasklet(struct iwl_trans *trans);
+irqreturn_t iwl_pcie_irq_handler(int irq, void *dev_id);
 int iwl_pcie_rx_stop(struct iwl_trans *trans);
 void iwl_pcie_rx_free(struct iwl_trans *trans);
 
 /*****************************************************
 * ICT - interrupt handling
 ******************************************************/
-irqreturn_t iwl_pcie_isr_ict(int irq, void *data);
+irqreturn_t iwl_pcie_isr(int irq, void *data);
 int iwl_pcie_alloc_ict(struct iwl_trans *trans);
 void iwl_pcie_free_ict(struct iwl_trans *trans);
 void iwl_pcie_reset_ict(struct iwl_trans *trans);
@@ -359,10 +368,11 @@ void iwl_pcie_hcmd_complete(struct iwl_trans *trans,
 			    struct iwl_rx_cmd_buffer *rxb, int handler_status);
 void iwl_trans_pcie_reclaim(struct iwl_trans *trans, int txq_id, int ssn,
 			    struct sk_buff_head *skbs);
+void iwl_trans_pcie_tx_reset(struct iwl_trans *trans);
+
 /*****************************************************
 * Error handling
 ******************************************************/
-int iwl_pcie_dump_fh(struct iwl_trans *trans, char **buf);
 void iwl_pcie_dump_csr(struct iwl_trans *trans);
 
 /*****************************************************
@@ -370,8 +380,7 @@ void iwl_pcie_dump_csr(struct iwl_trans *trans);
 ******************************************************/
 static inline void iwl_disable_interrupts(struct iwl_trans *trans)
 {
-	struct iwl_trans_pcie *trans_pcie = IWL_TRANS_GET_PCIE_TRANS(trans);
-	clear_bit(STATUS_INT_ENABLED, &trans_pcie->status);
+	clear_bit(STATUS_INT_ENABLED, &trans->status);
 
 	/* disable interrupts from uCode/NIC to host */
 	iwl_write32(trans, CSR_INT_MASK, 0x00000000);
@@ -388,14 +397,18 @@ static inline void iwl_enable_interrupts(struct iwl_trans *trans)
 	struct iwl_trans_pcie *trans_pcie = IWL_TRANS_GET_PCIE_TRANS(trans);
 
 	IWL_DEBUG_ISR(trans, "Enabling interrupts\n");
-	set_bit(STATUS_INT_ENABLED, &trans_pcie->status);
+	set_bit(STATUS_INT_ENABLED, &trans->status);
+	trans_pcie->inta_mask = CSR_INI_SET_MASK;
 	iwl_write32(trans, CSR_INT_MASK, trans_pcie->inta_mask);
 }
 
 static inline void iwl_enable_rfkill_int(struct iwl_trans *trans)
 {
+	struct iwl_trans_pcie *trans_pcie = IWL_TRANS_GET_PCIE_TRANS(trans);
+
 	IWL_DEBUG_ISR(trans, "Enabling rfkill interrupt\n");
-	iwl_write32(trans, CSR_INT_MASK, CSR_INT_BIT_RF_KILL);
+	trans_pcie->inta_mask = CSR_INT_BIT_RF_KILL;
+	iwl_write32(trans, CSR_INT_MASK, trans_pcie->inta_mask);
 }
 
 static inline void iwl_wake_queue(struct iwl_trans *trans,
@@ -447,5 +460,34 @@ static inline bool iwl_is_rfkill_set(struct iwl_trans *trans)
 	return !(iwl_read32(trans, CSR_GP_CNTRL) &
 		CSR_GP_CNTRL_REG_FLAG_HW_RF_KILL_SW);
 }
+
+static inline void __iwl_trans_pcie_set_bits_mask(struct iwl_trans *trans,
+						  u32 reg, u32 mask, u32 value)
+{
+	u32 v;
+
+#ifdef CONFIG_IWLWIFI_DEBUG
+	WARN_ON_ONCE(value & ~mask);
+#endif
+
+	v = iwl_read32(trans, reg);
+	v &= ~mask;
+	v |= value;
+	iwl_write32(trans, reg, v);
+}
+
+static inline void __iwl_trans_pcie_clear_bit(struct iwl_trans *trans,
+					      u32 reg, u32 mask)
+{
+	__iwl_trans_pcie_set_bits_mask(trans, reg, mask, 0);
+}
+
+static inline void __iwl_trans_pcie_set_bit(struct iwl_trans *trans,
+					    u32 reg, u32 mask)
+{
+	__iwl_trans_pcie_set_bits_mask(trans, reg, mask, mask);
+}
+
+void iwl_trans_pcie_rf_kill(struct iwl_trans *trans, bool state);
 
 #endif /* __iwl_trans_int_pcie_h__ */

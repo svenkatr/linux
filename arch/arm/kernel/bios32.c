@@ -19,7 +19,7 @@
 static int debug_pci;
 
 /*
- * We can't use pci_find_device() here since we are
+ * We can't use pci_get_device() here since we are
  * called from interrupt context.
  */
 static void pcibios_bus_report_status(struct pci_bus *bus, u_int status_mask, int warn)
@@ -57,13 +57,10 @@ static void pcibios_bus_report_status(struct pci_bus *bus, u_int status_mask, in
 
 void pcibios_report_status(u_int status_mask, int warn)
 {
-	struct list_head *l;
+	struct pci_bus *bus;
 
-	list_for_each(l, &pci_root_buses) {
-		struct pci_bus *bus = pci_bus_b(l);
-
+	list_for_each_entry(bus, &pci_root_buses, node)
 		pcibios_bus_report_status(bus, status_mask, warn);
-	}
 }
 
 /*
@@ -78,7 +75,7 @@ void pcibios_report_status(u_int status_mask, int warn)
  * Bug 3 is responsible for the sound DMA grinding to a halt.  We now
  * live with bug 2.
  */
-static void __devinit pci_fixup_83c553(struct pci_dev *dev)
+static void pci_fixup_83c553(struct pci_dev *dev)
 {
 	/*
 	 * Set memory region to start at address 0, and enable IO
@@ -130,7 +127,7 @@ static void __devinit pci_fixup_83c553(struct pci_dev *dev)
 }
 DECLARE_PCI_FIXUP_HEADER(PCI_VENDOR_ID_WINBOND, PCI_DEVICE_ID_WINBOND_83C553, pci_fixup_83c553);
 
-static void __devinit pci_fixup_unassign(struct pci_dev *dev)
+static void pci_fixup_unassign(struct pci_dev *dev)
 {
 	dev->resource[0].end -= dev->resource[0].start;
 	dev->resource[0].start = 0;
@@ -142,7 +139,7 @@ DECLARE_PCI_FIXUP_HEADER(PCI_VENDOR_ID_WINBOND2, PCI_DEVICE_ID_WINBOND2_89C940F,
  * if it is the host bridge by marking it as such.  These resources are of
  * no consequence to the PCI layer (they are handled elsewhere).
  */
-static void __devinit pci_fixup_dec21285(struct pci_dev *dev)
+static void pci_fixup_dec21285(struct pci_dev *dev)
 {
 	int i;
 
@@ -161,7 +158,7 @@ DECLARE_PCI_FIXUP_HEADER(PCI_VENDOR_ID_DEC, PCI_DEVICE_ID_DEC_21285, pci_fixup_d
 /*
  * PCI IDE controllers use non-standard I/O port decoding, respect it.
  */
-static void __devinit pci_fixup_ide_bases(struct pci_dev *dev)
+static void pci_fixup_ide_bases(struct pci_dev *dev)
 {
 	struct resource *r;
 	int i;
@@ -182,7 +179,7 @@ DECLARE_PCI_FIXUP_HEADER(PCI_ANY_ID, PCI_ANY_ID, pci_fixup_ide_bases);
 /*
  * Put the DEC21142 to sleep
  */
-static void __devinit pci_fixup_dec21142(struct pci_dev *dev)
+static void pci_fixup_dec21142(struct pci_dev *dev)
 {
 	pci_write_config_dword(dev, 0x40, 0x80000000);
 }
@@ -204,7 +201,7 @@ DECLARE_PCI_FIXUP_HEADER(PCI_VENDOR_ID_DEC, PCI_DEVICE_ID_DEC_21142, pci_fixup_d
  * functional.  However, The CY82C693U _does not work_ in bus
  * master mode without locking the PCI bus solid.
  */
-static void __devinit pci_fixup_cy82c693(struct pci_dev *dev)
+static void pci_fixup_cy82c693(struct pci_dev *dev)
 {
 	if ((dev->class >> 8) == PCI_CLASS_STORAGE_IDE) {
 		u32 base0, base1;
@@ -254,7 +251,7 @@ static void __devinit pci_fixup_cy82c693(struct pci_dev *dev)
 }
 DECLARE_PCI_FIXUP_HEADER(PCI_VENDOR_ID_CONTAQ, PCI_DEVICE_ID_CONTAQ_82C693, pci_fixup_cy82c693);
 
-static void __devinit pci_fixup_it8152(struct pci_dev *dev)
+static void pci_fixup_it8152(struct pci_dev *dev)
 {
 	int i;
 	/* fixup for ITE 8152 devices */
@@ -361,9 +358,21 @@ void pcibios_fixup_bus(struct pci_bus *bus)
 	printk(KERN_INFO "PCI: bus%d: Fast back to back transfers %sabled\n",
 		bus->number, (features & PCI_COMMAND_FAST_BACK) ? "en" : "dis");
 }
-#ifdef CONFIG_HOTPLUG
 EXPORT_SYMBOL(pcibios_fixup_bus);
-#endif
+
+void pcibios_add_bus(struct pci_bus *bus)
+{
+	struct pci_sys_data *sys = bus->sysdata;
+	if (sys->add_bus)
+		sys->add_bus(bus);
+}
+
+void pcibios_remove_bus(struct pci_bus *bus)
+{
+	struct pci_sys_data *sys = bus->sysdata;
+	if (sys->remove_bus)
+		sys->remove_bus(bus);
+}
 
 /*
  * Swizzle the device pin each time we cross a bridge.  If a platform does
@@ -380,7 +389,7 @@ EXPORT_SYMBOL(pcibios_fixup_bus);
  * PCI standard swizzle is implemented on plug-in cards and Cardbus based
  * PCI extenders, so it can not be ignored.
  */
-static u8 __devinit pcibios_swizzle(struct pci_dev *dev, u8 *pin)
+static u8 pcibios_swizzle(struct pci_dev *dev, u8 *pin)
 {
 	struct pci_sys_data *sys = dev->sysdata;
 	int slot, oldpin = *pin;
@@ -415,7 +424,7 @@ static int pcibios_map_irq(const struct pci_dev *dev, u8 slot, u8 pin)
 	return irq;
 }
 
-static int __init pcibios_init_resources(int busnr, struct pci_sys_data *sys)
+static int pcibios_init_resources(int busnr, struct pci_sys_data *sys)
 {
 	int ret;
 	struct pci_host_bridge_window *window;
@@ -447,7 +456,8 @@ static int __init pcibios_init_resources(int busnr, struct pci_sys_data *sys)
 	return 0;
 }
 
-static void __init pcibios_init_hw(struct hw_pci *hw, struct list_head *head)
+static void pcibios_init_hw(struct device *parent, struct hw_pci *hw,
+			    struct list_head *head)
 {
 	struct pci_sys_data *sys = NULL;
 	int ret;
@@ -464,7 +474,13 @@ static void __init pcibios_init_hw(struct hw_pci *hw, struct list_head *head)
 		sys->busnr   = busnr;
 		sys->swizzle = hw->swizzle;
 		sys->map_irq = hw->map_irq;
+		sys->align_resource = hw->align_resource;
+		sys->add_bus = hw->add_bus;
+		sys->remove_bus = hw->remove_bus;
 		INIT_LIST_HEAD(&sys->resources);
+
+		if (hw->private_data)
+			sys->private_data = hw->private_data[nr];
 
 		ret = hw->setup(nr, sys);
 
@@ -478,7 +494,7 @@ static void __init pcibios_init_hw(struct hw_pci *hw, struct list_head *head)
 			if (hw->scan)
 				sys->bus = hw->scan(nr, sys);
 			else
-				sys->bus = pci_scan_root_bus(NULL, sys->busnr,
+				sys->bus = pci_scan_root_bus(parent, sys->busnr,
 						hw->ops, sys, &sys->resources);
 
 			if (!sys->bus)
@@ -495,7 +511,7 @@ static void __init pcibios_init_hw(struct hw_pci *hw, struct list_head *head)
 	}
 }
 
-void __init pci_common_init(struct hw_pci *hw)
+void pci_common_init_dev(struct device *parent, struct hw_pci *hw)
 {
 	struct pci_sys_data *sys;
 	LIST_HEAD(head);
@@ -503,7 +519,7 @@ void __init pci_common_init(struct hw_pci *hw)
 	pci_add_flags(PCI_REASSIGN_ALL_RSRC);
 	if (hw->preinit)
 		hw->preinit();
-	pcibios_init_hw(hw, &head);
+	pcibios_init_hw(parent, hw, &head);
 	if (hw->postinit)
 		hw->postinit();
 
@@ -522,11 +538,6 @@ void __init pci_common_init(struct hw_pci *hw)
 			 * Assign resources.
 			 */
 			pci_bus_assign_resources(bus);
-
-			/*
-			 * Enable bridges
-			 */
-			pci_enable_bridges(bus);
 		}
 
 		/*
@@ -573,12 +584,17 @@ char * __init pcibios_setup(char *str)
 resource_size_t pcibios_align_resource(void *data, const struct resource *res,
 				resource_size_t size, resource_size_t align)
 {
+	struct pci_dev *dev = data;
+	struct pci_sys_data *sys = dev->sysdata;
 	resource_size_t start = res->start;
 
 	if (res->flags & IORESOURCE_IO && start & 0x300)
 		start = (start + 0x3ff) & ~0x3ff;
 
 	start = (start + align - 1) & ~(align - 1);
+
+	if (sys->align_resource)
+		return sys->align_resource(dev, res, start, size, align);
 
 	return start;
 }
@@ -589,41 +605,10 @@ resource_size_t pcibios_align_resource(void *data, const struct resource *res,
  */
 int pcibios_enable_device(struct pci_dev *dev, int mask)
 {
-	u16 cmd, old_cmd;
-	int idx;
-	struct resource *r;
+	if (pci_has_flag(PCI_PROBE_ONLY))
+		return 0;
 
-	pci_read_config_word(dev, PCI_COMMAND, &cmd);
-	old_cmd = cmd;
-	for (idx = 0; idx < 6; idx++) {
-		/* Only set up the requested stuff */
-		if (!(mask & (1 << idx)))
-			continue;
-
-		r = dev->resource + idx;
-		if (!r->start && r->end) {
-			printk(KERN_ERR "PCI: Device %s not available because"
-			       " of resource collisions\n", pci_name(dev));
-			return -EINVAL;
-		}
-		if (r->flags & IORESOURCE_IO)
-			cmd |= PCI_COMMAND_IO;
-		if (r->flags & IORESOURCE_MEM)
-			cmd |= PCI_COMMAND_MEMORY;
-	}
-
-	/*
-	 * Bridges (eg, cardbus bridges) need to be fully enabled
-	 */
-	if ((dev->class >> 16) == PCI_BASE_CLASS_BRIDGE)
-		cmd |= PCI_COMMAND_IO | PCI_COMMAND_MEMORY;
-
-	if (cmd != old_cmd) {
-		printk("PCI: enabling device %s (%04x -> %04x)\n",
-		       pci_name(dev), old_cmd, cmd);
-		pci_write_config_word(dev, PCI_COMMAND, cmd);
-	}
-	return 0;
+	return pci_enable_resources(dev, mask);
 }
 
 int pci_mmap_page_range(struct pci_dev *dev, struct vm_area_struct *vma,

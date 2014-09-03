@@ -44,27 +44,51 @@
 #define PT_DIRECTORY_LEVEL 2
 #define PT_PAGE_TABLE_LEVEL 1
 
-#define PFERR_PRESENT_MASK (1U << 0)
-#define PFERR_WRITE_MASK (1U << 1)
-#define PFERR_USER_MASK (1U << 2)
-#define PFERR_RSVD_MASK (1U << 3)
-#define PFERR_FETCH_MASK (1U << 4)
+#define PFERR_PRESENT_BIT 0
+#define PFERR_WRITE_BIT 1
+#define PFERR_USER_BIT 2
+#define PFERR_RSVD_BIT 3
+#define PFERR_FETCH_BIT 4
+
+#define PFERR_PRESENT_MASK (1U << PFERR_PRESENT_BIT)
+#define PFERR_WRITE_MASK (1U << PFERR_WRITE_BIT)
+#define PFERR_USER_MASK (1U << PFERR_USER_BIT)
+#define PFERR_RSVD_MASK (1U << PFERR_RSVD_BIT)
+#define PFERR_FETCH_MASK (1U << PFERR_FETCH_BIT)
 
 int kvm_mmu_get_spte_hierarchy(struct kvm_vcpu *vcpu, u64 addr, u64 sptes[4]);
 void kvm_mmu_set_mmio_spte_mask(u64 mmio_mask);
+
+/*
+ * Return values of handle_mmio_page_fault_common:
+ * RET_MMIO_PF_EMULATE: it is a real mmio page fault, emulate the instruction
+ *			directly.
+ * RET_MMIO_PF_INVALID: invalid spte is detected then let the real page
+ *			fault path update the mmio spte.
+ * RET_MMIO_PF_RETRY: let CPU fault again on the address.
+ * RET_MMIO_PF_BUG: bug is detected.
+ */
+enum {
+	RET_MMIO_PF_EMULATE = 1,
+	RET_MMIO_PF_INVALID = 2,
+	RET_MMIO_PF_RETRY = 0,
+	RET_MMIO_PF_BUG = -1
+};
+
 int handle_mmio_page_fault_common(struct kvm_vcpu *vcpu, u64 addr, bool direct);
-int kvm_init_shadow_mmu(struct kvm_vcpu *vcpu, struct kvm_mmu *context);
+void kvm_init_shadow_mmu(struct kvm_vcpu *vcpu, struct kvm_mmu *context);
+void kvm_init_shadow_ept_mmu(struct kvm_vcpu *vcpu, struct kvm_mmu *context,
+		bool execonly);
+void update_permission_bitmask(struct kvm_vcpu *vcpu, struct kvm_mmu *mmu,
+		bool ept);
 
 static inline unsigned int kvm_mmu_available_pages(struct kvm *kvm)
 {
-	return kvm->arch.n_max_mmu_pages -
-		kvm->arch.n_used_mmu_pages;
-}
+	if (kvm->arch.n_max_mmu_pages > kvm->arch.n_used_mmu_pages)
+		return kvm->arch.n_max_mmu_pages -
+			kvm->arch.n_used_mmu_pages;
 
-static inline void kvm_mmu_free_some_pages(struct kvm_vcpu *vcpu)
-{
-	if (unlikely(kvm_mmu_available_pages(vcpu->kvm)< KVM_MIN_FREE_MMU_PAGES))
-		__kvm_mmu_free_some_pages(vcpu);
+	return 0;
 }
 
 static inline int kvm_mmu_reload(struct kvm_vcpu *vcpu)
@@ -94,10 +118,31 @@ static inline bool is_write_protection(struct kvm_vcpu *vcpu)
  * Will a fault with a given page-fault error code (pfec) cause a permission
  * fault with the given access (in ACC_* format)?
  */
-static inline bool permission_fault(struct kvm_mmu *mmu, unsigned pte_access,
-				    unsigned pfec)
+static inline bool permission_fault(struct kvm_vcpu *vcpu, struct kvm_mmu *mmu,
+				    unsigned pte_access, unsigned pfec)
 {
-	return (mmu->permissions[pfec >> 1] >> pte_access) & 1;
+	int cpl = kvm_x86_ops->get_cpl(vcpu);
+	unsigned long rflags = kvm_x86_ops->get_rflags(vcpu);
+
+	/*
+	 * If CPL < 3, SMAP prevention are disabled if EFLAGS.AC = 1.
+	 *
+	 * If CPL = 3, SMAP applies to all supervisor-mode data accesses
+	 * (these are implicit supervisor accesses) regardless of the value
+	 * of EFLAGS.AC.
+	 *
+	 * This computes (cpl < 3) && (rflags & X86_EFLAGS_AC), leaving
+	 * the result in X86_EFLAGS_AC. We then insert it in place of
+	 * the PFERR_RSVD_MASK bit; this bit will always be zero in pfec,
+	 * but it will be one in index if SMAP checks are being overridden.
+	 * It is important to keep this branchless.
+	 */
+	unsigned long smap = (cpl - 3) & (rflags & X86_EFLAGS_AC);
+	int index = (pfec >> 1) +
+		    (smap >> (X86_EFLAGS_AC_BIT - PFERR_RSVD_BIT + 1));
+
+	return (mmu->permissions[index] >> pte_access) & 1;
 }
 
+void kvm_mmu_invalidate_zap_all_pages(struct kvm *kvm);
 #endif

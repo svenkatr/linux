@@ -5,7 +5,7 @@
  *****************************************************************************/
 
 /*
- * Copyright (C) 2000 - 2012, Intel Corp.
+ * Copyright (C) 2000 - 2014, Intel Corp.
  * All rights reserved.
  *
  * Redistribution and use in source and binary forms, with or without
@@ -72,11 +72,13 @@
 #define ACPI_SIG_IVRS           "IVRS"	/* I/O Virtualization Reporting Structure */
 #define ACPI_SIG_MCFG           "MCFG"	/* PCI Memory Mapped Configuration table */
 #define ACPI_SIG_MCHI           "MCHI"	/* Management Controller Host Interface table */
+#define ACPI_SIG_MTMR           "MTMR"	/* MID Timer table */
 #define ACPI_SIG_SLIC           "SLIC"	/* Software Licensing Description Table */
 #define ACPI_SIG_SPCR           "SPCR"	/* Serial Port Console Redirection table */
 #define ACPI_SIG_SPMI           "SPMI"	/* Server Platform Management Interface table */
 #define ACPI_SIG_TCPA           "TCPA"	/* Trusted Computing Platform Alliance table */
 #define ACPI_SIG_UEFI           "UEFI"	/* Uefi Boot Optimization Table */
+#define ACPI_SIG_VRTC           "VRTC"	/* Virtual Real Time Clock Table */
 #define ACPI_SIG_WAET           "WAET"	/* Windows ACPI Emulated devices Table */
 #define ACPI_SIG_WDAT           "WDAT"	/* Watchdog Action Table */
 #define ACPI_SIG_WDDT           "WDDT"	/* Watchdog Timer Description Table */
@@ -261,9 +263,28 @@ struct acpi_csrt_group {
 	u16 subdevice_id;
 	u16 revision;
 	u16 reserved;
-	u32 info_length;
+	u32 shared_info_length;
 
-	/* Shared data (length = info_length) immediately follows */
+	/* Shared data immediately follows (Length = shared_info_length) */
+};
+
+/* Shared Info subtable */
+
+struct acpi_csrt_shared_info {
+	u16 major_version;
+	u16 minor_version;
+	u32 mmio_base_low;
+	u32 mmio_base_high;
+	u32 gsi_interrupt;
+	u8 interrupt_polarity;
+	u8 interrupt_mode;
+	u8 num_channels;
+	u8 dma_address_width;
+	u16 base_request_line;
+	u16 num_handshake_signals;
+	u32 max_block_size;
+
+	/* Resource descriptors immediately follow (Length = Group length - shared_info_length) */
 };
 
 /* Resource Descriptor subtable */
@@ -302,6 +323,11 @@ struct acpi_csrt_descriptor {
 
 struct acpi_table_dbg2 {
 	struct acpi_table_header header;	/* Common ACPI table header */
+	u32 info_offset;
+	u32 info_count;
+};
+
+struct acpi_dbg2_header {
 	u32 info_offset;
 	u32 info_count;
 };
@@ -398,7 +424,8 @@ enum acpi_dmar_type {
 	ACPI_DMAR_TYPE_RESERVED_MEMORY = 1,
 	ACPI_DMAR_TYPE_ATSR = 2,
 	ACPI_DMAR_HARDWARE_AFFINITY = 3,
-	ACPI_DMAR_TYPE_RESERVED = 4	/* 4 and greater are reserved */
+	ACPI_DMAR_TYPE_ANDD = 4,
+	ACPI_DMAR_TYPE_RESERVED = 5	/* 5 and greater are reserved */
 };
 
 /* DMAR Device Scope structure */
@@ -419,12 +446,13 @@ enum acpi_dmar_scope_type {
 	ACPI_DMAR_SCOPE_TYPE_BRIDGE = 2,
 	ACPI_DMAR_SCOPE_TYPE_IOAPIC = 3,
 	ACPI_DMAR_SCOPE_TYPE_HPET = 4,
-	ACPI_DMAR_SCOPE_TYPE_RESERVED = 5	/* 5 and greater are reserved */
+	ACPI_DMAR_SCOPE_TYPE_ACPI = 5,
+	ACPI_DMAR_SCOPE_TYPE_RESERVED = 6	/* 6 and greater are reserved */
 };
 
 struct acpi_dmar_pci_path {
-	u8 dev;
-	u8 fn;
+	u8 device;
+	u8 function;
 };
 
 /*
@@ -479,6 +507,15 @@ struct acpi_dmar_rhsa {
 	u32 reserved;
 	u64 base_address;
 	u32 proximity_domain;
+};
+
+/* 4: ACPI Namespace Device Declaration Structure */
+
+struct acpi_dmar_andd {
+	struct acpi_dmar_header header;
+	u8 reserved[3];
+	u8 device_number;
+	u8 object_name[];
 };
 
 /*******************************************************************************
@@ -833,6 +870,29 @@ struct acpi_table_mchi {
 
 /*******************************************************************************
  *
+ * MTMR - MID Timer Table
+ *        Version 1
+ *
+ * Conforms to "Simple Firmware Interface Specification",
+ * Draft 0.8.2, Oct 19, 2010
+ * NOTE: The ACPI MTMR is equivalent to the SFI MTMR table.
+ *
+ ******************************************************************************/
+
+struct acpi_table_mtmr {
+	struct acpi_table_header header;	/* Common ACPI table header */
+};
+
+/* MTMR entry */
+
+struct acpi_mtmr_entry {
+	struct acpi_generic_address physical_address;
+	u32 frequency;
+	u32 irq;
+};
+
+/*******************************************************************************
+ *
  * SLIC - Software Licensing Description Table
  *        Version 1
  *
@@ -1002,6 +1062,28 @@ struct acpi_table_uefi {
 	struct acpi_table_header header;	/* Common ACPI table header */
 	u8 identifier[16];	/* UUID identifier */
 	u16 data_offset;	/* Offset of remaining data in table */
+};
+
+/*******************************************************************************
+ *
+ * VRTC - Virtual Real Time Clock Table
+ *        Version 1
+ *
+ * Conforms to "Simple Firmware Interface Specification",
+ * Draft 0.8.2, Oct 19, 2010
+ * NOTE: The ACPI VRTC is equivalent to The SFI MRTC table.
+ *
+ ******************************************************************************/
+
+struct acpi_table_vrtc {
+	struct acpi_table_header header;	/* Common ACPI table header */
+};
+
+/* VRTC entry */
+
+struct acpi_vrtc_entry {
+	struct acpi_generic_address physical_address;
+	u32 irq;
 };
 
 /*******************************************************************************

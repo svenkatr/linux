@@ -39,7 +39,7 @@ static int resume_delay;
 static char resume_file[256] = CONFIG_PM_STD_PARTITION;
 dev_t swsusp_resume_device;
 sector_t swsusp_resume_block;
-int in_suspend __nosavedata;
+__visible int in_suspend __nosavedata;
 
 enum {
 	HIBERNATION_INVALID,
@@ -82,6 +82,7 @@ void hibernation_set_ops(const struct platform_hibernation_ops *ops)
 
 	unlock_system_sleep();
 }
+EXPORT_SYMBOL_GPL(hibernation_set_ops);
 
 static bool entering_platform_hibernation;
 
@@ -293,10 +294,10 @@ static int create_image(int platform_mode)
 			error);
 	/* Restore control flow magically appears here */
 	restore_processor_state();
-	if (!in_suspend) {
+	if (!in_suspend)
 		events_check_enabled = false;
-		platform_leave(platform_mode);
-	}
+
+	platform_leave(platform_mode);
 
  Power_up:
 	syscore_resume();
@@ -644,22 +645,23 @@ int hibernate(void)
 	if (error)
 		goto Exit;
 
-	/* Allocate memory management structures */
-	error = create_basic_memory_bitmaps();
-	if (error)
-		goto Exit;
-
 	printk(KERN_INFO "PM: Syncing filesystems ... ");
 	sys_sync();
 	printk("done.\n");
 
 	error = freeze_processes();
 	if (error)
-		goto Free_bitmaps;
+		goto Exit;
+
+	lock_device_hotplug();
+	/* Allocate memory management structures */
+	error = create_basic_memory_bitmaps();
+	if (error)
+		goto Thaw;
 
 	error = hibernation_snapshot(hibernation_mode == HIBERNATION_PLATFORM);
 	if (error || freezer_test_done)
-		goto Thaw;
+		goto Free_bitmaps;
 
 	if (in_suspend) {
 		unsigned int flags = 0;
@@ -682,14 +684,14 @@ int hibernate(void)
 		pr_debug("PM: Image restored successfully.\n");
 	}
 
+ Free_bitmaps:
+	free_basic_memory_bitmaps();
  Thaw:
+	unlock_device_hotplug();
 	thaw_processes();
 
 	/* Don't bother checking whether freezer_test_done is true */
 	freezer_test_done = false;
-
- Free_bitmaps:
-	free_basic_memory_bitmaps();
  Exit:
 	pm_notifier_call_chain(PM_POST_HIBERNATION);
 	pm_restore_console();
@@ -806,20 +808,19 @@ static int software_resume(void)
 	pm_prepare_console();
 	error = pm_notifier_call_chain(PM_RESTORE_PREPARE);
 	if (error)
-		goto close_finish;
-
-	error = create_basic_memory_bitmaps();
-	if (error)
-		goto close_finish;
+		goto Close_Finish;
 
 	pr_debug("PM: Preparing processes for restore.\n");
 	error = freeze_processes();
-	if (error) {
-		swsusp_close(FMODE_READ);
-		goto Done;
-	}
+	if (error)
+		goto Close_Finish;
 
 	pr_debug("PM: Loading hibernation image.\n");
+
+	lock_device_hotplug();
+	error = create_basic_memory_bitmaps();
+	if (error)
+		goto Thaw;
 
 	error = swsusp_read(&flags);
 	swsusp_close(FMODE_READ);
@@ -828,9 +829,10 @@ static int software_resume(void)
 
 	printk(KERN_ERR "PM: Failed to load hibernation image, recovering.\n");
 	swsusp_free();
-	thaw_processes();
- Done:
 	free_basic_memory_bitmaps();
+ Thaw:
+	unlock_device_hotplug();
+	thaw_processes();
  Finish:
 	pm_notifier_call_chain(PM_POST_RESTORE);
 	pm_restore_console();
@@ -840,12 +842,12 @@ static int software_resume(void)
 	mutex_unlock(&pm_mutex);
 	pr_debug("PM: Hibernation image not present or could not be loaded.\n");
 	return error;
-close_finish:
+ Close_Finish:
 	swsusp_close(FMODE_READ);
 	goto Finish;
 }
 
-late_initcall(software_resume);
+late_initcall_sync(software_resume);
 
 
 static const char * const hibernation_modes[] = {
@@ -971,16 +973,20 @@ static ssize_t resume_show(struct kobject *kobj, struct kobj_attribute *attr,
 static ssize_t resume_store(struct kobject *kobj, struct kobj_attribute *attr,
 			    const char *buf, size_t n)
 {
-	unsigned int maj, min;
 	dev_t res;
-	int ret = -EINVAL;
+	int len = n;
+	char *name;
 
-	if (sscanf(buf, "%u:%u", &maj, &min) != 2)
-		goto out;
+	if (len && buf[len-1] == '\n')
+		len--;
+	name = kstrndup(buf, len, GFP_KERNEL);
+	if (!name)
+		return -ENOMEM;
 
-	res = MKDEV(maj,min);
-	if (maj != MAJOR(res) || min != MINOR(res))
-		goto out;
+	res = name_to_dev_t(name);
+	kfree(name);
+	if (!res)
+		return -EINVAL;
 
 	lock_system_sleep();
 	swsusp_resume_device = res;
@@ -988,9 +994,7 @@ static ssize_t resume_store(struct kobject *kobj, struct kobj_attribute *attr,
 	printk(KERN_INFO "PM: Starting manual resume from disk\n");
 	noresume = 0;
 	software_resume();
-	ret = n;
- out:
-	return ret;
+	return n;
 }
 
 power_attr(resume);

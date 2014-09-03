@@ -16,6 +16,9 @@
 #include <linux/suspend.h>
 #include <asm/ptrace.h>
 #include <asm/processor.h>
+#include <asm/smp-cps.h>
+
+#include <linux/kvm_host.h>
 
 void output_ptreg_defines(void)
 {
@@ -80,6 +83,9 @@ void output_task_defines(void)
 	OFFSET(TASK_FLAGS, task_struct, flags);
 	OFFSET(TASK_MM, task_struct, mm);
 	OFFSET(TASK_PID, task_struct, pid);
+#if defined(CONFIG_CC_STACKPROTECTOR)
+	OFFSET(TASK_STACK_CANARY, task_struct, stack_canary);
+#endif
 	DEFINE(TASK_STRUCT_SIZE, sizeof(struct task_struct));
 	BLANK();
 }
@@ -163,6 +169,72 @@ void output_thread_fpu_defines(void)
 	OFFSET(THREAD_FPR30, task_struct, thread.fpu.fpr[30]);
 	OFFSET(THREAD_FPR31, task_struct, thread.fpu.fpr[31]);
 
+	/* the least significant 64 bits of each FP register */
+	OFFSET(THREAD_FPR0_LS64, task_struct,
+	       thread.fpu.fpr[0].val64[FPR_IDX(64, 0)]);
+	OFFSET(THREAD_FPR1_LS64, task_struct,
+	       thread.fpu.fpr[1].val64[FPR_IDX(64, 0)]);
+	OFFSET(THREAD_FPR2_LS64, task_struct,
+	       thread.fpu.fpr[2].val64[FPR_IDX(64, 0)]);
+	OFFSET(THREAD_FPR3_LS64, task_struct,
+	       thread.fpu.fpr[3].val64[FPR_IDX(64, 0)]);
+	OFFSET(THREAD_FPR4_LS64, task_struct,
+	       thread.fpu.fpr[4].val64[FPR_IDX(64, 0)]);
+	OFFSET(THREAD_FPR5_LS64, task_struct,
+	       thread.fpu.fpr[5].val64[FPR_IDX(64, 0)]);
+	OFFSET(THREAD_FPR6_LS64, task_struct,
+	       thread.fpu.fpr[6].val64[FPR_IDX(64, 0)]);
+	OFFSET(THREAD_FPR7_LS64, task_struct,
+	       thread.fpu.fpr[7].val64[FPR_IDX(64, 0)]);
+	OFFSET(THREAD_FPR8_LS64, task_struct,
+	       thread.fpu.fpr[8].val64[FPR_IDX(64, 0)]);
+	OFFSET(THREAD_FPR9_LS64, task_struct,
+	       thread.fpu.fpr[9].val64[FPR_IDX(64, 0)]);
+	OFFSET(THREAD_FPR10_LS64, task_struct,
+	       thread.fpu.fpr[10].val64[FPR_IDX(64, 0)]);
+	OFFSET(THREAD_FPR11_LS64, task_struct,
+	       thread.fpu.fpr[11].val64[FPR_IDX(64, 0)]);
+	OFFSET(THREAD_FPR12_LS64, task_struct,
+	       thread.fpu.fpr[12].val64[FPR_IDX(64, 0)]);
+	OFFSET(THREAD_FPR13_LS64, task_struct,
+	       thread.fpu.fpr[13].val64[FPR_IDX(64, 0)]);
+	OFFSET(THREAD_FPR14_LS64, task_struct,
+	       thread.fpu.fpr[14].val64[FPR_IDX(64, 0)]);
+	OFFSET(THREAD_FPR15_LS64, task_struct,
+	       thread.fpu.fpr[15].val64[FPR_IDX(64, 0)]);
+	OFFSET(THREAD_FPR16_LS64, task_struct,
+	       thread.fpu.fpr[16].val64[FPR_IDX(64, 0)]);
+	OFFSET(THREAD_FPR17_LS64, task_struct,
+	       thread.fpu.fpr[17].val64[FPR_IDX(64, 0)]);
+	OFFSET(THREAD_FPR18_LS64, task_struct,
+	       thread.fpu.fpr[18].val64[FPR_IDX(64, 0)]);
+	OFFSET(THREAD_FPR19_LS64, task_struct,
+	       thread.fpu.fpr[19].val64[FPR_IDX(64, 0)]);
+	OFFSET(THREAD_FPR20_LS64, task_struct,
+	       thread.fpu.fpr[20].val64[FPR_IDX(64, 0)]);
+	OFFSET(THREAD_FPR21_LS64, task_struct,
+	       thread.fpu.fpr[21].val64[FPR_IDX(64, 0)]);
+	OFFSET(THREAD_FPR22_LS64, task_struct,
+	       thread.fpu.fpr[22].val64[FPR_IDX(64, 0)]);
+	OFFSET(THREAD_FPR23_LS64, task_struct,
+	       thread.fpu.fpr[23].val64[FPR_IDX(64, 0)]);
+	OFFSET(THREAD_FPR24_LS64, task_struct,
+	       thread.fpu.fpr[24].val64[FPR_IDX(64, 0)]);
+	OFFSET(THREAD_FPR25_LS64, task_struct,
+	       thread.fpu.fpr[25].val64[FPR_IDX(64, 0)]);
+	OFFSET(THREAD_FPR26_LS64, task_struct,
+	       thread.fpu.fpr[26].val64[FPR_IDX(64, 0)]);
+	OFFSET(THREAD_FPR27_LS64, task_struct,
+	       thread.fpu.fpr[27].val64[FPR_IDX(64, 0)]);
+	OFFSET(THREAD_FPR28_LS64, task_struct,
+	       thread.fpu.fpr[28].val64[FPR_IDX(64, 0)]);
+	OFFSET(THREAD_FPR29_LS64, task_struct,
+	       thread.fpu.fpr[29].val64[FPR_IDX(64, 0)]);
+	OFFSET(THREAD_FPR30_LS64, task_struct,
+	       thread.fpu.fpr[30].val64[FPR_IDX(64, 0)]);
+	OFFSET(THREAD_FPR31_LS64, task_struct,
+	       thread.fpu.fpr[31].val64[FPR_IDX(64, 0)]);
+
 	OFFSET(THREAD_FCR31, task_struct, thread.fpu.fcr31);
 	BLANK();
 }
@@ -200,6 +272,9 @@ void output_mm_defines(void)
 	DEFINE(_PTRS_PER_PMD, PTRS_PER_PMD);
 	DEFINE(_PTRS_PER_PTE, PTRS_PER_PTE);
 	BLANK();
+	DEFINE(_PAGE_SHIFT, PAGE_SHIFT);
+	DEFINE(_PAGE_SIZE, PAGE_SIZE);
+	BLANK();
 }
 
 #ifdef CONFIG_32BIT
@@ -220,6 +295,7 @@ void output_sc_defines(void)
 	OFFSET(SC_LO2, sigcontext, sc_lo2);
 	OFFSET(SC_HI3, sigcontext, sc_hi3);
 	OFFSET(SC_LO3, sigcontext, sc_lo3);
+	OFFSET(SC_MSAREGS, sigcontext, sc_msaregs);
 	BLANK();
 }
 #endif
@@ -234,6 +310,7 @@ void output_sc_defines(void)
 	OFFSET(SC_MDLO, sigcontext, sc_mdlo);
 	OFFSET(SC_PC, sigcontext, sc_pc);
 	OFFSET(SC_FPC_CSR, sigcontext, sc_fpc_csr);
+	OFFSET(SC_MSAREGS, sigcontext, sc_msaregs);
 	BLANK();
 }
 #endif
@@ -245,6 +322,7 @@ void output_sc32_defines(void)
 	OFFSET(SC32_FPREGS, sigcontext32, sc_fpregs);
 	OFFSET(SC32_FPC_CSR, sigcontext32, sc_fpc_csr);
 	OFFSET(SC32_FPC_EIR, sigcontext32, sc_fpc_eir);
+	OFFSET(SC32_MSAREGS, sigcontext32, sc_msaregs);
 	BLANK();
 }
 #endif
@@ -323,5 +401,81 @@ void output_pbe_defines(void)
 	OFFSET(PBE_NEXT, pbe, next);
 	DEFINE(PBE_SIZE, sizeof(struct pbe));
 	BLANK();
+}
+#endif
+
+void output_kvm_defines(void)
+{
+	COMMENT(" KVM/MIPS Specfic offsets. ");
+	DEFINE(VCPU_ARCH_SIZE, sizeof(struct kvm_vcpu_arch));
+	OFFSET(VCPU_RUN, kvm_vcpu, run);
+	OFFSET(VCPU_HOST_ARCH, kvm_vcpu, arch);
+
+	OFFSET(VCPU_HOST_EBASE, kvm_vcpu_arch, host_ebase);
+	OFFSET(VCPU_GUEST_EBASE, kvm_vcpu_arch, guest_ebase);
+
+	OFFSET(VCPU_HOST_STACK, kvm_vcpu_arch, host_stack);
+	OFFSET(VCPU_HOST_GP, kvm_vcpu_arch, host_gp);
+
+	OFFSET(VCPU_HOST_CP0_BADVADDR, kvm_vcpu_arch, host_cp0_badvaddr);
+	OFFSET(VCPU_HOST_CP0_CAUSE, kvm_vcpu_arch, host_cp0_cause);
+	OFFSET(VCPU_HOST_EPC, kvm_vcpu_arch, host_cp0_epc);
+	OFFSET(VCPU_HOST_ENTRYHI, kvm_vcpu_arch, host_cp0_entryhi);
+
+	OFFSET(VCPU_GUEST_INST, kvm_vcpu_arch, guest_inst);
+
+	OFFSET(VCPU_R0, kvm_vcpu_arch, gprs[0]);
+	OFFSET(VCPU_R1, kvm_vcpu_arch, gprs[1]);
+	OFFSET(VCPU_R2, kvm_vcpu_arch, gprs[2]);
+	OFFSET(VCPU_R3, kvm_vcpu_arch, gprs[3]);
+	OFFSET(VCPU_R4, kvm_vcpu_arch, gprs[4]);
+	OFFSET(VCPU_R5, kvm_vcpu_arch, gprs[5]);
+	OFFSET(VCPU_R6, kvm_vcpu_arch, gprs[6]);
+	OFFSET(VCPU_R7, kvm_vcpu_arch, gprs[7]);
+	OFFSET(VCPU_R8, kvm_vcpu_arch, gprs[8]);
+	OFFSET(VCPU_R9, kvm_vcpu_arch, gprs[9]);
+	OFFSET(VCPU_R10, kvm_vcpu_arch, gprs[10]);
+	OFFSET(VCPU_R11, kvm_vcpu_arch, gprs[11]);
+	OFFSET(VCPU_R12, kvm_vcpu_arch, gprs[12]);
+	OFFSET(VCPU_R13, kvm_vcpu_arch, gprs[13]);
+	OFFSET(VCPU_R14, kvm_vcpu_arch, gprs[14]);
+	OFFSET(VCPU_R15, kvm_vcpu_arch, gprs[15]);
+	OFFSET(VCPU_R16, kvm_vcpu_arch, gprs[16]);
+	OFFSET(VCPU_R17, kvm_vcpu_arch, gprs[17]);
+	OFFSET(VCPU_R18, kvm_vcpu_arch, gprs[18]);
+	OFFSET(VCPU_R19, kvm_vcpu_arch, gprs[19]);
+	OFFSET(VCPU_R20, kvm_vcpu_arch, gprs[20]);
+	OFFSET(VCPU_R21, kvm_vcpu_arch, gprs[21]);
+	OFFSET(VCPU_R22, kvm_vcpu_arch, gprs[22]);
+	OFFSET(VCPU_R23, kvm_vcpu_arch, gprs[23]);
+	OFFSET(VCPU_R24, kvm_vcpu_arch, gprs[24]);
+	OFFSET(VCPU_R25, kvm_vcpu_arch, gprs[25]);
+	OFFSET(VCPU_R26, kvm_vcpu_arch, gprs[26]);
+	OFFSET(VCPU_R27, kvm_vcpu_arch, gprs[27]);
+	OFFSET(VCPU_R28, kvm_vcpu_arch, gprs[28]);
+	OFFSET(VCPU_R29, kvm_vcpu_arch, gprs[29]);
+	OFFSET(VCPU_R30, kvm_vcpu_arch, gprs[30]);
+	OFFSET(VCPU_R31, kvm_vcpu_arch, gprs[31]);
+	OFFSET(VCPU_LO, kvm_vcpu_arch, lo);
+	OFFSET(VCPU_HI, kvm_vcpu_arch, hi);
+	OFFSET(VCPU_PC, kvm_vcpu_arch, pc);
+	OFFSET(VCPU_COP0, kvm_vcpu_arch, cop0);
+	OFFSET(VCPU_GUEST_KERNEL_ASID, kvm_vcpu_arch, guest_kernel_asid);
+	OFFSET(VCPU_GUEST_USER_ASID, kvm_vcpu_arch, guest_user_asid);
+
+	OFFSET(COP0_TLB_HI, mips_coproc, reg[MIPS_CP0_TLB_HI][0]);
+	OFFSET(COP0_STATUS, mips_coproc, reg[MIPS_CP0_STATUS][0]);
+	BLANK();
+}
+
+#ifdef CONFIG_MIPS_CPS
+void output_cps_defines(void)
+{
+	COMMENT(" MIPS CPS offsets. ");
+	OFFSET(BOOTCFG_CORE, boot_config, core);
+	OFFSET(BOOTCFG_VPE, boot_config, vpe);
+	OFFSET(BOOTCFG_PC, boot_config, pc);
+	OFFSET(BOOTCFG_SP, boot_config, sp);
+	OFFSET(BOOTCFG_GP, boot_config, gp);
 }
 #endif

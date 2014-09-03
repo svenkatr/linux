@@ -22,18 +22,22 @@
 #include <asm/cputype.h>
 #include <asm/sections.h>
 #include <asm/cachetype.h>
+#include <asm/sections.h>
 #include <asm/setup.h>
 #include <asm/smp_plat.h>
 #include <asm/tlb.h>
 #include <asm/highmem.h>
 #include <asm/system_info.h>
 #include <asm/traps.h>
+#include <asm/procinfo.h>
+#include <asm/memory.h>
 
 #include <asm/mach/arch.h>
 #include <asm/mach/map.h>
 #include <asm/mach/pci.h>
 
 #include "mm.h"
+#include "tcm.h"
 
 /*
  * empty_zero_page is a special page that is used for
@@ -57,6 +61,9 @@ static unsigned int cachepolicy __initdata = CPOLICY_WRITEBACK;
 static unsigned int ecc_mask __initdata = 0;
 pgprot_t pgprot_user;
 pgprot_t pgprot_kernel;
+pgprot_t pgprot_hyp_device;
+pgprot_t pgprot_s2;
+pgprot_t pgprot_s2_device;
 
 EXPORT_SYMBOL(pgprot_user);
 EXPORT_SYMBOL(pgprot_kernel);
@@ -66,7 +73,14 @@ struct cachepolicy {
 	unsigned int	cr_mask;
 	pmdval_t	pmd;
 	pteval_t	pte;
+	pteval_t	pte_s2;
 };
+
+#ifdef CONFIG_ARM_LPAE
+#define s2_policy(policy)	policy
+#else
+#define s2_policy(policy)	0
+#endif
 
 static struct cachepolicy cache_policies[] __initdata = {
 	{
@@ -74,29 +88,35 @@ static struct cachepolicy cache_policies[] __initdata = {
 		.cr_mask	= CR_W|CR_C,
 		.pmd		= PMD_SECT_UNCACHED,
 		.pte		= L_PTE_MT_UNCACHED,
+		.pte_s2		= s2_policy(L_PTE_S2_MT_UNCACHED),
 	}, {
 		.policy		= "buffered",
 		.cr_mask	= CR_C,
 		.pmd		= PMD_SECT_BUFFERED,
 		.pte		= L_PTE_MT_BUFFERABLE,
+		.pte_s2		= s2_policy(L_PTE_S2_MT_UNCACHED),
 	}, {
 		.policy		= "writethrough",
 		.cr_mask	= 0,
 		.pmd		= PMD_SECT_WT,
 		.pte		= L_PTE_MT_WRITETHROUGH,
+		.pte_s2		= s2_policy(L_PTE_S2_MT_WRITETHROUGH),
 	}, {
 		.policy		= "writeback",
 		.cr_mask	= 0,
 		.pmd		= PMD_SECT_WB,
 		.pte		= L_PTE_MT_WRITEBACK,
+		.pte_s2		= s2_policy(L_PTE_S2_MT_WRITEBACK),
 	}, {
 		.policy		= "writealloc",
 		.cr_mask	= 0,
 		.pmd		= PMD_SECT_WBWA,
 		.pte		= L_PTE_MT_WRITEALLOC,
+		.pte_s2		= s2_policy(L_PTE_S2_MT_WRITEBACK),
 	}
 };
 
+#ifdef CONFIG_CPU_CP15
 /*
  * These are useful for identifying cache coherency
  * problems by allowing the cache or the cache and
@@ -195,12 +215,32 @@ void adjust_cr(unsigned long mask, unsigned long set)
 }
 #endif
 
+#else /* ifdef CONFIG_CPU_CP15 */
+
+static int __init early_cachepolicy(char *p)
+{
+	pr_warning("cachepolicy kernel parameter not supported without cp15\n");
+}
+early_param("cachepolicy", early_cachepolicy);
+
+static int __init noalign_setup(char *__unused)
+{
+	pr_warning("noalign kernel parameter not supported without cp15\n");
+}
+__setup("noalign", noalign_setup);
+
+#endif /* ifdef CONFIG_CPU_CP15 / else */
+
 #define PROT_PTE_DEVICE		L_PTE_PRESENT|L_PTE_YOUNG|L_PTE_DIRTY|L_PTE_XN
+#define PROT_PTE_S2_DEVICE	PROT_PTE_DEVICE
 #define PROT_SECT_DEVICE	PMD_TYPE_SECT|PMD_SECT_AP_WRITE
 
 static struct mem_type mem_types[] = {
 	[MT_DEVICE] = {		  /* Strongly ordered / ARMv6 shared device */
 		.prot_pte	= PROT_PTE_DEVICE | L_PTE_MT_DEV_SHARED |
+				  L_PTE_SHARED,
+		.prot_pte_s2	= s2_policy(PROT_PTE_S2_DEVICE) |
+				  s2_policy(L_PTE_S2_MT_DEV_SHARED) |
 				  L_PTE_SHARED,
 		.prot_l1	= PMD_TYPE_TABLE,
 		.prot_sect	= PROT_SECT_DEVICE | PMD_SECT_S,
@@ -252,8 +292,15 @@ static struct mem_type mem_types[] = {
 		.prot_l1   = PMD_TYPE_TABLE,
 		.domain    = DOMAIN_USER,
 	},
-	[MT_MEMORY] = {
+	[MT_MEMORY_RWX] = {
 		.prot_pte  = L_PTE_PRESENT | L_PTE_YOUNG | L_PTE_DIRTY,
+		.prot_l1   = PMD_TYPE_TABLE,
+		.prot_sect = PMD_TYPE_SECT | PMD_SECT_AP_WRITE,
+		.domain    = DOMAIN_KERNEL,
+	},
+	[MT_MEMORY_RW] = {
+		.prot_pte  = L_PTE_PRESENT | L_PTE_YOUNG | L_PTE_DIRTY |
+			     L_PTE_XN,
 		.prot_l1   = PMD_TYPE_TABLE,
 		.prot_sect = PMD_TYPE_SECT | PMD_SECT_AP_WRITE,
 		.domain    = DOMAIN_KERNEL,
@@ -262,35 +309,36 @@ static struct mem_type mem_types[] = {
 		.prot_sect = PMD_TYPE_SECT,
 		.domain    = DOMAIN_KERNEL,
 	},
-	[MT_MEMORY_NONCACHED] = {
+	[MT_MEMORY_RWX_NONCACHED] = {
 		.prot_pte  = L_PTE_PRESENT | L_PTE_YOUNG | L_PTE_DIRTY |
 				L_PTE_MT_BUFFERABLE,
 		.prot_l1   = PMD_TYPE_TABLE,
 		.prot_sect = PMD_TYPE_SECT | PMD_SECT_AP_WRITE,
 		.domain    = DOMAIN_KERNEL,
 	},
-	[MT_MEMORY_DTCM] = {
+	[MT_MEMORY_RW_DTCM] = {
 		.prot_pte  = L_PTE_PRESENT | L_PTE_YOUNG | L_PTE_DIRTY |
 				L_PTE_XN,
 		.prot_l1   = PMD_TYPE_TABLE,
 		.prot_sect = PMD_TYPE_SECT | PMD_SECT_XN,
 		.domain    = DOMAIN_KERNEL,
 	},
-	[MT_MEMORY_ITCM] = {
+	[MT_MEMORY_RWX_ITCM] = {
 		.prot_pte  = L_PTE_PRESENT | L_PTE_YOUNG | L_PTE_DIRTY,
 		.prot_l1   = PMD_TYPE_TABLE,
 		.domain    = DOMAIN_KERNEL,
 	},
-	[MT_MEMORY_SO] = {
+	[MT_MEMORY_RW_SO] = {
 		.prot_pte  = L_PTE_PRESENT | L_PTE_YOUNG | L_PTE_DIRTY |
-				L_PTE_MT_UNCACHED,
+				L_PTE_MT_UNCACHED | L_PTE_XN,
 		.prot_l1   = PMD_TYPE_TABLE,
 		.prot_sect = PMD_TYPE_SECT | PMD_SECT_AP_WRITE | PMD_SECT_S |
 				PMD_SECT_UNCACHED | PMD_SECT_XN,
 		.domain    = DOMAIN_KERNEL,
 	},
 	[MT_MEMORY_DMA_READY] = {
-		.prot_pte  = L_PTE_PRESENT | L_PTE_YOUNG | L_PTE_DIRTY,
+		.prot_pte  = L_PTE_PRESENT | L_PTE_YOUNG | L_PTE_DIRTY |
+				L_PTE_XN,
 		.prot_l1   = PMD_TYPE_TABLE,
 		.domain    = DOMAIN_KERNEL,
 	},
@@ -302,6 +350,44 @@ const struct mem_type *get_mem_type(unsigned int type)
 }
 EXPORT_SYMBOL(get_mem_type);
 
+#define PTE_SET_FN(_name, pteop) \
+static int pte_set_##_name(pte_t *ptep, pgtable_t token, unsigned long addr, \
+			void *data) \
+{ \
+	pte_t pte = pteop(*ptep); \
+\
+	set_pte_ext(ptep, pte, 0); \
+	return 0; \
+} \
+
+#define SET_MEMORY_FN(_name, callback) \
+int set_memory_##_name(unsigned long addr, int numpages) \
+{ \
+	unsigned long start = addr; \
+	unsigned long size = PAGE_SIZE*numpages; \
+	unsigned end = start + size; \
+\
+	if (start < MODULES_VADDR || start >= MODULES_END) \
+		return -EINVAL;\
+\
+	if (end < MODULES_VADDR || end >= MODULES_END) \
+		return -EINVAL; \
+\
+	apply_to_page_range(&init_mm, start, size, callback, NULL); \
+	flush_tlb_kernel_range(start, end); \
+	return 0;\
+}
+
+PTE_SET_FN(ro, pte_wrprotect)
+PTE_SET_FN(rw, pte_mkwrite)
+PTE_SET_FN(x, pte_mkexec)
+PTE_SET_FN(nx, pte_mknexec)
+
+SET_MEMORY_FN(ro, pte_set_ro)
+SET_MEMORY_FN(rw, pte_set_rw)
+SET_MEMORY_FN(x, pte_set_x)
+SET_MEMORY_FN(nx, pte_set_nx)
+
 /*
  * Adjust the PMD section entries according to the CPU in use.
  */
@@ -310,6 +396,7 @@ static void __init build_mem_type_table(void)
 	struct cachepolicy *cp;
 	unsigned int cr = get_cr();
 	pteval_t user_pgprot, kern_pgprot, vecs_pgprot;
+	pteval_t hyp_device_pgprot, s2_pgprot, s2_device_pgprot;
 	int cpu_arch = cpu_architecture();
 	int i;
 
@@ -374,6 +461,9 @@ static void __init build_mem_type_table(void)
 			mem_types[MT_DEVICE_NONSHARED].prot_sect |= PMD_SECT_XN;
 			mem_types[MT_DEVICE_CACHED].prot_sect |= PMD_SECT_XN;
 			mem_types[MT_DEVICE_WC].prot_sect |= PMD_SECT_XN;
+
+			/* Also setup NX memory mapping */
+			mem_types[MT_MEMORY_RW].prot_sect |= PMD_SECT_XN;
 		}
 		if (cpu_arch >= CPU_ARCH_ARMv7 && (cr & CR_TRE)) {
 			/*
@@ -421,6 +511,19 @@ static void __init build_mem_type_table(void)
 	 */
 	cp = &cache_policies[cachepolicy];
 	vecs_pgprot = kern_pgprot = user_pgprot = cp->pte;
+	s2_pgprot = cp->pte_s2;
+	hyp_device_pgprot = mem_types[MT_DEVICE].prot_pte;
+	s2_device_pgprot = mem_types[MT_DEVICE].prot_pte_s2;
+
+	/*
+	 * We don't use domains on ARMv6 (since this causes problems with
+	 * v6/v7 kernels), so we must use a separate memory type for user
+	 * r/o, kernel r/w to map the vectors page.
+	 */
+#ifndef CONFIG_ARM_LPAE
+	if (cpu_arch == CPU_ARCH_ARMv6)
+		vecs_pgprot |= L_PTE_MT_VECTORS;
+#endif
 
 	/*
 	 * ARMv6 and above have extended page tables.
@@ -444,15 +547,18 @@ static void __init build_mem_type_table(void)
 			user_pgprot |= L_PTE_SHARED;
 			kern_pgprot |= L_PTE_SHARED;
 			vecs_pgprot |= L_PTE_SHARED;
+			s2_pgprot |= L_PTE_SHARED;
 			mem_types[MT_DEVICE_WC].prot_sect |= PMD_SECT_S;
 			mem_types[MT_DEVICE_WC].prot_pte |= L_PTE_SHARED;
 			mem_types[MT_DEVICE_CACHED].prot_sect |= PMD_SECT_S;
 			mem_types[MT_DEVICE_CACHED].prot_pte |= L_PTE_SHARED;
-			mem_types[MT_MEMORY].prot_sect |= PMD_SECT_S;
-			mem_types[MT_MEMORY].prot_pte |= L_PTE_SHARED;
+			mem_types[MT_MEMORY_RWX].prot_sect |= PMD_SECT_S;
+			mem_types[MT_MEMORY_RWX].prot_pte |= L_PTE_SHARED;
+			mem_types[MT_MEMORY_RW].prot_sect |= PMD_SECT_S;
+			mem_types[MT_MEMORY_RW].prot_pte |= L_PTE_SHARED;
 			mem_types[MT_MEMORY_DMA_READY].prot_pte |= L_PTE_SHARED;
-			mem_types[MT_MEMORY_NONCACHED].prot_sect |= PMD_SECT_S;
-			mem_types[MT_MEMORY_NONCACHED].prot_pte |= L_PTE_SHARED;
+			mem_types[MT_MEMORY_RWX_NONCACHED].prot_sect |= PMD_SECT_S;
+			mem_types[MT_MEMORY_RWX_NONCACHED].prot_pte |= L_PTE_SHARED;
 		}
 	}
 
@@ -463,15 +569,15 @@ static void __init build_mem_type_table(void)
 	if (cpu_arch >= CPU_ARCH_ARMv6) {
 		if (cpu_arch >= CPU_ARCH_ARMv7 && (cr & CR_TRE)) {
 			/* Non-cacheable Normal is XCB = 001 */
-			mem_types[MT_MEMORY_NONCACHED].prot_sect |=
+			mem_types[MT_MEMORY_RWX_NONCACHED].prot_sect |=
 				PMD_SECT_BUFFERED;
 		} else {
 			/* For both ARMv6 and non-TEX-remapping ARMv7 */
-			mem_types[MT_MEMORY_NONCACHED].prot_sect |=
+			mem_types[MT_MEMORY_RWX_NONCACHED].prot_sect |=
 				PMD_SECT_TEX(1);
 		}
 	} else {
-		mem_types[MT_MEMORY_NONCACHED].prot_sect |= PMD_SECT_BUFFERABLE;
+		mem_types[MT_MEMORY_RWX_NONCACHED].prot_sect |= PMD_SECT_BUFFERABLE;
 	}
 
 #ifdef CONFIG_ARM_LPAE
@@ -498,13 +604,18 @@ static void __init build_mem_type_table(void)
 	pgprot_user   = __pgprot(L_PTE_PRESENT | L_PTE_YOUNG | user_pgprot);
 	pgprot_kernel = __pgprot(L_PTE_PRESENT | L_PTE_YOUNG |
 				 L_PTE_DIRTY | kern_pgprot);
+	pgprot_s2  = __pgprot(L_PTE_PRESENT | L_PTE_YOUNG | s2_pgprot);
+	pgprot_s2_device  = __pgprot(s2_device_pgprot);
+	pgprot_hyp_device  = __pgprot(hyp_device_pgprot);
 
 	mem_types[MT_LOW_VECTORS].prot_l1 |= ecc_mask;
 	mem_types[MT_HIGH_VECTORS].prot_l1 |= ecc_mask;
-	mem_types[MT_MEMORY].prot_sect |= ecc_mask | cp->pmd;
-	mem_types[MT_MEMORY].prot_pte |= kern_pgprot;
+	mem_types[MT_MEMORY_RWX].prot_sect |= ecc_mask | cp->pmd;
+	mem_types[MT_MEMORY_RWX].prot_pte |= kern_pgprot;
+	mem_types[MT_MEMORY_RW].prot_sect |= ecc_mask | cp->pmd;
+	mem_types[MT_MEMORY_RW].prot_pte |= kern_pgprot;
 	mem_types[MT_MEMORY_DMA_READY].prot_pte |= kern_pgprot;
-	mem_types[MT_MEMORY_NONCACHED].prot_sect |= ecc_mask;
+	mem_types[MT_MEMORY_RWX_NONCACHED].prot_sect |= ecc_mask;
 	mem_types[MT_ROM].prot_sect |= cp->pmd;
 
 	switch (cp->pmd) {
@@ -516,8 +627,8 @@ static void __init build_mem_type_table(void)
 		mem_types[MT_CACHECLEAN].prot_sect |= PMD_SECT_WB;
 		break;
 	}
-	printk("Memory policy: ECC %sabled, Data cache %s\n",
-		ecc_mask ? "en" : "dis", cp->policy);
+	pr_info("Memory policy: %sData cache %s\n",
+		ecc_mask ? "ECC enabled, " : "", cp->policy);
 
 	for (i = 0; i < ARRAY_SIZE(mem_types); i++) {
 		struct mem_type *t = &mem_types[i];
@@ -576,50 +687,74 @@ static void __init alloc_init_pte(pmd_t *pmd, unsigned long addr,
 	} while (pte++, addr += PAGE_SIZE, addr != end);
 }
 
-static void __init alloc_init_section(pud_t *pud, unsigned long addr,
+static void __init __map_init_section(pmd_t *pmd, unsigned long addr,
+			unsigned long end, phys_addr_t phys,
+			const struct mem_type *type)
+{
+	pmd_t *p = pmd;
+
+#ifndef CONFIG_ARM_LPAE
+	/*
+	 * In classic MMU format, puds and pmds are folded in to
+	 * the pgds. pmd_offset gives the PGD entry. PGDs refer to a
+	 * group of L1 entries making up one logical pointer to
+	 * an L2 table (2MB), where as PMDs refer to the individual
+	 * L1 entries (1MB). Hence increment to get the correct
+	 * offset for odd 1MB sections.
+	 * (See arch/arm/include/asm/pgtable-2level.h)
+	 */
+	if (addr & SECTION_SIZE)
+		pmd++;
+#endif
+	do {
+		*pmd = __pmd(phys | type->prot_sect);
+		phys += SECTION_SIZE;
+	} while (pmd++, addr += SECTION_SIZE, addr != end);
+
+	flush_pmd_entry(p);
+}
+
+static void __init alloc_init_pmd(pud_t *pud, unsigned long addr,
 				      unsigned long end, phys_addr_t phys,
 				      const struct mem_type *type)
 {
 	pmd_t *pmd = pmd_offset(pud, addr);
+	unsigned long next;
 
-	/*
-	 * Try a section mapping - end, addr and phys must all be aligned
-	 * to a section boundary.  Note that PMDs refer to the individual
-	 * L1 entries, whereas PGDs refer to a group of L1 entries making
-	 * up one logical pointer to an L2 table.
-	 */
-	if (type->prot_sect && ((addr | end | phys) & ~SECTION_MASK) == 0) {
-		pmd_t *p = pmd;
-
-#ifndef CONFIG_ARM_LPAE
-		if (addr & SECTION_SIZE)
-			pmd++;
-#endif
-
-		do {
-			*pmd = __pmd(phys | type->prot_sect);
-			phys += SECTION_SIZE;
-		} while (pmd++, addr += SECTION_SIZE, addr != end);
-
-		flush_pmd_entry(p);
-	} else {
+	do {
 		/*
-		 * No need to loop; pte's aren't interested in the
-		 * individual L1 entries.
+		 * With LPAE, we must loop over to map
+		 * all the pmds for the given range.
 		 */
-		alloc_init_pte(pmd, addr, end, __phys_to_pfn(phys), type);
-	}
+		next = pmd_addr_end(addr, end);
+
+		/*
+		 * Try a section mapping - addr, next and phys must all be
+		 * aligned to a section boundary.
+		 */
+		if (type->prot_sect &&
+				((addr | next | phys) & ~SECTION_MASK) == 0) {
+			__map_init_section(pmd, addr, next, phys, type);
+		} else {
+			alloc_init_pte(pmd, addr, next,
+						__phys_to_pfn(phys), type);
+		}
+
+		phys += next - addr;
+
+	} while (pmd++, addr = next, addr != end);
 }
 
 static void __init alloc_init_pud(pgd_t *pgd, unsigned long addr,
-	unsigned long end, unsigned long phys, const struct mem_type *type)
+				  unsigned long end, phys_addr_t phys,
+				  const struct mem_type *type)
 {
 	pud_t *pud = pud_offset(pgd, addr);
 	unsigned long next;
 
 	do {
 		next = pud_addr_end(addr, end);
-		alloc_init_section(pud, addr, next, phys, type);
+		alloc_init_pmd(pud, addr, next, phys, type);
 		phys += next - addr;
 	} while (pud++, addr = next, addr != end);
 }
@@ -757,21 +892,24 @@ void __init iotable_init(struct map_desc *io_desc, int nr)
 {
 	struct map_desc *md;
 	struct vm_struct *vm;
+	struct static_vm *svm;
 
 	if (!nr)
 		return;
 
-	vm = early_alloc_aligned(sizeof(*vm) * nr, __alignof__(*vm));
+	svm = early_alloc_aligned(sizeof(*svm) * nr, __alignof__(*svm));
 
 	for (md = io_desc; nr; md++, nr--) {
 		create_mapping(md);
+
+		vm = &svm->vm;
 		vm->addr = (void *)(md->virtual & PAGE_MASK);
 		vm->size = PAGE_ALIGN(md->length + (md->virtual & ~PAGE_MASK));
 		vm->phys_addr = __pfn_to_phys(md->pfn);
 		vm->flags = VM_IOREMAP | VM_ARM_STATIC_MAPPING;
 		vm->flags |= VM_ARM_MTYPE(md->type);
 		vm->caller = iotable_init;
-		vm_area_add_early(vm++);
+		add_static_vm_early(svm++);
 	}
 }
 
@@ -779,13 +917,16 @@ void __init vm_reserve_area_early(unsigned long addr, unsigned long size,
 				  void *caller)
 {
 	struct vm_struct *vm;
+	struct static_vm *svm;
 
-	vm = early_alloc_aligned(sizeof(*vm), __alignof__(*vm));
+	svm = early_alloc_aligned(sizeof(*svm), __alignof__(*svm));
+
+	vm = &svm->vm;
 	vm->addr = (void *)addr;
 	vm->size = size;
 	vm->flags = VM_IOREMAP | VM_ARM_EMPTY_MAPPING;
 	vm->caller = caller;
-	vm_area_add_early(vm);
+	add_static_vm_early(svm);
 }
 
 #ifndef CONFIG_ARM_LPAE
@@ -810,14 +951,13 @@ static void __init pmd_empty_section_gap(unsigned long addr)
 
 static void __init fill_pmd_gaps(void)
 {
+	struct static_vm *svm;
 	struct vm_struct *vm;
 	unsigned long addr, next = 0;
 	pmd_t *pmd;
 
-	/* we're still single threaded hence no lock needed here */
-	for (vm = vmlist; vm; vm = vm->next) {
-		if (!(vm->flags & (VM_ARM_STATIC_MAPPING | VM_ARM_EMPTY_MAPPING)))
-			continue;
+	list_for_each_entry(svm, &static_vmlist, list) {
+		vm = &svm->vm;
 		addr = (unsigned long)vm->addr;
 		if (addr < next)
 			continue;
@@ -857,19 +997,12 @@ static void __init fill_pmd_gaps(void)
 #if defined(CONFIG_PCI) && !defined(CONFIG_NEED_MACH_IO_H)
 static void __init pci_reserve_io(void)
 {
-	struct vm_struct *vm;
-	unsigned long addr;
+	struct static_vm *svm;
 
-	/* we're still single threaded hence no lock needed here */
-	for (vm = vmlist; vm; vm = vm->next) {
-		if (!(vm->flags & VM_ARM_STATIC_MAPPING))
-			continue;
-		addr = (unsigned long)vm->addr;
-		addr &= ~(SZ_2M - 1);
-		if (addr == PCI_IO_VIRT_BASE)
-			return;
+	svm = find_static_vm_vaddr((void *)PCI_IO_VIRT_BASE);
+	if (svm)
+		return;
 
-	}
 	vm_reserve_area_early(PCI_IO_VIRT_BASE, SZ_2M, pci_reserve_io);
 }
 #else
@@ -888,7 +1021,7 @@ void __init debug_ll_io_init(void)
 	map.virtual &= PAGE_MASK;
 	map.length = PAGE_SIZE;
 	map.type = MT_DEVICE;
-	create_mapping(&map);
+	iotable_init(&map, 1);
 }
 #endif
 
@@ -927,28 +1060,30 @@ phys_addr_t arm_lowmem_limit __initdata = 0;
 
 void __init sanity_check_meminfo(void)
 {
+	phys_addr_t memblock_limit = 0;
 	int i, j, highmem = 0;
+	phys_addr_t vmalloc_limit = __pa(vmalloc_min - 1) + 1;
 
 	for (i = 0, j = 0; i < meminfo.nr_banks; i++) {
 		struct membank *bank = &meminfo.bank[j];
+		phys_addr_t size_limit;
+
 		*bank = meminfo.bank[i];
+		size_limit = bank->size;
 
-		if (bank->start > ULONG_MAX)
+		if (bank->start >= vmalloc_limit)
 			highmem = 1;
-
-#ifdef CONFIG_HIGHMEM
-		if (__va(bank->start) >= vmalloc_min ||
-		    __va(bank->start) < (void *)PAGE_OFFSET)
-			highmem = 1;
+		else
+			size_limit = vmalloc_limit - bank->start;
 
 		bank->highmem = highmem;
 
+#ifdef CONFIG_HIGHMEM
 		/*
 		 * Split those memory banks which are partially overlapping
 		 * the vmalloc area greatly simplifying things later.
 		 */
-		if (!highmem && __va(bank->start) < vmalloc_min &&
-		    bank->size > vmalloc_min - __va(bank->start)) {
+		if (!highmem && bank->size > size_limit) {
 			if (meminfo.nr_banks >= NR_BANKS) {
 				printk(KERN_CRIT "NR_BANKS too low, "
 						 "ignoring high memory\n");
@@ -957,16 +1092,14 @@ void __init sanity_check_meminfo(void)
 					(meminfo.nr_banks - i) * sizeof(*bank));
 				meminfo.nr_banks++;
 				i++;
-				bank[1].size -= vmalloc_min - __va(bank->start);
-				bank[1].start = __pa(vmalloc_min - 1) + 1;
+				bank[1].size -= size_limit;
+				bank[1].start = vmalloc_limit;
 				bank[1].highmem = highmem = 1;
 				j++;
 			}
-			bank->size = vmalloc_min - __va(bank->start);
+			bank->size = size_limit;
 		}
 #else
-		bank->highmem = highmem;
-
 		/*
 		 * Highmem banks not allowed with !CONFIG_HIGHMEM.
 		 */
@@ -979,36 +1112,44 @@ void __init sanity_check_meminfo(void)
 		}
 
 		/*
-		 * Check whether this memory bank would entirely overlap
-		 * the vmalloc area.
-		 */
-		if (__va(bank->start) >= vmalloc_min ||
-		    __va(bank->start) < (void *)PAGE_OFFSET) {
-			printk(KERN_NOTICE "Ignoring RAM at %.8llx-%.8llx "
-			       "(vmalloc region overlap).\n",
-			       (unsigned long long)bank->start,
-			       (unsigned long long)bank->start + bank->size - 1);
-			continue;
-		}
-
-		/*
 		 * Check whether this memory bank would partially overlap
 		 * the vmalloc area.
 		 */
-		if (__va(bank->start + bank->size - 1) >= vmalloc_min ||
-		    __va(bank->start + bank->size - 1) <= __va(bank->start)) {
-			unsigned long newsize = vmalloc_min - __va(bank->start);
+		if (bank->size > size_limit) {
 			printk(KERN_NOTICE "Truncating RAM at %.8llx-%.8llx "
 			       "to -%.8llx (vmalloc region overlap).\n",
 			       (unsigned long long)bank->start,
 			       (unsigned long long)bank->start + bank->size - 1,
-			       (unsigned long long)bank->start + newsize - 1);
-			bank->size = newsize;
+			       (unsigned long long)bank->start + size_limit - 1);
+			bank->size = size_limit;
 		}
 #endif
-		if (!bank->highmem && bank->start + bank->size > arm_lowmem_limit)
-			arm_lowmem_limit = bank->start + bank->size;
+		if (!bank->highmem) {
+			phys_addr_t bank_end = bank->start + bank->size;
 
+			if (bank_end > arm_lowmem_limit)
+				arm_lowmem_limit = bank_end;
+
+			/*
+			 * Find the first non-section-aligned page, and point
+			 * memblock_limit at it. This relies on rounding the
+			 * limit down to be section-aligned, which happens at
+			 * the end of this function.
+			 *
+			 * With this algorithm, the start or end of almost any
+			 * bank can be non-section-aligned. The only exception
+			 * is that the start of the bank 0 must be section-
+			 * aligned, since otherwise memory would need to be
+			 * allocated when mapping the start of bank 0, which
+			 * occurs before any free memory is mapped.
+			 */
+			if (!memblock_limit) {
+				if (!IS_ALIGNED(bank->start, SECTION_SIZE))
+					memblock_limit = bank->start;
+				else if (!IS_ALIGNED(bank_end, SECTION_SIZE))
+					memblock_limit = bank_end;
+			}
+		}
 		j++;
 	}
 #ifdef CONFIG_HIGHMEM
@@ -1033,7 +1174,18 @@ void __init sanity_check_meminfo(void)
 #endif
 	meminfo.nr_banks = j;
 	high_memory = __va(arm_lowmem_limit - 1) + 1;
-	memblock_set_current_limit(arm_lowmem_limit);
+
+	/*
+	 * Round the memblock limit down to a section size.  This
+	 * helps to ensure that we will allocate memory from the
+	 * last full section, which should be mapped.
+	 */
+	if (memblock_limit)
+		memblock_limit = round_down(memblock_limit, SECTION_SIZE);
+	if (!memblock_limit)
+		memblock_limit = arm_lowmem_limit;
+
+	memblock_set_current_limit(memblock_limit);
 }
 
 static inline void prepare_page_table(void)
@@ -1105,7 +1257,7 @@ void __init arm_mm_memblock_reserve(void)
  * called function.  This means you can't use any function or debugging
  * method which may touch any device, otherwise the kernel _will_ crash.
  */
-static void __init devicemaps_init(struct machine_desc *mdesc)
+static void __init devicemaps_init(const struct machine_desc *mdesc)
 {
 	struct map_desc map;
 	unsigned long addr;
@@ -1114,7 +1266,7 @@ static void __init devicemaps_init(struct machine_desc *mdesc)
 	/*
 	 * Allocate the vector page early.
 	 */
-	vectors = early_alloc(PAGE_SIZE);
+	vectors = early_alloc(PAGE_SIZE * 2);
 
 	early_trap_init(vectors);
 
@@ -1159,20 +1311,34 @@ static void __init devicemaps_init(struct machine_desc *mdesc)
 	map.pfn = __phys_to_pfn(virt_to_phys(vectors));
 	map.virtual = 0xffff0000;
 	map.length = PAGE_SIZE;
+#ifdef CONFIG_KUSER_HELPERS
 	map.type = MT_HIGH_VECTORS;
+#else
+	map.type = MT_LOW_VECTORS;
+#endif
 	create_mapping(&map);
 
 	if (!vectors_high()) {
 		map.virtual = 0;
+		map.length = PAGE_SIZE * 2;
 		map.type = MT_LOW_VECTORS;
 		create_mapping(&map);
 	}
+
+	/* Now create a kernel read-only mapping */
+	map.pfn += 1;
+	map.virtual = 0xffff0000 + PAGE_SIZE;
+	map.length = PAGE_SIZE;
+	map.type = MT_LOW_VECTORS;
+	create_mapping(&map);
 
 	/*
 	 * Ask the machine support to map in the statically mapped devices.
 	 */
 	if (mdesc->map_io)
 		mdesc->map_io();
+	else
+		debug_ll_io_init();
 	fill_pmd_gaps();
 
 	/* Reserve fixed i/o space in VMALLOC region */
@@ -1199,6 +1365,8 @@ static void __init kmap_init(void)
 static void __init map_lowmem(void)
 {
 	struct memblock_region *reg;
+	unsigned long kernel_x_start = round_down(__pa(_stext), SECTION_SIZE);
+	unsigned long kernel_x_end = round_up(__pa(__init_end), SECTION_SIZE);
 
 	/* Map all the lowmem memory banks. */
 	for_each_memblock(memory, reg) {
@@ -1211,24 +1379,130 @@ static void __init map_lowmem(void)
 		if (start >= end)
 			break;
 
-		map.pfn = __phys_to_pfn(start);
-		map.virtual = __phys_to_virt(start);
-		map.length = end - start;
-		map.type = MT_MEMORY;
+		if (end < kernel_x_start || start >= kernel_x_end) {
+			map.pfn = __phys_to_pfn(start);
+			map.virtual = __phys_to_virt(start);
+			map.length = end - start;
+			map.type = MT_MEMORY_RWX;
 
-		create_mapping(&map);
+			create_mapping(&map);
+		} else {
+			/* This better cover the entire kernel */
+			if (start < kernel_x_start) {
+				map.pfn = __phys_to_pfn(start);
+				map.virtual = __phys_to_virt(start);
+				map.length = kernel_x_start - start;
+				map.type = MT_MEMORY_RW;
+
+				create_mapping(&map);
+			}
+
+			map.pfn = __phys_to_pfn(kernel_x_start);
+			map.virtual = __phys_to_virt(kernel_x_start);
+			map.length = kernel_x_end - kernel_x_start;
+			map.type = MT_MEMORY_RWX;
+
+			create_mapping(&map);
+
+			if (kernel_x_end < end) {
+				map.pfn = __phys_to_pfn(kernel_x_end);
+				map.virtual = __phys_to_virt(kernel_x_end);
+				map.length = end - kernel_x_end;
+				map.type = MT_MEMORY_RW;
+
+				create_mapping(&map);
+			}
+		}
 	}
 }
+
+#ifdef CONFIG_ARM_LPAE
+/*
+ * early_paging_init() recreates boot time page table setup, allowing machines
+ * to switch over to a high (>4G) address space on LPAE systems
+ */
+void __init early_paging_init(const struct machine_desc *mdesc,
+			      struct proc_info_list *procinfo)
+{
+	pmdval_t pmdprot = procinfo->__cpu_mm_mmu_flags;
+	unsigned long map_start, map_end;
+	pgd_t *pgd0, *pgdk;
+	pud_t *pud0, *pudk, *pud_start;
+	pmd_t *pmd0, *pmdk;
+	phys_addr_t phys;
+	int i;
+
+	if (!(mdesc->init_meminfo))
+		return;
+
+	/* remap kernel code and data */
+	map_start = init_mm.start_code;
+	map_end   = init_mm.brk;
+
+	/* get a handle on things... */
+	pgd0 = pgd_offset_k(0);
+	pud_start = pud0 = pud_offset(pgd0, 0);
+	pmd0 = pmd_offset(pud0, 0);
+
+	pgdk = pgd_offset_k(map_start);
+	pudk = pud_offset(pgdk, map_start);
+	pmdk = pmd_offset(pudk, map_start);
+
+	mdesc->init_meminfo();
+
+	/* Run the patch stub to update the constants */
+	fixup_pv_table(&__pv_table_begin,
+		(&__pv_table_end - &__pv_table_begin) << 2);
+
+	/*
+	 * Cache cleaning operations for self-modifying code
+	 * We should clean the entries by MVA but running a
+	 * for loop over every pv_table entry pointer would
+	 * just complicate the code.
+	 */
+	flush_cache_louis();
+	dsb();
+	isb();
+
+	/* remap level 1 table */
+	for (i = 0; i < PTRS_PER_PGD; pud0++, i++) {
+		set_pud(pud0,
+			__pud(__pa(pmd0) | PMD_TYPE_TABLE | L_PGD_SWAPPER));
+		pmd0 += PTRS_PER_PMD;
+	}
+
+	/* remap pmds for kernel mapping */
+	phys = __pa(map_start) & PMD_MASK;
+	do {
+		*pmdk++ = __pmd(phys | pmdprot);
+		phys += PMD_SIZE;
+	} while (phys < map_end);
+
+	flush_cache_all();
+	cpu_switch_mm(pgd0, &init_mm);
+	cpu_set_ttbr(1, __pa(pgd0) + TTBR1_OFFSET);
+	local_flush_bp_all();
+	local_flush_tlb_all();
+}
+
+#else
+
+void __init early_paging_init(const struct machine_desc *mdesc,
+			      struct proc_info_list *procinfo)
+{
+	if (mdesc->init_meminfo)
+		mdesc->init_meminfo();
+}
+
+#endif
 
 /*
  * paging_init() sets up the page tables, initialises the zone memory
  * maps, and sets up the zero page, bad page and bad page tables.
  */
-void __init paging_init(struct machine_desc *mdesc)
+void __init paging_init(const struct machine_desc *mdesc)
 {
 	void *zero_page;
-
-	memblock_set_current_limit(arm_lowmem_limit);
 
 	build_mem_type_table();
 	prepare_page_table();
@@ -1236,6 +1510,7 @@ void __init paging_init(struct machine_desc *mdesc)
 	dma_contiguous_remap();
 	devicemaps_init(mdesc);
 	kmap_init();
+	tcm_init();
 
 	top_pmd = pmd_off_k(0xffff0000);
 

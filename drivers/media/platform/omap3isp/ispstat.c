@@ -144,7 +144,7 @@ static int isp_stat_buf_check_magic(struct ispstat *stat,
 	for (w = buf->virt_addr + buf_size, end = w + MAGIC_SIZE;
 	     w < end; w++) {
 		if (unlikely(*w != MAGIC_NUM)) {
-			dev_dbg(stat->isp->dev, "%s: endding magic check does "
+			dev_dbg(stat->isp->dev, "%s: ending magic check does "
 				"not match.\n", stat->subdev.name);
 			return -EINVAL;
 		}
@@ -841,7 +841,7 @@ int omap3isp_stat_s_stream(struct v4l2_subdev *subdev, int enable)
 	if (enable) {
 		/*
 		 * Only set enable PCR bit if the module was previously
-		 * enabled through ioct.
+		 * enabled through ioctl.
 		 */
 		isp_stat_try_enable(stat);
 	} else {
@@ -1067,7 +1067,7 @@ static int isp_stat_init_entities(struct ispstat *stat, const char *name,
 	subdev->flags |= V4L2_SUBDEV_FL_HAS_EVENTS | V4L2_SUBDEV_FL_HAS_DEVNODE;
 	v4l2_set_subdevdata(subdev, stat);
 
-	stat->pad.flags = MEDIA_PAD_FL_SINK;
+	stat->pad.flags = MEDIA_PAD_FL_SINK | MEDIA_PAD_FL_MUST_CONNECT;
 	me->ops = NULL;
 
 	return media_entity_init(me, 1, &stat->pad, 0);

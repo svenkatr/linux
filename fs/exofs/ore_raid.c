@@ -21,12 +21,12 @@
 #undef ORE_DBGMSG2
 #define ORE_DBGMSG2 ORE_DBGMSG
 
-struct page *_raid_page_alloc(void)
+static struct page *_raid_page_alloc(void)
 {
 	return alloc_page(GFP_KERNEL);
 }
 
-void _raid_page_free(struct page *p)
+static void _raid_page_free(struct page *p)
 {
 	__free_page(p);
 }
@@ -432,7 +432,7 @@ static void _mark_read4write_pages_uptodate(struct ore_io_state *ios, int ret)
 		if (!bio)
 			continue;
 
-		__bio_for_each_segment(bv, bio, i, 0) {
+		bio_for_each_segment_all(bv, bio, i) {
 			struct page *page = bv->bv_page;
 
 			SetPageUptodate(page);

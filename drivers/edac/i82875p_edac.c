@@ -406,8 +406,6 @@ static int i82875p_probe1(struct pci_dev *pdev, int dev_idx)
 
 	edac_dbg(0, "\n");
 
-	ovrfl_pdev = pci_get_device(PCI_VEND_DEV(INTEL, 82875_6), NULL);
-
 	if (i82875p_setup_overfl_dev(pdev, &ovrfl_pdev, &ovrfl_window))
 		return -ENODEV;
 	drc = readl(ovrfl_window + I82875P_DRC);
@@ -479,8 +477,8 @@ fail0:
 }
 
 /* returns count (>= 0), or negative on error */
-static int __devinit i82875p_init_one(struct pci_dev *pdev,
-				const struct pci_device_id *ent)
+static int i82875p_init_one(struct pci_dev *pdev,
+			    const struct pci_device_id *ent)
 {
 	int rc;
 
@@ -498,7 +496,7 @@ static int __devinit i82875p_init_one(struct pci_dev *pdev,
 	return rc;
 }
 
-static void __devexit i82875p_remove_one(struct pci_dev *pdev)
+static void i82875p_remove_one(struct pci_dev *pdev)
 {
 	struct mem_ctl_info *mci;
 	struct i82875p_pvt *pvt = NULL;
@@ -527,7 +525,7 @@ static void __devexit i82875p_remove_one(struct pci_dev *pdev)
 	edac_mc_free(mci);
 }
 
-static DEFINE_PCI_DEVICE_TABLE(i82875p_pci_tbl) = {
+static const struct pci_device_id i82875p_pci_tbl[] = {
 	{
 	 PCI_VEND_DEV(INTEL, 82875_0), PCI_ANY_ID, PCI_ANY_ID, 0, 0,
 	 I82875P},
@@ -541,7 +539,7 @@ MODULE_DEVICE_TABLE(pci, i82875p_pci_tbl);
 static struct pci_driver i82875p_driver = {
 	.name = EDAC_MOD_STR,
 	.probe = i82875p_init_one,
-	.remove = __devexit_p(i82875p_remove_one),
+	.remove = i82875p_remove_one,
 	.id_table = i82875p_pci_tbl,
 };
 

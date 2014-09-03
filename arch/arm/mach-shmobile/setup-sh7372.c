@@ -33,8 +33,8 @@
 #include <linux/sh_timer.h>
 #include <linux/pm_domain.h>
 #include <linux/dma-mapping.h>
+#include <linux/platform_data/sh_ipmmu.h>
 #include <mach/dma-register.h>
-#include <mach/hardware.h>
 #include <mach/irqs.h>
 #include <mach/sh7372.h>
 #include <mach/common.h>
@@ -60,138 +60,62 @@ void __init sh7372_map_io(void)
 	iotable_init(sh7372_io_desc, ARRAY_SIZE(sh7372_io_desc));
 }
 
-/* SCIFA0 */
-static struct plat_sci_port scif0_platform_data = {
-	.mapbase	= 0xe6c40000,
-	.flags		= UPF_BOOT_AUTOCONF,
-	.scscr		= SCSCR_RE | SCSCR_TE,
-	.scbrr_algo_id	= SCBRR_ALGO_4,
-	.type		= PORT_SCIFA,
-	.irqs		= { evt2irq(0x0c00), evt2irq(0x0c00),
-			    evt2irq(0x0c00), evt2irq(0x0c00) },
-};
-
-static struct platform_device scif0_device = {
-	.name		= "sh-sci",
-	.id		= 0,
-	.dev		= {
-		.platform_data	= &scif0_platform_data,
+/* PFC */
+static struct resource sh7372_pfc_resources[] = {
+	[0] = {
+		.start	= 0xe6050000,
+		.end	= 0xe6057fff,
+		.flags	= IORESOURCE_MEM,
 	},
+	[1] = {
+		.start	= 0xe605800c,
+		.end	= 0xe6058027,
+		.flags	= IORESOURCE_MEM,
+	}
 };
 
-/* SCIFA1 */
-static struct plat_sci_port scif1_platform_data = {
-	.mapbase	= 0xe6c50000,
-	.flags		= UPF_BOOT_AUTOCONF,
-	.scscr		= SCSCR_RE | SCSCR_TE,
-	.scbrr_algo_id	= SCBRR_ALGO_4,
-	.type		= PORT_SCIFA,
-	.irqs		= { evt2irq(0x0c20), evt2irq(0x0c20),
-			    evt2irq(0x0c20), evt2irq(0x0c20) },
+static struct platform_device sh7372_pfc_device = {
+	.name		= "pfc-sh7372",
+	.id		= -1,
+	.resource	= sh7372_pfc_resources,
+	.num_resources	= ARRAY_SIZE(sh7372_pfc_resources),
 };
 
-static struct platform_device scif1_device = {
-	.name		= "sh-sci",
-	.id		= 1,
-	.dev		= {
-		.platform_data	= &scif1_platform_data,
-	},
-};
+void __init sh7372_pinmux_init(void)
+{
+	platform_device_register(&sh7372_pfc_device);
+}
 
-/* SCIFA2 */
-static struct plat_sci_port scif2_platform_data = {
-	.mapbase	= 0xe6c60000,
-	.flags		= UPF_BOOT_AUTOCONF,
-	.scscr		= SCSCR_RE | SCSCR_TE,
-	.scbrr_algo_id	= SCBRR_ALGO_4,
-	.type		= PORT_SCIFA,
-	.irqs		= { evt2irq(0x0c40), evt2irq(0x0c40),
-			    evt2irq(0x0c40), evt2irq(0x0c40) },
-};
+/* SCIF */
+#define SH7372_SCIF(scif_type, index, baseaddr, irq)		\
+static struct plat_sci_port scif##index##_platform_data = {	\
+	.type		= scif_type,				\
+	.flags		= UPF_BOOT_AUTOCONF,			\
+	.scscr		= SCSCR_RE | SCSCR_TE,			\
+};								\
+								\
+static struct resource scif##index##_resources[] = {		\
+	DEFINE_RES_MEM(baseaddr, 0x100),			\
+	DEFINE_RES_IRQ(irq),					\
+};								\
+								\
+static struct platform_device scif##index##_device = {		\
+	.name		= "sh-sci",				\
+	.id		= index,				\
+	.resource	= scif##index##_resources,		\
+	.num_resources	= ARRAY_SIZE(scif##index##_resources),	\
+	.dev		= {					\
+		.platform_data	= &scif##index##_platform_data,	\
+	},							\
+}
 
-static struct platform_device scif2_device = {
-	.name		= "sh-sci",
-	.id		= 2,
-	.dev		= {
-		.platform_data	= &scif2_platform_data,
-	},
-};
-
-/* SCIFA3 */
-static struct plat_sci_port scif3_platform_data = {
-	.mapbase	= 0xe6c70000,
-	.flags		= UPF_BOOT_AUTOCONF,
-	.scscr		= SCSCR_RE | SCSCR_TE,
-	.scbrr_algo_id	= SCBRR_ALGO_4,
-	.type		= PORT_SCIFA,
-	.irqs		= { evt2irq(0x0c60), evt2irq(0x0c60),
-			    evt2irq(0x0c60), evt2irq(0x0c60) },
-};
-
-static struct platform_device scif3_device = {
-	.name		= "sh-sci",
-	.id		= 3,
-	.dev		= {
-		.platform_data	= &scif3_platform_data,
-	},
-};
-
-/* SCIFA4 */
-static struct plat_sci_port scif4_platform_data = {
-	.mapbase	= 0xe6c80000,
-	.flags		= UPF_BOOT_AUTOCONF,
-	.scscr		= SCSCR_RE | SCSCR_TE,
-	.scbrr_algo_id	= SCBRR_ALGO_4,
-	.type		= PORT_SCIFA,
-	.irqs		= { evt2irq(0x0d20), evt2irq(0x0d20),
-			    evt2irq(0x0d20), evt2irq(0x0d20) },
-};
-
-static struct platform_device scif4_device = {
-	.name		= "sh-sci",
-	.id		= 4,
-	.dev		= {
-		.platform_data	= &scif4_platform_data,
-	},
-};
-
-/* SCIFA5 */
-static struct plat_sci_port scif5_platform_data = {
-	.mapbase	= 0xe6cb0000,
-	.flags		= UPF_BOOT_AUTOCONF,
-	.scscr		= SCSCR_RE | SCSCR_TE,
-	.scbrr_algo_id	= SCBRR_ALGO_4,
-	.type		= PORT_SCIFA,
-	.irqs		= { evt2irq(0x0d40), evt2irq(0x0d40),
-			    evt2irq(0x0d40), evt2irq(0x0d40) },
-};
-
-static struct platform_device scif5_device = {
-	.name		= "sh-sci",
-	.id		= 5,
-	.dev		= {
-		.platform_data	= &scif5_platform_data,
-	},
-};
-
-/* SCIFB */
-static struct plat_sci_port scif6_platform_data = {
-	.mapbase	= 0xe6c30000,
-	.flags		= UPF_BOOT_AUTOCONF,
-	.scscr		= SCSCR_RE | SCSCR_TE,
-	.scbrr_algo_id	= SCBRR_ALGO_4,
-	.type		= PORT_SCIFB,
-	.irqs		= { evt2irq(0x0d60), evt2irq(0x0d60),
-			    evt2irq(0x0d60), evt2irq(0x0d60) },
-};
-
-static struct platform_device scif6_device = {
-	.name		= "sh-sci",
-	.id		= 6,
-	.dev		= {
-		.platform_data	= &scif6_platform_data,
-	},
-};
+SH7372_SCIF(PORT_SCIFA, 0, 0xe6c40000, evt2irq(0x0c00));
+SH7372_SCIF(PORT_SCIFA, 1, 0xe6c50000, evt2irq(0x0c20));
+SH7372_SCIF(PORT_SCIFA, 2, 0xe6c60000, evt2irq(0x0c40));
+SH7372_SCIF(PORT_SCIFA, 3, 0xe6c70000, evt2irq(0x0c60));
+SH7372_SCIF(PORT_SCIFA, 4, 0xe6c80000, evt2irq(0x0d20));
+SH7372_SCIF(PORT_SCIFA, 5, 0xe6cb0000, evt2irq(0x0d40));
+SH7372_SCIF(PORT_SCIFB, 6, 0xe6c30000, evt2irq(0x0d60));
 
 /* CMT */
 static struct sh_timer_config cmt2_platform_data = {
@@ -982,6 +906,43 @@ static struct platform_device spu1_device = {
 	.num_resources	= ARRAY_SIZE(spu1_resources),
 };
 
+/* IPMMUI (an IPMMU module for ICB/LMB) */
+static struct resource ipmmu_resources[] = {
+	[0] = {
+		.name	= "IPMMUI",
+		.start	= 0xfe951000,
+		.end	= 0xfe9510ff,
+		.flags	= IORESOURCE_MEM,
+	},
+};
+
+static const char * const ipmmu_dev_names[] = {
+	"sh_mobile_lcdc_fb.0",
+	"sh_mobile_lcdc_fb.1",
+	"sh_mobile_ceu.0",
+	"uio_pdrv_genirq.0",
+	"uio_pdrv_genirq.1",
+	"uio_pdrv_genirq.2",
+	"uio_pdrv_genirq.3",
+	"uio_pdrv_genirq.4",
+	"uio_pdrv_genirq.5",
+};
+
+static struct shmobile_ipmmu_platform_data ipmmu_platform_data = {
+	.dev_names = ipmmu_dev_names,
+	.num_dev_names = ARRAY_SIZE(ipmmu_dev_names),
+};
+
+static struct platform_device ipmmu_device = {
+	.name           = "ipmmu",
+	.id             = -1,
+	.dev = {
+		.platform_data = &ipmmu_platform_data,
+	},
+	.resource       = ipmmu_resources,
+	.num_resources  = ARRAY_SIZE(ipmmu_resources),
+};
+
 static struct platform_device *sh7372_early_devices[] __initdata = {
 	&scif0_device,
 	&scif1_device,
@@ -993,6 +954,7 @@ static struct platform_device *sh7372_early_devices[] __initdata = {
 	&cmt2_device,
 	&tmu00_device,
 	&tmu01_device,
+	&ipmmu_device,
 };
 
 static struct platform_device *sh7372_late_devices[] __initdata = {
@@ -1054,7 +1016,7 @@ void __init sh7372_add_standard_devices(void)
 				       ARRAY_SIZE(domain_devices));
 }
 
-static void __init sh7372_earlytimer_init(void)
+void __init sh7372_earlytimer_init(void)
 {
 	sh7372_clock_init();
 	shmobile_earlytimer_init();
@@ -1067,9 +1029,6 @@ void __init sh7372_add_early_devices(void)
 
 	/* setup early console here as well */
 	shmobile_setup_console();
-
-	/* override timer setup with soc-specific code */
-	shmobile_timer.init = sh7372_earlytimer_init;
 }
 
 #ifdef CONFIG_USE_OF
@@ -1085,10 +1044,6 @@ void __init sh7372_add_early_devices_dt(void)
 	shmobile_setup_console();
 }
 
-static const struct of_dev_auxdata sh7372_auxdata_lookup[] __initconst = {
-	{ }
-};
-
 void __init sh7372_add_standard_devices_dt(void)
 {
 	/* clocks are setup late during boot in the case of DT */
@@ -1097,8 +1052,7 @@ void __init sh7372_add_standard_devices_dt(void)
 	platform_add_devices(sh7372_early_devices,
 			    ARRAY_SIZE(sh7372_early_devices));
 
-	of_platform_populate(NULL, of_default_bus_match_table,
-			     sh7372_auxdata_lookup, NULL);
+	of_platform_populate(NULL, of_default_bus_match_table, NULL, NULL);
 }
 
 static const char *sh7372_boards_compat_dt[] __initdata = {
@@ -1113,7 +1067,6 @@ DT_MACHINE_START(SH7372_DT, "Generic SH7372 (Flattened Device Tree)")
 	.init_irq	= sh7372_init_irq,
 	.handle_irq	= shmobile_handle_irq_intc,
 	.init_machine	= sh7372_add_standard_devices_dt,
-	.timer		= &shmobile_timer,
 	.dt_compat	= sh7372_boards_compat_dt,
 MACHINE_END
 

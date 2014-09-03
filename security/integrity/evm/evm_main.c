@@ -14,8 +14,11 @@
  *	evm_inode_removexattr, and evm_verifyxattr
  */
 
+#define pr_fmt(fmt) KBUILD_MODNAME ": " fmt
+
 #include <linux/module.h>
 #include <linux/crypto.h>
+#include <linux/audit.h>
 #include <linux/xattr.h>
 #include <linux/integrity.h>
 #include <linux/evm.h>
@@ -24,8 +27,12 @@
 
 int evm_initialized;
 
+static char *integrity_status_msg[] = {
+	"pass", "fail", "no_label", "no_xattrs", "unknown"
+};
 char *evm_hmac = "hmac(sha1)";
 char *evm_hash = "sha1";
+int evm_hmac_version = CONFIG_EVM_HMAC_VERSION;
 
 char *evm_config_xattrnames[] = {
 #ifdef CONFIG_SECURITY_SELINUX
@@ -57,7 +64,7 @@ static int evm_find_protected_xattrs(struct dentry *dentry)
 	int error;
 	int count = 0;
 
-	if (!inode->i_op || !inode->i_op->getxattr)
+	if (!inode->i_op->getxattr)
 		return -EOPNOTSUPP;
 
 	for (xattr = evm_config_xattrnames; *xattr != NULL; xattr++) {
@@ -118,7 +125,7 @@ static enum integrity_status evm_verify_hmac(struct dentry *dentry,
 		goto out;
 	}
 
-	xattr_len = rc - 1;
+	xattr_len = rc;
 
 	/* check value type */
 	switch (xattr_data->type) {
@@ -138,7 +145,7 @@ static enum integrity_status evm_verify_hmac(struct dentry *dentry,
 		if (rc)
 			break;
 		rc = integrity_digsig_verify(INTEGRITY_KEYRING_EVM,
-					xattr_data->digest, xattr_len,
+					(const char *)xattr_data, xattr_len,
 					calc.digest, sizeof(calc.digest));
 		if (!rc) {
 			/* we probably want to replace rsa with hmac here */
@@ -261,9 +268,15 @@ static int evm_protect_xattr(struct dentry *dentry, const char *xattr_name,
 		if ((evm_status == INTEGRITY_PASS) ||
 		    (evm_status == INTEGRITY_NOXATTRS))
 			return 0;
-		return -EPERM;
+		goto out;
 	}
 	evm_status = evm_verify_current_integrity(dentry);
+out:
+	if (evm_status != INTEGRITY_PASS)
+		integrity_audit_msg(AUDIT_INTEGRITY_METADATA, dentry->d_inode,
+				    dentry->d_name.name, "appraise_metadata",
+				    integrity_status_msg[evm_status],
+				    -EPERM, 0);
 	return evm_status == INTEGRITY_PASS ? 0 : -EPERM;
 }
 
@@ -356,6 +369,9 @@ int evm_inode_setattr(struct dentry *dentry, struct iattr *attr)
 	if ((evm_status == INTEGRITY_PASS) ||
 	    (evm_status == INTEGRITY_NOXATTRS))
 		return 0;
+	integrity_audit_msg(AUDIT_INTEGRITY_METADATA, dentry->d_inode,
+			    dentry->d_name.name, "appraise_metadata",
+			    integrity_status_msg[evm_status], -EPERM, 0);
 	return -EPERM;
 }
 
@@ -404,7 +420,7 @@ int evm_inode_init_security(struct inode *inode,
 
 	evm_xattr->value = xattr_data;
 	evm_xattr->value_len = sizeof(*xattr_data);
-	evm_xattr->name = kstrdup(XATTR_EVM_SUFFIX, GFP_NOFS);
+	evm_xattr->name = XATTR_EVM_SUFFIX;
 	return 0;
 out:
 	kfree(xattr_data);
@@ -418,22 +434,13 @@ static int __init init_evm(void)
 
 	error = evm_init_secfs();
 	if (error < 0) {
-		printk(KERN_INFO "EVM: Error registering secfs\n");
+		pr_info("Error registering secfs\n");
 		goto err;
 	}
 
 	return 0;
 err:
 	return error;
-}
-
-static void __exit cleanup_evm(void)
-{
-	evm_cleanup_secfs();
-	if (hmac_tfm)
-		crypto_free_shash(hmac_tfm);
-	if (hash_tfm)
-		crypto_free_shash(hash_tfm);
 }
 
 /*
@@ -444,7 +451,7 @@ static int __init evm_display_config(void)
 	char **xattrname;
 
 	for (xattrname = evm_config_xattrnames; *xattrname != NULL; xattrname++)
-		printk(KERN_INFO "EVM: %s\n", *xattrname);
+		pr_info("%s\n", *xattrname);
 	return 0;
 }
 

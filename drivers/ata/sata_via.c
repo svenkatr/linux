@@ -1,7 +1,7 @@
 /*
  *  sata_via.c - VIA Serial ATA controllers
  *
- *  Maintained by:  Jeff Garzik <jgarzik@pobox.com>
+ *  Maintained by:  Tejun Heo <tj@kernel.org>
  * 		   Please ALWAYS copy linux-ide@vger.kernel.org
  *		   on emails.
  *
@@ -36,7 +36,6 @@
 #include <linux/kernel.h>
 #include <linux/module.h>
 #include <linux/pci.h>
-#include <linux/init.h>
 #include <linux/blkdev.h>
 #include <linux/delay.h>
 #include <linux/device.h>

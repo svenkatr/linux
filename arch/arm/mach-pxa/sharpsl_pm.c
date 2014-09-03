@@ -829,7 +829,7 @@ static const struct platform_suspend_ops sharpsl_pm_ops = {
 };
 #endif
 
-static int __devinit sharpsl_pm_probe(struct platform_device *pdev)
+static int sharpsl_pm_probe(struct platform_device *pdev)
 {
 	int ret, irq;
 
@@ -860,18 +860,18 @@ static int __devinit sharpsl_pm_probe(struct platform_device *pdev)
 
 	/* Register interrupt handlers */
 	irq = gpio_to_irq(sharpsl_pm.machinfo->gpio_acin);
-	if (request_irq(irq, sharpsl_ac_isr, IRQF_DISABLED | IRQF_TRIGGER_RISING | IRQF_TRIGGER_FALLING, "AC Input Detect", sharpsl_ac_isr)) {
+	if (request_irq(irq, sharpsl_ac_isr, IRQF_TRIGGER_RISING | IRQF_TRIGGER_FALLING, "AC Input Detect", sharpsl_ac_isr)) {
 		dev_err(sharpsl_pm.dev, "Could not get irq %d.\n", irq);
 	}
 
 	irq = gpio_to_irq(sharpsl_pm.machinfo->gpio_batlock);
-	if (request_irq(irq, sharpsl_fatal_isr, IRQF_DISABLED | IRQF_TRIGGER_FALLING, "Battery Cover", sharpsl_fatal_isr)) {
+	if (request_irq(irq, sharpsl_fatal_isr, IRQF_TRIGGER_FALLING, "Battery Cover", sharpsl_fatal_isr)) {
 		dev_err(sharpsl_pm.dev, "Could not get irq %d.\n", irq);
 	}
 
 	if (sharpsl_pm.machinfo->gpio_fatal) {
 		irq = gpio_to_irq(sharpsl_pm.machinfo->gpio_fatal);
-		if (request_irq(irq, sharpsl_fatal_isr, IRQF_DISABLED | IRQF_TRIGGER_FALLING, "Fatal Battery", sharpsl_fatal_isr)) {
+		if (request_irq(irq, sharpsl_fatal_isr, IRQF_TRIGGER_FALLING, "Fatal Battery", sharpsl_fatal_isr)) {
 			dev_err(sharpsl_pm.dev, "Could not get irq %d.\n", irq);
 		}
 	}
@@ -879,7 +879,7 @@ static int __devinit sharpsl_pm_probe(struct platform_device *pdev)
 	if (sharpsl_pm.machinfo->batfull_irq) {
 		/* Register interrupt handler. */
 		irq = gpio_to_irq(sharpsl_pm.machinfo->gpio_batfull);
-		if (request_irq(irq, sharpsl_chrg_full_isr, IRQF_DISABLED | IRQF_TRIGGER_RISING, "CO", sharpsl_chrg_full_isr)) {
+		if (request_irq(irq, sharpsl_chrg_full_isr, IRQF_TRIGGER_RISING, "CO", sharpsl_chrg_full_isr)) {
 			dev_err(sharpsl_pm.dev, "Could not get irq %d.\n", irq);
 		}
 	}
@@ -941,7 +941,7 @@ static struct platform_driver sharpsl_pm_driver = {
 	},
 };
 
-static int __devinit sharpsl_pm_init(void)
+static int sharpsl_pm_init(void)
 {
 	return platform_driver_register(&sharpsl_pm_driver);
 }

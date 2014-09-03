@@ -28,6 +28,8 @@
 #include <linux/dma-mapping.h>
 #include <linux/interrupt.h>
 #include <linux/device.h>
+#include <linux/of_address.h>
+#include <linux/of_irq.h>
 #include <linux/of_platform.h>
 #include <linux/delay.h>
 #include <linux/slab.h>
@@ -529,6 +531,7 @@ int fsl_rio_setup(struct platform_device *dev)
 		sprintf(port->name, "RIO mport %d", i);
 
 		priv->dev = &dev->dev;
+		port->dev.parent = &dev->dev;
 		port->ops = ops;
 		port->priv = priv;
 		port->phys_efptr = 0x100;
@@ -644,7 +647,7 @@ err_rio_regs:
 
 /* The probe function for RapidIO peer-to-peer network.
  */
-static int __devinit fsl_of_rio_rpn_probe(struct platform_device *dev)
+static int fsl_of_rio_rpn_probe(struct platform_device *dev)
 {
 	printk(KERN_INFO "Setting up RapidIO peer-to-peer network %s\n",
 			dev->dev.of_node->full_name);

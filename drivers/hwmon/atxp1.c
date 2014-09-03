@@ -147,10 +147,9 @@ static ssize_t atxp1_storevcore(struct device *dev,
 
 	/* Calculate VID */
 	vid = vid_to_reg(vcore, data->vrm);
-
 	if (vid < 0) {
 		dev_err(dev, "VID calculation failed.\n");
-		return -1;
+		return vid;
 	}
 
 	/*
@@ -354,8 +353,6 @@ static int atxp1_probe(struct i2c_client *new_client,
 	data->vrm = vid_which_vrm();
 
 	i2c_set_clientdata(new_client, data);
-	data->valid = 0;
-
 	mutex_init(&data->update_lock);
 
 	/* Register sysfs hooks */

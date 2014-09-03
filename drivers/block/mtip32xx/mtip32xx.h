@@ -52,6 +52,9 @@
 #define MTIP_FTL_REBUILD_MAGIC		0xED51
 #define MTIP_FTL_REBUILD_TIMEOUT_MS	2400000
 
+/* unaligned IO handling */
+#define MTIP_MAX_UNALIGNED_SLOTS	2
+
 /* Macro to extract the tag bit number from a tag value. */
 #define MTIP_TAG_BIT(tag)	(tag & 0x1F)
 
@@ -66,7 +69,7 @@
  * Maximum number of scatter gather entries
  * a single command may have.
  */
-#define MTIP_MAX_SG		128
+#define MTIP_MAX_SG		504
 
 /*
  * Maximum number of slot groups (Command Issue & s_active registers)
@@ -89,7 +92,7 @@
 
 /* Driver name and version strings */
 #define MTIP_DRV_NAME		"mtip32xx"
-#define MTIP_DRV_VERSION	"1.2.6os3"
+#define MTIP_DRV_VERSION	"1.3.1"
 
 /* Maximum number of minor device numbers per device. */
 #define MTIP_MAX_MINORS		16
@@ -129,14 +132,15 @@ enum {
 	MTIP_PF_EH_ACTIVE_BIT       = 1, /* error handling */
 	MTIP_PF_SE_ACTIVE_BIT       = 2, /* secure erase */
 	MTIP_PF_DM_ACTIVE_BIT       = 3, /* download microcde */
-	MTIP_PF_PAUSE_IO      =	((1 << MTIP_PF_IC_ACTIVE_BIT) | \
-				(1 << MTIP_PF_EH_ACTIVE_BIT) | \
-				(1 << MTIP_PF_SE_ACTIVE_BIT) | \
+	MTIP_PF_PAUSE_IO      =	((1 << MTIP_PF_IC_ACTIVE_BIT) |
+				(1 << MTIP_PF_EH_ACTIVE_BIT) |
+				(1 << MTIP_PF_SE_ACTIVE_BIT) |
 				(1 << MTIP_PF_DM_ACTIVE_BIT)),
 
 	MTIP_PF_SVC_THD_ACTIVE_BIT  = 4,
 	MTIP_PF_ISSUE_CMDS_BIT      = 5,
 	MTIP_PF_REBUILD_BIT         = 6,
+	MTIP_PF_SR_CLEANUP_BIT      = 7,
 	MTIP_PF_SVC_THD_STOP_BIT    = 8,
 
 	/* below are bit numbers in 'dd_flag' defined in driver_data */
@@ -144,15 +148,18 @@ enum {
 	MTIP_DDF_REMOVE_PENDING_BIT = 1,
 	MTIP_DDF_OVER_TEMP_BIT      = 2,
 	MTIP_DDF_WRITE_PROTECT_BIT  = 3,
-	MTIP_DDF_STOP_IO      = ((1 << MTIP_DDF_REMOVE_PENDING_BIT) | \
-				(1 << MTIP_DDF_SEC_LOCK_BIT) | \
-				(1 << MTIP_DDF_OVER_TEMP_BIT) | \
-				(1 << MTIP_DDF_WRITE_PROTECT_BIT)),
-
+	MTIP_DDF_REMOVE_DONE_BIT    = 4,
 	MTIP_DDF_CLEANUP_BIT        = 5,
 	MTIP_DDF_RESUME_BIT         = 6,
 	MTIP_DDF_INIT_DONE_BIT      = 7,
 	MTIP_DDF_REBUILD_FAILED_BIT = 8,
+
+	MTIP_DDF_STOP_IO      = ((1 << MTIP_DDF_REMOVE_PENDING_BIT) |
+				(1 << MTIP_DDF_SEC_LOCK_BIT) |
+				(1 << MTIP_DDF_OVER_TEMP_BIT) |
+				(1 << MTIP_DDF_WRITE_PROTECT_BIT) |
+				(1 << MTIP_DDF_REBUILD_FAILED_BIT)),
+
 };
 
 struct smart_attr {
@@ -162,6 +169,35 @@ struct smart_attr {
 	u8 worst;
 	u32 data;
 	u8 res[3];
+} __packed;
+
+struct mtip_work {
+	struct work_struct work;
+	void *port;
+	int cpu_binding;
+	u32 completed;
+} ____cacheline_aligned_in_smp;
+
+#define DEFINE_HANDLER(group)                                  \
+	void mtip_workq_sdbf##group(struct work_struct *work)       \
+	{                                                      \
+		struct mtip_work *w = (struct mtip_work *) work;         \
+		mtip_workq_sdbfx(w->port, group, w->completed);     \
+	}
+
+#define MTIP_TRIM_TIMEOUT_MS		240000
+#define MTIP_MAX_TRIM_ENTRIES		8
+#define MTIP_MAX_TRIM_ENTRY_LEN		0xfff8
+
+struct mtip_trim_entry {
+	u32 lba;   /* starting lba of region */
+	u16 rsvd;  /* unused */
+	u16 range; /* # of 512b blocks to trim */
+} __packed;
+
+struct mtip_trim {
+	/* Array of regions to trim */
+	struct mtip_trim_entry entry[MTIP_MAX_TRIM_ENTRIES];
 } __packed;
 
 /* Register Frame Information Structure (FIS), host to device. */
@@ -304,6 +340,8 @@ struct mtip_cmd {
 
 	int scatter_ents; /* Number of scatter list entries used */
 
+	int unaligned; /* command is unaligned on 4k boundary */
+
 	struct scatterlist sg[MTIP_MAX_SG]; /* Scatter list entries */
 
 	int retries; /* The number of retries left for this command. */
@@ -353,15 +391,13 @@ struct mtip_port {
 	 */
 	dma_addr_t rxfis_dma;
 	/*
-	 * Pointer to the beginning of the command table memory as used
-	 * by the driver.
+	 * Pointer to the DMA region for RX Fis, Identify, RLE10, and SMART
 	 */
-	void *command_table;
+	void *block1;
 	/*
-	 * Pointer to the beginning of the command table memory as used
-	 * by the DMA.
+	 * DMA address of region for RX Fis, Identify, RLE10, and SMART
 	 */
-	dma_addr_t command_tbl_dma;
+	dma_addr_t block1_dma;
 	/*
 	 * Pointer to the beginning of the identify data memory as used
 	 * by the driver.
@@ -423,8 +459,12 @@ struct mtip_port {
 	 * command slots available.
 	 */
 	struct semaphore cmd_slot;
+
+	/* Semaphore to control queue depth of unaligned IOs */
+	struct semaphore cmd_slot_unal;
+
 	/* Spinlock for working around command-issue bug. */
-	spinlock_t cmd_issue_lock;
+	spinlock_t cmd_issue_lock[MTIP_MAX_SLOT_GROUPS];
 };
 
 /*
@@ -447,9 +487,6 @@ struct driver_data {
 
 	struct mtip_port *port; /* Pointer to the port data structure. */
 
-	/* Tasklet used to process the bottom half of the ISR. */
-	struct tasklet_struct tasklet;
-
 	unsigned product_type; /* magic value declaring the product type */
 
 	unsigned slot_groups; /* number of slot groups the product supports */
@@ -461,6 +498,30 @@ struct driver_data {
 	struct task_struct *mtip_svc_handler; /* task_struct of svc thd */
 
 	struct dentry *dfs_node;
+
+	bool trim_supp; /* flag indicating trim support */
+
+	bool sr;
+
+	int numa_node; /* NUMA support */
+
+	char workq_name[32];
+
+	struct workqueue_struct *isr_workq;
+
+	struct mtip_work work[MTIP_MAX_SLOT_GROUPS];
+
+	atomic_t irq_workers_active;
+
+	int isr_binding;
+
+	struct block_device *bdev;
+
+	int unal_qdepth; /* qdepth of unaligned IO queue */
+
+	struct list_head online_list; /* linkage for online list */
+
+	struct list_head remove_list; /* linkage for removing list */
 };
 
 #endif

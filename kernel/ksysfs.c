@@ -18,6 +18,9 @@
 #include <linux/stat.h>
 #include <linux/sched.h>
 #include <linux/capability.h>
+#include <linux/compiler.h>
+
+#include <linux/rcupdate.h>	/* rcu_expedited */
 
 #define KERNEL_ATTR_RO(_name) \
 static struct kobj_attribute _name##_attr = __ATTR_RO(_name)
@@ -113,7 +116,7 @@ static ssize_t kexec_crash_size_store(struct kobject *kobj,
 	unsigned long cnt;
 	int ret;
 
-	if (strict_strtoul(buf, 0, &cnt))
+	if (kstrtoul(buf, 0, &cnt))
 		return -EINVAL;
 
 	ret = crash_shrink_memory(cnt);
@@ -126,7 +129,7 @@ static ssize_t vmcoreinfo_show(struct kobject *kobj,
 {
 	return sprintf(buf, "%lx %x\n",
 		       paddr_vmcoreinfo_note(),
-		       (unsigned int)vmcoreinfo_max_size);
+		       (unsigned int)sizeof(vmcoreinfo_note));
 }
 KERNEL_ATTR_RO(vmcoreinfo);
 
@@ -160,8 +163,8 @@ KERNEL_ATTR_RW(rcu_expedited);
 /*
  * Make /sys/kernel/notes give the raw contents of our kernel .notes section.
  */
-extern const void __start_notes __attribute__((weak));
-extern const void __stop_notes __attribute__((weak));
+extern const void __start_notes __weak;
+extern const void __stop_notes __weak;
 #define	notes_size (&__stop_notes - &__start_notes)
 
 static ssize_t notes_read(struct file *filp, struct kobject *kobj,

@@ -862,10 +862,10 @@ static int cpqhpc_probe(struct pci_dev *pdev, const struct pci_device_id *ent)
 		goto err_disable_device;
 	}
 
-	/* Check for the proper subsystem ID's
+	/* Check for the proper subsystem IDs
 	 * Intel uses a different SSID programming model than Compaq.
 	 * For Intel, each SSID bit identifies a PHP capability.
-	 * Also Intel HPC's may have RID=0.
+	 * Also Intel HPCs may have RID=0.
 	 */
 	if ((pdev->revision <= 2) && (vendor_id != PCI_VENDOR_ID_INTEL)) {
 		err(msg_HPC_not_supported);
@@ -920,12 +920,12 @@ static int cpqhpc_probe(struct pci_dev *pdev, const struct pci_device_id *ent)
 				bus->max_bus_speed = PCI_SPEED_100MHz_PCIX;
 				break;
 			}
-			if (bus_cap & 20) {
+			if (bus_cap & 0x20) {
 				dbg("bus max supports 66MHz PCI-X\n");
 				bus->max_bus_speed = PCI_SPEED_66MHz_PCIX;
 				break;
 			}
-			if (bus_cap & 10) {
+			if (bus_cap & 0x10) {
 				dbg("bus max supports 66MHz PCI\n");
 				bus->max_bus_speed = PCI_SPEED_66MHz;
 				break;

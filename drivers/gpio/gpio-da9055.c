@@ -126,7 +126,7 @@ static int da9055_gpio_to_irq(struct gpio_chip *gc, u32 offset)
 				  DA9055_IRQ_GPI0 + offset);
 }
 
-static struct gpio_chip reference_gp __devinitdata = {
+static struct gpio_chip reference_gp = {
 	.label = "da9055-gpio",
 	.owner = THIS_MODULE,
 	.get = da9055_gpio_get,
@@ -134,12 +134,12 @@ static struct gpio_chip reference_gp __devinitdata = {
 	.direction_input = da9055_gpio_direction_input,
 	.direction_output = da9055_gpio_direction_output,
 	.to_irq = da9055_gpio_to_irq,
-	.can_sleep = 1,
+	.can_sleep = true,
 	.ngpio = 3,
 	.base = -1,
 };
 
-static int __devinit da9055_gpio_probe(struct platform_device *pdev)
+static int da9055_gpio_probe(struct platform_device *pdev)
 {
 	struct da9055_gpio *gpio;
 	struct da9055_pdata *pdata;
@@ -150,7 +150,7 @@ static int __devinit da9055_gpio_probe(struct platform_device *pdev)
 		return -ENOMEM;
 
 	gpio->da9055 = dev_get_drvdata(pdev->dev.parent);
-	pdata = gpio->da9055->dev->platform_data;
+	pdata = dev_get_platdata(gpio->da9055->dev);
 
 	gpio->gp = reference_gp;
 	if (pdata && pdata->gpio_base)
@@ -170,7 +170,7 @@ err_mem:
 	return ret;
 }
 
-static int __devexit da9055_gpio_remove(struct platform_device *pdev)
+static int da9055_gpio_remove(struct platform_device *pdev)
 {
 	struct da9055_gpio *gpio = platform_get_drvdata(pdev);
 
@@ -179,7 +179,7 @@ static int __devexit da9055_gpio_remove(struct platform_device *pdev)
 
 static struct platform_driver da9055_gpio_driver = {
 	.probe = da9055_gpio_probe,
-	.remove = __devexit_p(da9055_gpio_remove),
+	.remove = da9055_gpio_remove,
 	.driver = {
 		.name	= "da9055-gpio",
 		.owner	= THIS_MODULE,

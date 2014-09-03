@@ -326,7 +326,8 @@ static inline void jz_nand_iounmap_resource(struct resource *res,
 static int jz_nand_detect_bank(struct platform_device *pdev,
 			       struct jz_nand *nand, unsigned char bank,
 			       size_t chipnr, uint8_t *nand_maf_id,
-			       uint8_t *nand_dev_id) {
+			       uint8_t *nand_dev_id)
+{
 	int ret;
 	int gpio;
 	char gpio_name[9];
@@ -410,15 +411,13 @@ static int jz_nand_probe(struct platform_device *pdev)
 	struct jz_nand *nand;
 	struct nand_chip *chip;
 	struct mtd_info *mtd;
-	struct jz_nand_platform_data *pdata = pdev->dev.platform_data;
+	struct jz_nand_platform_data *pdata = dev_get_platdata(&pdev->dev);
 	size_t chipnr, bank_idx;
 	uint8_t nand_maf_id = 0, nand_dev_id = 0;
 
 	nand = kzalloc(sizeof(*nand), GFP_KERNEL);
-	if (!nand) {
-		dev_err(&pdev->dev, "Failed to allocate device structure.\n");
+	if (!nand)
 		return -ENOMEM;
-	}
 
 	ret = jz_nand_ioremap_resource(pdev, "mmio", &nand->mem, &nand->base);
 	if (ret)
@@ -537,7 +536,6 @@ err_unclaim_banks:
 err_gpio_busy:
 	if (pdata && gpio_is_valid(pdata->busy_gpio))
 		gpio_free(pdata->busy_gpio);
-	platform_set_drvdata(pdev, NULL);
 err_iounmap_mmio:
 	jz_nand_iounmap_resource(nand->mem, nand->base);
 err_free:
@@ -548,7 +546,7 @@ err_free:
 static int jz_nand_remove(struct platform_device *pdev)
 {
 	struct jz_nand *nand = platform_get_drvdata(pdev);
-	struct jz_nand_platform_data *pdata = pdev->dev.platform_data;
+	struct jz_nand_platform_data *pdata = dev_get_platdata(&pdev->dev);
 	size_t i;
 
 	nand_release(&nand->mtd);
@@ -569,7 +567,6 @@ static int jz_nand_remove(struct platform_device *pdev)
 
 	jz_nand_iounmap_resource(nand->mem, nand->base);
 
-	platform_set_drvdata(pdev, NULL);
 	kfree(nand);
 
 	return 0;

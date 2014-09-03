@@ -9,21 +9,38 @@
  * http://www.gnu.org/copyleft/gpl.html
  */
 
-/include/ "skeleton.dtsi"
+#include "skeleton.dtsi"
+#include "imx25-pinfunc.h"
 
 / {
 	aliases {
+		gpio0 = &gpio1;
+		gpio1 = &gpio2;
+		gpio2 = &gpio3;
+		gpio3 = &gpio4;
+		i2c0 = &i2c1;
+		i2c1 = &i2c2;
+		i2c2 = &i2c3;
 		serial0 = &uart1;
 		serial1 = &uart2;
 		serial2 = &uart3;
 		serial3 = &uart4;
 		serial4 = &uart5;
-		gpio0 = &gpio1;
-		gpio1 = &gpio2;
-		gpio2 = &gpio3;
-		gpio3 = &gpio4;
+		spi0 = &spi1;
+		spi1 = &spi2;
+		spi2 = &spi3;
 		usb0 = &usbotg;
 		usb1 = &usbhost1;
+	};
+
+	cpus {
+		#address-cells = <0>;
+		#size-cells = <0>;
+
+		cpu {
+			compatible = "arm,arm926ej-s";
+			device_type = "cpu";
+		};
 	};
 
 	asic: asic-interrupt-controller@68000000 {
@@ -39,6 +56,7 @@
 
 		osc {
 			compatible = "fsl,imx-osc", "fixed-clock";
+			#clock-cells = <0>;
 			clock-frequency = <24000000>;
 		};
 	};
@@ -141,8 +159,8 @@
 				#size-cells = <0>;
 				compatible = "fsl,imx25-cspi", "fsl,imx35-cspi";
 				reg = <0x43fa4000 0x4000>;
-				clocks = <&clks 62>;
-				clock-names = "ipg";
+				clocks = <&clks 62>, <&clks 62>;
+				clock-names = "ipg", "per";
 				interrupts = <14>;
 				status = "disabled";
 			};
@@ -157,12 +175,12 @@
 				status = "disabled";
 			};
 
-			iomuxc@43fac000{
+			iomuxc: iomuxc@43fac000 {
 				compatible = "fsl,imx25-iomuxc";
 				reg = <0x43fac000 0x4000>;
 			};
 
-			audmux@43fb0000 {
+			audmux: audmux@43fb0000 {
 				compatible = "fsl,imx25-audmux", "fsl,imx31-audmux";
 				reg = <0x43fb0000 0x4000>;
 				status = "disabled";
@@ -182,8 +200,8 @@
 				compatible = "fsl,imx25-cspi", "fsl,imx35-cspi";
 				reg = <0x50004000 0x4000>;
 				interrupts = <0>;
-				clocks = <&clks 80>;
-				clock-names = "ipg";
+				clocks = <&clks 80>, <&clks 80>;
+				clock-names = "ipg", "per";
 				status = "disabled";
 			};
 
@@ -210,8 +228,8 @@
 				#size-cells = <0>;
 				compatible = "fsl,imx25-cspi", "fsl,imx35-cspi";
 				reg = <0x50010000 0x4000>;
-				clocks = <&clks 79>;
-				clock-names = "ipg";
+				clocks = <&clks 79>, <&clks 79>;
+				clock-names = "ipg", "per";
 				interrupts = <13>;
 				status = "disabled";
 			};
@@ -220,6 +238,11 @@
 				compatible = "fsl,imx25-ssi", "fsl,imx21-ssi";
 				reg = <0x50014000 0x4000>;
 				interrupts = <11>;
+				clocks = <&clks 118>;
+				clock-names = "ipg";
+				dmas = <&sdma 24 1 0>,
+				       <&sdma 25 1 0>;
+				dma-names = "rx", "tx";
 				status = "disabled";
 			};
 
@@ -250,6 +273,11 @@
 				compatible = "fsl,imx25-ssi", "fsl,imx21-ssi";
 				reg = <0x50034000 0x4000>;
 				interrupts = <12>;
+				clocks = <&clks 117>;
+				clock-names = "ipg";
+				dmas = <&sdma 28 1 0>,
+				       <&sdma 29 1 0>;
+				dma-names = "rx", "tx";
 				status = "disabled";
 			};
 
@@ -377,7 +405,8 @@
 				status = "disabled";
 			};
 
-			lcdc@53fbc000 {
+			lcdc: lcdc@53fbc000 {
+				compatible = "fsl,imx25-fb", "fsl,imx21-fb";
 				reg = <0x53fbc000 0x4000>;
 				interrupts = <39>;
 				clocks = <&clks 103>, <&clks 66>, <&clks 49>;
@@ -419,12 +448,14 @@
 				#interrupt-cells = <2>;
 			};
 
-			sdma@53fd4000 {
+			sdma: sdma@53fd4000 {
 				compatible = "fsl,imx25-sdma", "fsl,imx35-sdma";
 				reg = <0x53fd4000 0x4000>;
 				clocks = <&clks 112>, <&clks 68>;
 				clock-names = "ipg", "ahb";
+				#dma-cells = <3>;
 				interrupts = <34>;
+				fsl,sdma-ram-script-name = "imx/sdma/sdma-imx25.bin";
 			};
 
 			wdog@53fdc000 {
@@ -442,6 +473,13 @@
 				clocks = <&clks 105>, <&clks 36>;
 				clock-names = "ipg", "per";
 				interrupts = <26>;
+			};
+
+			iim: iim@53ff0000 {
+				compatible = "fsl,imx25-iim", "fsl,imx27-iim";
+				reg = <0x53ff0000 0x4000>;
+				interrupts = <19>;
+				clocks = <&clks 99>;
 			};
 
 			usbphy1: usbphy@1 {
@@ -499,7 +537,7 @@
 			reg = <0x80000000 0x3b002000>;
 			ranges;
 
-			nand@bb000000 {
+			nfc: nand@bb000000 {
 				#address-cells = <1>;
 				#size-cells = <1>;
 

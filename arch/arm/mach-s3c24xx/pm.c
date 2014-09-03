@@ -33,18 +33,20 @@
 #include <linux/gpio.h>
 #include <linux/interrupt.h>
 #include <linux/serial_core.h>
+#include <linux/serial_s3c.h>
 #include <linux/io.h>
 
-#include <plat/regs-serial.h>
 #include <mach/regs-clock.h>
 #include <mach/regs-gpio.h>
-#include <mach/regs-mem.h>
 #include <mach/regs-irq.h>
+#include <mach/gpio-samsung.h>
 
 #include <asm/mach/time.h>
 
 #include <plat/gpio-cfg.h>
 #include <plat/pm.h>
+
+#include "regs-mem.h"
 
 #define PFX "s3c24xx-pm: "
 

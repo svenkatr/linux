@@ -15,13 +15,17 @@
 #include <linux/init.h>
 #include <linux/io.h>
 #include <linux/irq.h>
+#include <linux/irqchip.h>
 #include <linux/platform_device.h>
 #include <linux/memblock.h>
 #include <linux/of_irq.h>
 #include <linux/of_platform.h>
 #include <linux/export.h>
+#include <linux/irqchip/arm-gic.h>
+#include <linux/irqchip/irq-crossbar.h>
+#include <linux/of_address.h>
+#include <linux/reboot.h>
 
-#include <asm/hardware/gic.h>
 #include <asm/hardware/cache-l2x0.h>
 #include <asm/mach/map.h>
 #include <asm/memblock.h>
@@ -32,7 +36,6 @@
 #include "iomap.h"
 #include "common.h"
 #include "mmc.h"
-#include "hsmmc.h"
 #include "prminst44xx.h"
 #include "prcm_mpu44xx.h"
 #include "omap4-sar-layout.h"
@@ -85,7 +88,7 @@ void __init omap_barriers_init(void)
 	dram_io_desc[0].virtual = OMAP4_DRAM_BARRIER_VA;
 	dram_io_desc[0].pfn = __phys_to_pfn(paddr);
 	dram_io_desc[0].length = size;
-	dram_io_desc[0].type = MT_MEMORY_SO;
+	dram_io_desc[0].type = MT_MEMORY_RW_SO;
 	iotable_init(dram_io_desc, ARRAY_SIZE(dram_io_desc));
 	dram_sync = (void __iomem *) dram_io_desc[0].virtual;
 	sram_sync = (void __iomem *) OMAP4_SRAM_VA;
@@ -125,6 +128,12 @@ void gic_dist_disable(void)
 		__raw_writel(0x0, gic_dist_base_addr + GIC_DIST_CTRL);
 }
 
+void gic_dist_enable(void)
+{
+	if (gic_dist_base_addr)
+		__raw_writel(0x1, gic_dist_base_addr + GIC_DIST_CTRL);
+}
+
 bool gic_dist_disabled(void)
 {
 	return !(__raw_readl(gic_dist_base_addr + GIC_DIST_CTRL) & 0x1);
@@ -160,6 +169,7 @@ void __iomem *omap4_get_l2cache_base(void)
 
 static void omap4_l2x0_disable(void)
 {
+	outer_flush_all();
 	/* Disable PL310 L2 Cache controller */
 	omap_smc1(0x102, 0x0);
 }
@@ -225,7 +235,7 @@ static int __init omap_l2_cache_init(void)
 
 	return 0;
 }
-early_initcall(omap_l2_cache_init);
+omap_early_initcall(omap_l2_cache_init);
 #endif
 
 void __iomem *omap4_get_sar_ram_base(void)
@@ -239,102 +249,48 @@ void __iomem *omap4_get_sar_ram_base(void)
  */
 static int __init omap4_sar_ram_init(void)
 {
+	unsigned long sar_base;
+
 	/*
 	 * To avoid code running on other OMAPs in
 	 * multi-omap builds
 	 */
-	if (!cpu_is_omap44xx())
+	if (cpu_is_omap44xx())
+		sar_base = OMAP44XX_SAR_RAM_BASE;
+	else if (soc_is_omap54xx())
+		sar_base = OMAP54XX_SAR_RAM_BASE;
+	else
 		return -ENOMEM;
 
 	/* Static mapping, never released */
-	sar_ram_base = ioremap(OMAP44XX_SAR_RAM_BASE, SZ_16K);
+	sar_ram_base = ioremap(sar_base, SZ_16K);
 	if (WARN_ON(!sar_ram_base))
 		return -ENOMEM;
 
 	return 0;
 }
-early_initcall(omap4_sar_ram_init);
-
-static struct of_device_id irq_match[] __initdata = {
-	{ .compatible = "arm,cortex-a9-gic", .data = gic_of_init, },
-	{ .compatible = "arm,cortex-a15-gic", .data = gic_of_init, },
-	{ }
-};
+omap_early_initcall(omap4_sar_ram_init);
 
 void __init omap_gic_of_init(void)
 {
+	struct device_node *np;
+
+	/* Extract GIC distributor and TWD bases for OMAP4460 ROM Errata WA */
+	if (!cpu_is_omap446x())
+		goto skip_errata_init;
+
+	np = of_find_compatible_node(NULL, NULL, "arm,cortex-a9-gic");
+	gic_dist_base_addr = of_iomap(np, 0);
+	WARN_ON(!gic_dist_base_addr);
+
+	np = of_find_compatible_node(NULL, NULL, "arm,cortex-a9-twd-timer");
+	twd_base = of_iomap(np, 0);
+	WARN_ON(!twd_base);
+
+skip_errata_init:
 	omap_wakeupgen_init();
-	of_irq_init(irq_match);
-}
-
-#if defined(CONFIG_MMC_OMAP_HS) || defined(CONFIG_MMC_OMAP_HS_MODULE)
-static int omap4_twl6030_hsmmc_late_init(struct device *dev)
-{
-	int irq = 0;
-	struct platform_device *pdev = container_of(dev,
-				struct platform_device, dev);
-	struct omap_mmc_platform_data *pdata = dev->platform_data;
-
-	/* Setting MMC1 Card detect Irq */
-	if (pdev->id == 0) {
-		irq = twl6030_mmc_card_detect_config();
-		if (irq < 0) {
-			dev_err(dev, "%s: Error card detect config(%d)\n",
-				__func__, irq);
-			return irq;
-		}
-		pdata->slots[0].card_detect_irq = irq;
-		pdata->slots[0].card_detect = twl6030_mmc_card_detect;
-	}
-	return 0;
-}
-
-static __init void omap4_twl6030_hsmmc_set_late_init(struct device *dev)
-{
-	struct omap_mmc_platform_data *pdata;
-
-	/* dev can be null if CONFIG_MMC_OMAP_HS is not set */
-	if (!dev) {
-		pr_err("Failed %s\n", __func__);
-		return;
-	}
-	pdata = dev->platform_data;
-	pdata->init =	omap4_twl6030_hsmmc_late_init;
-}
-
-int __init omap4_twl6030_hsmmc_init(struct omap2_hsmmc_info *controllers)
-{
-	struct omap2_hsmmc_info *c;
-
-	omap_hsmmc_init(controllers);
-	for (c = controllers; c->mmc; c++) {
-		/* pdev can be null if CONFIG_MMC_OMAP_HS is not set */
-		if (!c->pdev)
-			continue;
-		omap4_twl6030_hsmmc_set_late_init(&c->pdev->dev);
-	}
-
-	return 0;
-}
-#else
-int __init omap4_twl6030_hsmmc_init(struct omap2_hsmmc_info *controllers)
-{
-	return 0;
-}
+#ifdef CONFIG_IRQ_CROSSBAR
+	irqcrossbar_init();
 #endif
-
-/**
- * omap44xx_restart - trigger a software restart of the SoC
- * @mode: the "reboot mode", see arch/arm/kernel/{setup,process}.c
- * @cmd: passed from the userspace program rebooting the system (if provided)
- *
- * Resets the SoC.  For @cmd, see the 'reboot' syscall in
- * kernel/sys.c.  No return value.
- */
-void omap44xx_restart(char mode, const char *cmd)
-{
-	/* XXX Should save 'cmd' into scratchpad for use after reboot */
-	omap4_prminst_global_warm_sw_reset(); /* never returns */
-	while (1);
+	irqchip_init();
 }
-

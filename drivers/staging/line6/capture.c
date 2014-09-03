@@ -157,6 +157,7 @@ void line6_capture_copy(struct snd_line6_pcm *line6pcm, char *fbuf, int fsize)
 		   copy two separate chunks.
 		 */
 		int len;
+
 		len = runtime->buffer_size - line6pcm->pos_in_done;
 
 		if (len > 0) {
@@ -215,16 +216,6 @@ static void audio_in_callback(struct urb *urb)
 	for (index = 0; index < LINE6_ISO_BUFFERS; ++index)
 		if (urb == line6pcm->urb_audio_in[index])
 			break;
-
-#ifdef CONFIG_LINE6_USB_DUMP_PCM
-	for (i = 0; i < LINE6_ISO_PACKETS; ++i) {
-		struct usb_iso_packet_descriptor *fout =
-		    &urb->iso_frame_desc[i];
-		line6_write_hexdump(line6pcm->line6, 'C',
-				    urb->transfer_buffer + fout->offset,
-				    fout->length);
-	}
-#endif
 
 	spin_lock_irqsave(&line6pcm->lock_audio_in, flags);
 

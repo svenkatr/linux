@@ -133,7 +133,7 @@ static int tps65910_gpio_probe(struct platform_device *pdev)
 	tps65910_gpio->gpio_chip.owner = THIS_MODULE;
 	tps65910_gpio->gpio_chip.label = tps65910->i2c_client->name;
 
-	switch(tps65910_chip_id(tps65910)) {
+	switch (tps65910_chip_id(tps65910)) {
 	case TPS65910:
 		tps65910_gpio->gpio_chip.ngpio = TPS65910_NUM_GPIO;
 		break;
@@ -143,7 +143,7 @@ static int tps65910_gpio_probe(struct platform_device *pdev)
 	default:
 		return -EINVAL;
 	}
-	tps65910_gpio->gpio_chip.can_sleep = 1;
+	tps65910_gpio->gpio_chip.can_sleep = true;
 	tps65910_gpio->gpio_chip.direction_input = tps65910_gpio_input;
 	tps65910_gpio->gpio_chip.direction_output = tps65910_gpio_output;
 	tps65910_gpio->gpio_chip.set	= tps65910_gpio_set;

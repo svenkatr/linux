@@ -540,7 +540,7 @@ static struct snd_pcm_ops snd_cx88_pcm_ops = {
 /*
  * create a PCM device
  */
-static int __devinit snd_cx88_pcm(snd_cx88_card_t *chip, int device, const char *name)
+static int snd_cx88_pcm(snd_cx88_card_t *chip, int device, const char *name)
 {
 	int err;
 	struct snd_pcm *pcm;
@@ -615,7 +615,7 @@ static int snd_cx88_volume_put(struct snd_kcontrol *kcontrol,
 	int changed = 0;
 	u32 old;
 
-	if (core->board.audio_chip == V4L2_IDENT_WM8775)
+	if (core->sd_wm8775)
 		snd_cx88_wm8775_volume_put(kcontrol, value);
 
 	left = value->value.integer.value[0] & 0x3f;
@@ -682,8 +682,7 @@ static int snd_cx88_switch_put(struct snd_kcontrol *kcontrol,
 		vol ^= bit;
 		cx_swrite(SHADOW_AUD_VOL_CTL, AUD_VOL_CTL, vol);
 		/* Pass mute onto any WM8775 */
-		if ((core->board.audio_chip == V4L2_IDENT_WM8775) &&
-		    ((1<<6) == bit))
+		if (core->sd_wm8775 && ((1<<6) == bit))
 			wm8775_s_ctrl(core, V4L2_CID_AUDIO_MUTE, 0 != (vol & bit));
 		ret = 1;
 	}
@@ -753,7 +752,7 @@ static struct snd_kcontrol_new snd_cx88_alc_switch = {
  * Only boards with eeprom and byte 1 at eeprom=1 have it
  */
 
-static const struct pci_device_id cx88_audio_pci_tbl[] __devinitdata = {
+static const struct pci_device_id cx88_audio_pci_tbl[] = {
 	{0x14f1,0x8801,PCI_ANY_ID,PCI_ANY_ID,0,0,0},
 	{0x14f1,0x8811,PCI_ANY_ID,PCI_ANY_ID,0,0,0},
 	{0, }
@@ -792,10 +791,9 @@ static void snd_cx88_dev_free(struct snd_card * card)
  */
 
 static int devno;
-static int __devinit snd_cx88_create(struct snd_card *card,
-				     struct pci_dev *pci,
-				     snd_cx88_card_t **rchip,
-				     struct cx88_core **core_ptr)
+static int snd_cx88_create(struct snd_card *card, struct pci_dev *pci,
+			   snd_cx88_card_t **rchip,
+			   struct cx88_core **core_ptr)
 {
 	snd_cx88_card_t   *chip;
 	struct cx88_core  *core;
@@ -836,7 +834,7 @@ static int __devinit snd_cx88_create(struct snd_card *card,
 
 	/* get irq */
 	err = request_irq(chip->pci->irq, cx8801_irq,
-			  IRQF_SHARED | IRQF_DISABLED, chip->core->name, chip);
+			  IRQF_SHARED, chip->core->name, chip);
 	if (err < 0) {
 		dprintk(0, "%s: can't get IRQ %d\n",
 		       chip->core->name, chip->pci->irq);
@@ -854,16 +852,14 @@ static int __devinit snd_cx88_create(struct snd_card *card,
 	chip->irq = pci->irq;
 	synchronize_irq(chip->irq);
 
-	snd_card_set_dev(card, &pci->dev);
-
 	*rchip = chip;
 	*core_ptr = core;
 
 	return 0;
 }
 
-static int __devinit cx88_audio_initdev(struct pci_dev *pci,
-				    const struct pci_device_id *pci_id)
+static int cx88_audio_initdev(struct pci_dev *pci,
+			      const struct pci_device_id *pci_id)
 {
 	struct snd_card  *card;
 	snd_cx88_card_t  *chip;
@@ -878,8 +874,8 @@ static int __devinit cx88_audio_initdev(struct pci_dev *pci,
 		return (-ENOENT);
 	}
 
-	err = snd_card_create(index[devno], id[devno], THIS_MODULE,
-			      sizeof(snd_cx88_card_t), &card);
+	err = snd_card_new(&pci->dev, index[devno], id[devno], THIS_MODULE,
+			   sizeof(snd_cx88_card_t), &card);
 	if (err < 0)
 		return err;
 
@@ -904,7 +900,7 @@ static int __devinit cx88_audio_initdev(struct pci_dev *pci,
 		goto error;
 
 	/* If there's a wm8775 then add a Line-In ALC switch */
-	if (core->board.audio_chip == V4L2_IDENT_WM8775)
+	if (core->sd_wm8775)
 		snd_ctl_add(card, snd_ctl_new1(&snd_cx88_alc_switch, chip));
 
 	strcpy (card->driver, "CX88x");
@@ -931,13 +927,11 @@ error:
 /*
  * ALSA destructor
  */
-static void __devexit cx88_audio_finidev(struct pci_dev *pci)
+static void cx88_audio_finidev(struct pci_dev *pci)
 {
-	struct cx88_audio_dev *card = pci_get_drvdata(pci);
+	struct snd_card *card = pci_get_drvdata(pci);
 
-	snd_card_free((void *)card);
-
-	pci_set_drvdata(pci, NULL);
+	snd_card_free(card);
 
 	devno--;
 }
@@ -950,30 +944,7 @@ static struct pci_driver cx88_audio_pci_driver = {
 	.name     = "cx88_audio",
 	.id_table = cx88_audio_pci_tbl,
 	.probe    = cx88_audio_initdev,
-	.remove   = __devexit_p(cx88_audio_finidev),
+	.remove   = cx88_audio_finidev,
 };
 
-/****************************************************************************
-				LINUX MODULE INIT
- ****************************************************************************/
-
-/*
- * module init
- */
-static int __init cx88_audio_init(void)
-{
-	printk(KERN_INFO "cx2388x alsa driver version %s loaded\n",
-	       CX88_VERSION);
-	return pci_register_driver(&cx88_audio_pci_driver);
-}
-
-/*
- * module remove
- */
-static void __exit cx88_audio_fini(void)
-{
-	pci_unregister_driver(&cx88_audio_pci_driver);
-}
-
-module_init(cx88_audio_init);
-module_exit(cx88_audio_fini);
+module_pci_driver(cx88_audio_pci_driver);

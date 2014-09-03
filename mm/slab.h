@@ -16,7 +16,7 @@ enum slab_state {
 	DOWN,			/* No slab functionality yet */
 	PARTIAL,		/* SLUB: kmem_cache_node available */
 	PARTIAL_ARRAYCACHE,	/* SLAB: kmalloc size for arraycache available */
-	PARTIAL_L3,		/* SLAB: kmalloc size for l3 struct available */
+	PARTIAL_NODE,		/* SLAB: kmalloc size for node struct available */
 	UP,			/* Slab caches usable but not all extras yet */
 	FULL			/* Everything is working */
 };
@@ -35,6 +35,15 @@ extern struct kmem_cache *kmem_cache;
 unsigned long calculate_alignment(unsigned long flags,
 		unsigned long align, unsigned long size);
 
+#ifndef CONFIG_SLOB
+/* Kmalloc array related functions */
+void create_kmalloc_caches(unsigned long);
+
+/* Find the kmalloc slab corresponding for a certain size */
+struct kmem_cache *kmalloc_slab(size_t, gfp_t);
+#endif
+
+
 /* Functions provided by the slab allocators */
 extern int __kmem_cache_create(struct kmem_cache *, unsigned long flags);
 
@@ -46,12 +55,12 @@ extern void create_boot_cache(struct kmem_cache *, const char *name,
 struct mem_cgroup;
 #ifdef CONFIG_SLUB
 struct kmem_cache *
-__kmem_cache_alias(struct mem_cgroup *memcg, const char *name, size_t size,
-		   size_t align, unsigned long flags, void (*ctor)(void *));
+__kmem_cache_alias(const char *name, size_t size, size_t align,
+		   unsigned long flags, void (*ctor)(void *));
 #else
 static inline struct kmem_cache *
-__kmem_cache_alias(struct mem_cgroup *memcg, const char *name, size_t size,
-		   size_t align, unsigned long flags, void (*ctor)(void *))
+__kmem_cache_alias(const char *name, size_t size, size_t align,
+		   unsigned long flags, void (*ctor)(void *))
 { return NULL; }
 #endif
 
@@ -82,6 +91,7 @@ __kmem_cache_alias(struct mem_cgroup *memcg, const char *name, size_t size,
 #define CACHE_CREATE_MASK (SLAB_CORE_FLAGS | SLAB_DEBUG_FLAGS | SLAB_CACHE_FLAGS)
 
 int __kmem_cache_shutdown(struct kmem_cache *);
+void slab_kmem_cache_release(struct kmem_cache *);
 
 struct seq_file;
 struct file;
@@ -108,13 +118,6 @@ ssize_t slabinfo_write(struct file *file, const char __user *buffer,
 static inline bool is_root_cache(struct kmem_cache *s)
 {
 	return !s->memcg_params || s->memcg_params->is_root_cache;
-}
-
-static inline bool cache_match_memcg(struct kmem_cache *cachep,
-				     struct mem_cgroup *memcg)
-{
-	return (is_root_cache(cachep) && !memcg) ||
-				(cachep->memcg_params->memcg == memcg);
 }
 
 static inline void memcg_bind_pages(struct kmem_cache *s, int order)
@@ -151,9 +154,36 @@ static inline const char *cache_name(struct kmem_cache *s)
 	return s->name;
 }
 
-static inline struct kmem_cache *cache_from_memcg(struct kmem_cache *s, int idx)
+/*
+ * Note, we protect with RCU only the memcg_caches array, not per-memcg caches.
+ * That said the caller must assure the memcg's cache won't go away. Since once
+ * created a memcg's cache is destroyed only along with the root cache, it is
+ * true if we are going to allocate from the cache or hold a reference to the
+ * root cache by other means. Otherwise, we should hold either the slab_mutex
+ * or the memcg's slab_caches_mutex while calling this function and accessing
+ * the returned value.
+ */
+static inline struct kmem_cache *
+cache_from_memcg_idx(struct kmem_cache *s, int idx)
 {
-	return s->memcg_params->memcg_caches[idx];
+	struct kmem_cache *cachep;
+	struct memcg_cache_params *params;
+
+	if (!s->memcg_params)
+		return NULL;
+
+	rcu_read_lock();
+	params = rcu_dereference(s->memcg_params);
+	cachep = params->memcg_caches[idx];
+	rcu_read_unlock();
+
+	/*
+	 * Make sure we will access the up-to-date value. The code updating
+	 * memcg_caches issues a write barrier to match this (see
+	 * memcg_register_cache()).
+	 */
+	smp_read_barrier_depends();
+	return cachep;
 }
 
 static inline struct kmem_cache *memcg_root_cache(struct kmem_cache *s)
@@ -164,12 +194,6 @@ static inline struct kmem_cache *memcg_root_cache(struct kmem_cache *s)
 }
 #else
 static inline bool is_root_cache(struct kmem_cache *s)
-{
-	return true;
-}
-
-static inline bool cache_match_memcg(struct kmem_cache *cachep,
-				     struct mem_cgroup *memcg)
 {
 	return true;
 }
@@ -193,7 +217,8 @@ static inline const char *cache_name(struct kmem_cache *s)
 	return s->name;
 }
 
-static inline struct kmem_cache *cache_from_memcg(struct kmem_cache *s, int idx)
+static inline struct kmem_cache *
+cache_from_memcg_idx(struct kmem_cache *s, int idx)
 {
 	return NULL;
 }
@@ -230,3 +255,38 @@ static inline struct kmem_cache *cache_from_obj(struct kmem_cache *s, void *x)
 	return s;
 }
 #endif
+
+
+/*
+ * The slab lists for all objects.
+ */
+struct kmem_cache_node {
+	spinlock_t list_lock;
+
+#ifdef CONFIG_SLAB
+	struct list_head slabs_partial;	/* partial list first, better asm code */
+	struct list_head slabs_full;
+	struct list_head slabs_free;
+	unsigned long free_objects;
+	unsigned int free_limit;
+	unsigned int colour_next;	/* Per-node cache coloring */
+	struct array_cache *shared;	/* shared per node */
+	struct array_cache **alien;	/* on other nodes */
+	unsigned long next_reap;	/* updated without locking */
+	int free_touched;		/* updated without locking */
+#endif
+
+#ifdef CONFIG_SLUB
+	unsigned long nr_partial;
+	struct list_head partial;
+#ifdef CONFIG_SLUB_DEBUG
+	atomic_long_t nr_slabs;
+	atomic_long_t total_objects;
+	struct list_head full;
+#endif
+#endif
+
+};
+
+void *slab_next(struct seq_file *m, void *p, loff_t *pos);
+void slab_stop(struct seq_file *m, void *p);

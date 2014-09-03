@@ -45,9 +45,9 @@ static void line6_midi_transmit(struct snd_rawmidi_substream *substream)
 	struct usb_line6 *line6 =
 	    line6_rawmidi_substream_midi(substream)->line6;
 	struct snd_line6_midi *line6midi = line6->line6midi;
-	struct MidiBuffer *mb = &line6midi->midibuf_out;
+	struct midi_buffer *mb = &line6midi->midibuf_out;
 	unsigned long flags;
-	unsigned char chunk[line6->max_packet_size];
+	unsigned char chunk[LINE6_FALLBACK_MAXPACKETSIZE];
 	int req, done;
 
 	spin_lock_irqsave(&line6->line6midi->midi_transmit_lock, flags);
@@ -64,7 +64,8 @@ static void line6_midi_transmit(struct snd_rawmidi_substream *substream)
 	}
 
 	for (;;) {
-		done = line6_midibuf_read(mb, chunk, line6->max_packet_size);
+		done = line6_midibuf_read(mb, chunk,
+					  LINE6_FALLBACK_MAXPACKETSIZE);
 
 		if (done == 0)
 			break;
@@ -144,7 +145,7 @@ static int send_midi_async(struct usb_line6 *line6, unsigned char *data,
 	if (retval < 0) {
 		dev_err(line6->ifcdev, "usb_submit_urb failed\n");
 		usb_free_urb(urb);
-		return -EINVAL;
+		return retval;
 	}
 
 	++line6->line6midi->num_active_send_urbs;
@@ -205,7 +206,7 @@ static void line6_midi_input_trigger(struct snd_rawmidi_substream *substream,
 	if (up)
 		line6->line6midi->substream_receive = substream;
 	else
-		line6->line6midi->substream_receive = 0;
+		line6->line6midi->substream_receive = NULL;
 }
 
 static struct snd_rawmidi_ops line6_midi_output_ops = {
@@ -306,8 +307,6 @@ int line6_init_midi(struct usb_line6 *line6)
 			     &midi_ops);
 	if (err < 0)
 		return err;
-
-	snd_card_set_dev(line6->card, line6->ifcdev);
 
 	err = snd_line6_new_midi(line6midi);
 	if (err < 0)

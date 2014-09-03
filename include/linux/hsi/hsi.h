@@ -121,9 +121,9 @@ static inline int hsi_register_board_info(struct hsi_board_info const *info,
  * @device: Driver model representation of the device
  * @tx_cfg: HSI TX configuration
  * @rx_cfg: HSI RX configuration
- * @e_handler: Callback for handling port events (RX Wake High/Low)
- * @pclaimed: Keeps tracks if the clients claimed its associated HSI port
- * @nb: Notifier block for port events
+ * e_handler: Callback for handling port events (RX Wake High/Low)
+ * pclaimed: Keeps tracks if the clients claimed its associated HSI port
+ * nb: Notifier block for port events
  */
 struct hsi_client {
 	struct device		device;
@@ -178,7 +178,7 @@ static inline void hsi_unregister_client_driver(struct hsi_client_driver *drv)
  * @complete: Transfer completion callback
  * @destructor: Destructor to free resources when flushing
  * @status: Status of the transfer when completed
- * @actual_len: Actual length of data transfered on completion
+ * @actual_len: Actual length of data transferred on completion
  * @channel: Channel were to TX/RX the message
  * @ttype: Transfer type (TX if set, RX otherwise)
  * @break_frame: if true HSI will send/receive a break frame. Data buffers are

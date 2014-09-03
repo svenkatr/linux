@@ -1489,8 +1489,7 @@ fail0:
  *		negative on error
  *		count (>= 0)
  */
-static int __devinit i5000_init_one(struct pci_dev *pdev,
-				const struct pci_device_id *id)
+static int i5000_init_one(struct pci_dev *pdev, const struct pci_device_id *id)
 {
 	int rc;
 
@@ -1509,7 +1508,7 @@ static int __devinit i5000_init_one(struct pci_dev *pdev,
  *	i5000_remove_one	destructor for one instance of device
  *
  */
-static void __devexit i5000_remove_one(struct pci_dev *pdev)
+static void i5000_remove_one(struct pci_dev *pdev)
 {
 	struct mem_ctl_info *mci;
 
@@ -1531,7 +1530,7 @@ static void __devexit i5000_remove_one(struct pci_dev *pdev)
  *
  *	The "E500P" device is the first device supported.
  */
-static DEFINE_PCI_DEVICE_TABLE(i5000_pci_tbl) = {
+static const struct pci_device_id i5000_pci_tbl[] = {
 	{PCI_DEVICE(PCI_VENDOR_ID_INTEL, PCI_DEVICE_ID_INTEL_I5000_DEV16),
 	 .driver_data = I5000P},
 
@@ -1547,7 +1546,7 @@ MODULE_DEVICE_TABLE(pci, i5000_pci_tbl);
 static struct pci_driver i5000_driver = {
 	.name = KBUILD_BASENAME,
 	.probe = i5000_init_one,
-	.remove = __devexit_p(i5000_remove_one),
+	.remove = i5000_remove_one,
 	.id_table = i5000_pci_tbl,
 };
 

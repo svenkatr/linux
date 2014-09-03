@@ -14,7 +14,6 @@
 
 #include <linux/module.h>
 #include <linux/kernel.h>
-#include <linux/init.h>
 #include <linux/platform_device.h>
 #include <linux/leds.h>
 #include <linux/workqueue.h>
@@ -93,7 +92,7 @@ static void da903x_led_set(struct led_classdev *led_cdev,
 
 static int da903x_led_probe(struct platform_device *pdev)
 {
-	struct led_info *pdata = pdev->dev.platform_data;
+	struct led_info *pdata = dev_get_platdata(&pdev->dev);
 	struct da903x_led *led;
 	int id, ret;
 

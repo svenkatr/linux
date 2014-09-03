@@ -25,7 +25,6 @@
 
 #include <linux/kernel.h>
 #include <linux/errno.h>
-#include <linux/init.h>
 #include <linux/slab.h>
 #include <linux/tty.h>
 #include <linux/tty_driver.h>
@@ -65,7 +64,7 @@ static int  kobil_tiocmget(struct tty_struct *tty);
 static int  kobil_tiocmset(struct tty_struct *tty,
 			   unsigned int set, unsigned int clear);
 static void kobil_read_int_callback(struct urb *urb);
-static void kobil_write_callback(struct urb *purb);
+static void kobil_write_int_callback(struct urb *urb);
 static void kobil_set_termios(struct tty_struct *tty,
 			struct usb_serial_port *port, struct ktermios *old);
 static void kobil_init_termios(struct tty_struct *tty);
@@ -99,6 +98,7 @@ static struct usb_serial_driver kobil_device = {
 	.write =		kobil_write,
 	.write_room =		kobil_write_room,
 	.read_int_callback =	kobil_read_int_callback,
+	.write_int_callback =	kobil_write_int_callback,
 };
 
 static struct usb_serial_driver * const serial_drivers[] = {
@@ -106,8 +106,6 @@ static struct usb_serial_driver * const serial_drivers[] = {
 };
 
 struct kobil_private {
-	int write_int_endpoint_address;
-	int read_int_endpoint_address;
 	unsigned char buf[KOBIL_BUF_LENGTH]; /* buffer for the APDU to send */
 	int filled;  /* index of the last char in buf */
 	int cur_pos; /* index of the next char to send in buf */
@@ -117,14 +115,8 @@ struct kobil_private {
 
 static int kobil_port_probe(struct usb_serial_port *port)
 {
-	int i;
 	struct usb_serial *serial = port->serial;
 	struct kobil_private *priv;
-	struct usb_device *pdev;
-	struct usb_host_config *actconfig;
-	struct usb_interface *interface;
-	struct usb_host_interface *altsetting;
-	struct usb_host_endpoint *endpoint;
 
 	priv = kmalloc(sizeof(struct kobil_private), GFP_KERNEL);
 	if (!priv)
@@ -150,30 +142,6 @@ static int kobil_port_probe(struct usb_serial_port *port)
 	}
 	usb_set_serial_port_data(port, priv);
 
-	/* search for the necessary endpoints */
-	pdev = serial->dev;
-	actconfig = pdev->actconfig;
-	interface = actconfig->interface[0];
-	altsetting = interface->cur_altsetting;
-	endpoint = altsetting->endpoint;
-
-	for (i = 0; i < altsetting->desc.bNumEndpoints; i++) {
-		endpoint = &altsetting->endpoint[i];
-		if (usb_endpoint_is_int_out(&endpoint->desc)) {
-			dev_dbg(&serial->dev->dev,
-				"%s Found interrupt out endpoint. Address: %d\n",
-				__func__, endpoint->desc.bEndpointAddress);
-			priv->write_int_endpoint_address =
-				endpoint->desc.bEndpointAddress;
-		}
-		if (usb_endpoint_is_int_in(&endpoint->desc)) {
-			dev_dbg(&serial->dev->dev,
-				"%s Found interrupt in  endpoint. Address: %d\n",
-				__func__, endpoint->desc.bEndpointAddress);
-			priv->read_int_endpoint_address =
-				endpoint->desc.bEndpointAddress;
-		}
-	}
 	return 0;
 }
 
@@ -205,7 +173,6 @@ static int kobil_open(struct tty_struct *tty, struct usb_serial_port *port)
 	struct kobil_private *priv;
 	unsigned char *transfer_buffer;
 	int transfer_buffer_length = 8;
-	int write_urb_transfer_buffer_length = 8;
 
 	priv = usb_get_serial_port_data(port);
 
@@ -213,27 +180,6 @@ static int kobil_open(struct tty_struct *tty, struct usb_serial_port *port)
 	transfer_buffer = kzalloc(transfer_buffer_length, GFP_KERNEL);
 	if (!transfer_buffer)
 		return -ENOMEM;
-
-	/* allocate write_urb */
-	if (!port->write_urb) {
-		dev_dbg(dev, "%s - Allocating port->write_urb\n", __func__);
-		port->write_urb = usb_alloc_urb(0, GFP_KERNEL);
-		if (!port->write_urb) {
-			dev_dbg(dev, "%s - usb_alloc_urb failed\n", __func__);
-			kfree(transfer_buffer);
-			return -ENOMEM;
-		}
-	}
-
-	/* allocate memory for write_urb transfer buffer */
-	port->write_urb->transfer_buffer =
-			kmalloc(write_urb_transfer_buffer_length, GFP_KERNEL);
-	if (!port->write_urb->transfer_buffer) {
-		kfree(transfer_buffer);
-		usb_free_urb(port->write_urb);
-		port->write_urb = NULL;
-		return -ENOMEM;
-	}
 
 	/* get hardware version */
 	result = usb_control_msg(port->serial->dev,
@@ -247,7 +193,7 @@ static int kobil_open(struct tty_struct *tty, struct usb_serial_port *port)
 			  KOBIL_TIMEOUT
 	);
 	dev_dbg(dev, "%s - Send get_HW_version URB returns: %i\n", __func__, result);
-	dev_dbg(dev, "Harware version: %i.%i.%i\n", transfer_buffer[0],
+	dev_dbg(dev, "Hardware version: %i.%i.%i\n", transfer_buffer[0],
 		transfer_buffer[1], transfer_buffer[2]);
 
 	/* get firmware version */
@@ -310,12 +256,7 @@ static int kobil_open(struct tty_struct *tty, struct usb_serial_port *port)
 static void kobil_close(struct usb_serial_port *port)
 {
 	/* FIXME: Add rts/dtr methods */
-	if (port->write_urb) {
-		usb_poison_urb(port->write_urb);
-		kfree(port->write_urb->transfer_buffer);
-		usb_free_urb(port->write_urb);
-		port->write_urb = NULL;
-	}
+	usb_kill_urb(port->interrupt_out_urb);
 	usb_kill_urb(port->interrupt_in_urb);
 }
 
@@ -324,7 +265,6 @@ static void kobil_read_int_callback(struct urb *urb)
 {
 	int result;
 	struct usb_serial_port *port = urb->context;
-	struct tty_struct *tty;
 	unsigned char *data = urb->transfer_buffer;
 	int status = urb->status;
 
@@ -333,37 +273,19 @@ static void kobil_read_int_callback(struct urb *urb)
 		return;
 	}
 
-	tty = tty_port_tty_get(&port->port);
-	if (tty && urb->actual_length) {
-
-		/* BEGIN DEBUG */
-		/*
-		  char *dbg_data;
-
-		  dbg_data = kzalloc((3 *  purb->actual_length + 10)
-						* sizeof(char), GFP_KERNEL);
-		  if (! dbg_data) {
-			  return;
-		  }
-		  for (i = 0; i < purb->actual_length; i++) {
-			  sprintf(dbg_data +3*i, "%02X ", data[i]);
-		  }
-		  dev_dbg(&port->dev, " <-- %s\n", dbg_data);
-		  kfree(dbg_data);
-		*/
-		/* END DEBUG */
-
-		tty_insert_flip_string(tty, data, urb->actual_length);
-		tty_flip_buffer_push(tty);
+	if (urb->actual_length) {
+		usb_serial_debug_data(&port->dev, __func__, urb->actual_length,
+									data);
+		tty_insert_flip_string(&port->port, data, urb->actual_length);
+		tty_flip_buffer_push(&port->port);
 	}
-	tty_kref_put(tty);
 
 	result = usb_submit_urb(port->interrupt_in_urb, GFP_ATOMIC);
 	dev_dbg(&port->dev, "%s - Send read URB returns: %i\n", __func__, result);
 }
 
 
-static void kobil_write_callback(struct urb *purb)
+static void kobil_write_int_callback(struct urb *urb)
 {
 }
 
@@ -406,23 +328,14 @@ static int kobil_write(struct tty_struct *tty, struct usb_serial_port *port,
 
 		while (todo > 0) {
 			/* max 8 byte in one urb (endpoint size) */
-			length = (todo < 8) ? todo : 8;
+			length = min(todo, port->interrupt_out_size);
 			/* copy data to transfer buffer */
-			memcpy(port->write_urb->transfer_buffer,
+			memcpy(port->interrupt_out_buffer,
 					priv->buf + priv->cur_pos, length);
-			usb_fill_int_urb(port->write_urb,
-				  port->serial->dev,
-				  usb_sndintpipe(port->serial->dev,
-					priv->write_int_endpoint_address),
-				  port->write_urb->transfer_buffer,
-				  length,
-				  kobil_write_callback,
-				  port,
-				  8
-			);
+			port->interrupt_out_urb->transfer_buffer_length = length;
 
 			priv->cur_pos = priv->cur_pos + length;
-			result = usb_submit_urb(port->write_urb, GFP_NOIO);
+			result = usb_submit_urb(port->interrupt_out_urb, GFP_NOIO);
 			dev_dbg(&port->dev, "%s - Send write URB returns: %i\n", __func__, result);
 			todo = priv->filled - priv->cur_pos;
 
@@ -644,7 +557,8 @@ static int kobil_ioctl(struct tty_struct *tty,
 			);
 
 		dev_dbg(&port->dev,
-			"%s - Send reset_all_queues (FLUSH) URB returns: %i", __func__, result);
+			"%s - Send reset_all_queues (FLUSH) URB returns: %i\n",
+			__func__, result);
 		kfree(transfer_buffer);
 		return (result < 0) ? -EIO: 0;
 	default:

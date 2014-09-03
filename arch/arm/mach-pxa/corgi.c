@@ -32,6 +32,7 @@
 #include <linux/spi/pxa2xx_spi.h>
 #include <linux/mtd/sharpsl.h>
 #include <linux/input/matrix_keypad.h>
+#include <linux/gpio_keys.h>
 #include <linux/module.h>
 #include <video/w100fb.h>
 
@@ -405,6 +406,44 @@ static struct platform_device corgikbd_device = {
 	},
 };
 
+static struct gpio_keys_button corgi_gpio_keys[] = {
+	{
+		.type	= EV_SW,
+		.code	= SW_LID,
+		.gpio	= CORGI_GPIO_SWA,
+		.desc	= "Lid close switch",
+		.debounce_interval = 500,
+	},
+	{
+		.type	= EV_SW,
+		.code	= SW_TABLET_MODE,
+		.gpio	= CORGI_GPIO_SWB,
+		.desc	= "Tablet mode switch",
+		.debounce_interval = 500,
+	},
+	{
+		.type	= EV_SW,
+		.code	= SW_HEADPHONE_INSERT,
+		.gpio	= CORGI_GPIO_AK_INT,
+		.desc	= "HeadPhone insert",
+		.debounce_interval = 500,
+	},
+};
+
+static struct gpio_keys_platform_data corgi_gpio_keys_platform_data = {
+	.buttons	= corgi_gpio_keys,
+	.nbuttons	= ARRAY_SIZE(corgi_gpio_keys),
+	.poll_interval	= 250,
+};
+
+static struct platform_device corgi_gpio_keys_device = {
+	.name	= "gpio-keys-polled",
+	.id	= -1,
+	.dev	= {
+		.platform_data	= &corgi_gpio_keys_platform_data,
+	},
+};
+
 /*
  * Corgi LEDs
  */
@@ -646,6 +685,7 @@ static struct platform_device sharpsl_rom_device = {
 static struct platform_device *devices[] __initdata = {
 	&corgiscoop_device,
 	&corgifb_device,
+	&corgi_gpio_keys_device,
 	&corgikbd_device,
 	&corgiled_device,
 	&corgi_audio_device,
@@ -663,16 +703,16 @@ static void corgi_poweroff(void)
 		/* Green LED off tells the bootloader to halt */
 		gpio_set_value(CORGI_GPIO_LED_GREEN, 0);
 
-	pxa_restart('h', NULL);
+	pxa_restart(REBOOT_HARD, NULL);
 }
 
-static void corgi_restart(char mode, const char *cmd)
+static void corgi_restart(enum reboot_mode mode, const char *cmd)
 {
 	if (!machine_is_corgi())
 		/* Green LED on tells the bootloader to reboot */
 		gpio_set_value(CORGI_GPIO_LED_GREEN, 1);
 
-	pxa_restart('h', cmd);
+	pxa_restart(REBOOT_HARD, cmd);
 }
 
 static void __init corgi_init(void)
@@ -733,7 +773,7 @@ MACHINE_START(CORGI, "SHARP Corgi")
 	.init_irq	= pxa25x_init_irq,
 	.handle_irq	= pxa25x_handle_irq,
 	.init_machine	= corgi_init,
-	.timer		= &pxa_timer,
+	.init_time	= pxa_timer_init,
 	.restart	= corgi_restart,
 MACHINE_END
 #endif
@@ -746,7 +786,7 @@ MACHINE_START(SHEPHERD, "SHARP Shepherd")
 	.init_irq	= pxa25x_init_irq,
 	.handle_irq	= pxa25x_handle_irq,
 	.init_machine	= corgi_init,
-	.timer		= &pxa_timer,
+	.init_time	= pxa_timer_init,
 	.restart	= corgi_restart,
 MACHINE_END
 #endif
@@ -759,7 +799,7 @@ MACHINE_START(HUSKY, "SHARP Husky")
 	.init_irq	= pxa25x_init_irq,
 	.handle_irq	= pxa25x_handle_irq,
 	.init_machine	= corgi_init,
-	.timer		= &pxa_timer,
+	.init_time	= pxa_timer_init,
 	.restart	= corgi_restart,
 MACHINE_END
 #endif

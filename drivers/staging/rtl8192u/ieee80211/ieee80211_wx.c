@@ -39,7 +39,7 @@ struct modes_unit {
 	char *mode_string;
 	int mode_size;
 };
-struct modes_unit ieee80211_modes[] = {
+static struct modes_unit ieee80211_modes[] = {
 	{"a",1},
 	{"b",1},
 	{"g",1},
@@ -761,7 +761,7 @@ int ieee80211_wx_set_mlme(struct ieee80211_device *ieee,
 	case IW_MLME_DISASSOC:
 		ieee80211_disassociate(ieee);
 		break;
-	 default:
+	default:
 		return -EOPNOTSUPP;
 	}
 	return 0;

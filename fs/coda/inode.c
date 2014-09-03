@@ -20,6 +20,7 @@
 #include <linux/file.h>
 #include <linux/vfs.h>
 #include <linux/slab.h>
+#include <linux/pid_namespace.h>
 
 #include <asm/uaccess.h>
 
@@ -48,7 +49,7 @@ static struct inode *coda_alloc_inode(struct super_block *sb)
 		return NULL;
 	memset(&ei->c_fid, 0, sizeof(struct CodaFid));
 	ei->c_flags = 0;
-	ei->c_uid = 0;
+	ei->c_uid = GLOBAL_ROOT_UID;
 	ei->c_cached_perm = 0;
 	spin_lock_init(&ei->c_lock);
 	return &ei->vfs_inode;
@@ -72,7 +73,7 @@ static void init_once(void *foo)
 	inode_init_once(&ei->vfs_inode);
 }
 
-int coda_init_inodecache(void)
+int __init coda_init_inodecache(void)
 {
 	coda_inode_cachep = kmem_cache_create("coda_inode_cache",
 				sizeof(struct coda_inode_info),
@@ -95,6 +96,7 @@ void coda_destroy_inodecache(void)
 
 static int coda_remount(struct super_block *sb, int *flags, char *data)
 {
+	sync_filesystem(sb);
 	*flags |= MS_NOATIME;
 	return 0;
 }
@@ -129,7 +131,7 @@ static int get_device_index(struct coda_mount_data *data)
 	f = fdget(data->fd);
 	if (!f.file)
 		goto Ebadf;
-	inode = f.file->f_path.dentry->d_inode;
+	inode = file_inode(f.file);
 	if (!S_ISCHR(inode->i_mode) || imajor(inode) != CODA_PSDEV_MAJOR) {
 		fdput(f);
 		goto Ebadf;
@@ -156,6 +158,9 @@ static int coda_fill_super(struct super_block *sb, void *data, int silent)
 	struct CodaFid fid;
 	int error;
 	int idx;
+
+	if (task_active_pid_ns(current) != &init_pid_ns)
+		return -EINVAL;
 
 	idx = get_device_index((struct coda_mount_data *) data);
 
@@ -246,14 +251,14 @@ static void coda_put_super(struct super_block *sb)
 
 static void coda_evict_inode(struct inode *inode)
 {
-	truncate_inode_pages(&inode->i_data, 0);
+	truncate_inode_pages_final(&inode->i_data);
 	clear_inode(inode);
 	coda_cache_clear_inode(inode);
 }
 
 int coda_getattr(struct vfsmount *mnt, struct dentry *dentry, struct kstat *stat)
 {
-	int err = coda_revalidate_inode(dentry);
+	int err = coda_revalidate_inode(dentry->d_inode);
 	if (!err)
 		generic_fillattr(dentry->d_inode, stat);
 	return err;
@@ -325,4 +330,5 @@ struct file_system_type coda_fs_type = {
 	.kill_sb	= kill_anon_super,
 	.fs_flags	= FS_BINARY_MOUNTDATA,
 };
+MODULE_ALIAS_FS("coda");
 

@@ -12,7 +12,6 @@
  * Copyright (C) 2012 Olivier Sobrie <olivier@sobrie.be>
  */
 
-#include <linux/init.h>
 #include <linux/completion.h>
 #include <linux/module.h>
 #include <linux/netdevice.h>
@@ -135,6 +134,9 @@
 #define KVASER_CTRL_MODE_SILENT		2
 #define KVASER_CTRL_MODE_SELFRECEPTION	3
 #define KVASER_CTRL_MODE_OFF		4
+
+/* log message */
+#define KVASER_EXTENDED_FRAME		BIT(31)
 
 struct kvaser_msg_simple {
 	u8 tid;
@@ -471,6 +473,8 @@ static int kvaser_usb_get_card_info(struct kvaser_usb *dev)
 		return err;
 
 	dev->nchannels = msg.u.cardinfo.nchannels;
+	if (dev->nchannels > MAX_NET_DEVICES)
+		return -EINVAL;
 
 	return 0;
 }
@@ -561,7 +565,6 @@ static int kvaser_usb_simple_msg_async(struct kvaser_usb_net_priv *priv,
 
 	buf = kmalloc(sizeof(struct kvaser_msg), GFP_ATOMIC);
 	if (!buf) {
-		netdev_err(netdev, "No memory left for USB buffer\n");
 		usb_free_urb(urb);
 		return -ENOMEM;
 	}
@@ -818,8 +821,13 @@ static void kvaser_usb_rx_can_msg(const struct kvaser_usb *dev,
 	priv = dev->nets[channel];
 	stats = &priv->netdev->stats;
 
-	if (msg->u.rx_can.flag & (MSG_FLAG_ERROR_FRAME | MSG_FLAG_NERR |
-				  MSG_FLAG_OVERRUN)) {
+	if ((msg->u.rx_can.flag & MSG_FLAG_ERROR_FRAME) &&
+	    (msg->id == CMD_LOG_MESSAGE)) {
+		kvaser_usb_rx_error(dev, msg);
+		return;
+	} else if (msg->u.rx_can.flag & (MSG_FLAG_ERROR_FRAME |
+					 MSG_FLAG_NERR |
+					 MSG_FLAG_OVERRUN)) {
 		kvaser_usb_rx_can_err(priv, msg);
 		return;
 	} else if (msg->u.rx_can.flag & ~MSG_FLAG_REMOTE_FRAME) {
@@ -835,22 +843,40 @@ static void kvaser_usb_rx_can_msg(const struct kvaser_usb *dev,
 		return;
 	}
 
-	cf->can_id = ((msg->u.rx_can.msg[0] & 0x1f) << 6) |
-		     (msg->u.rx_can.msg[1] & 0x3f);
-	cf->can_dlc = get_can_dlc(msg->u.rx_can.msg[5]);
+	if (msg->id == CMD_LOG_MESSAGE) {
+		cf->can_id = le32_to_cpu(msg->u.log_message.id);
+		if (cf->can_id & KVASER_EXTENDED_FRAME)
+			cf->can_id &= CAN_EFF_MASK | CAN_EFF_FLAG;
+		else
+			cf->can_id &= CAN_SFF_MASK;
 
-	if (msg->id == CMD_RX_EXT_MESSAGE) {
-		cf->can_id <<= 18;
-		cf->can_id |= ((msg->u.rx_can.msg[2] & 0x0f) << 14) |
-			      ((msg->u.rx_can.msg[3] & 0xff) << 6) |
-			      (msg->u.rx_can.msg[4] & 0x3f);
-		cf->can_id |= CAN_EFF_FLAG;
+		cf->can_dlc = get_can_dlc(msg->u.log_message.dlc);
+
+		if (msg->u.log_message.flags & MSG_FLAG_REMOTE_FRAME)
+			cf->can_id |= CAN_RTR_FLAG;
+		else
+			memcpy(cf->data, &msg->u.log_message.data,
+			       cf->can_dlc);
+	} else {
+		cf->can_id = ((msg->u.rx_can.msg[0] & 0x1f) << 6) |
+			     (msg->u.rx_can.msg[1] & 0x3f);
+
+		if (msg->id == CMD_RX_EXT_MESSAGE) {
+			cf->can_id <<= 18;
+			cf->can_id |= ((msg->u.rx_can.msg[2] & 0x0f) << 14) |
+				      ((msg->u.rx_can.msg[3] & 0xff) << 6) |
+				      (msg->u.rx_can.msg[4] & 0x3f);
+			cf->can_id |= CAN_EFF_FLAG;
+		}
+
+		cf->can_dlc = get_can_dlc(msg->u.rx_can.msg[5]);
+
+		if (msg->u.rx_can.flag & MSG_FLAG_REMOTE_FRAME)
+			cf->can_id |= CAN_RTR_FLAG;
+		else
+			memcpy(cf->data, &msg->u.rx_can.msg[6],
+			       cf->can_dlc);
 	}
-
-	if (msg->u.rx_can.flag & MSG_FLAG_REMOTE_FRAME)
-		cf->can_id |= CAN_RTR_FLAG;
-	else
-		memcpy(cf->data, &msg->u.rx_can.msg[6], cf->can_dlc);
 
 	netif_rx(skb);
 
@@ -912,17 +938,13 @@ static void kvaser_usb_handle_message(const struct kvaser_usb *dev,
 
 	case CMD_RX_STD_MESSAGE:
 	case CMD_RX_EXT_MESSAGE:
+	case CMD_LOG_MESSAGE:
 		kvaser_usb_rx_can_msg(dev, msg);
 		break;
 
 	case CMD_CHIP_STATE_EVENT:
 	case CMD_CAN_ERROR_EVENT:
 		kvaser_usb_rx_error(dev, msg);
-		break;
-
-	case CMD_LOG_MESSAGE:
-		if (msg->u.log_message.flags & MSG_FLAG_ERROR_FRAME)
-			kvaser_usb_rx_error(dev, msg);
 		break;
 
 	case CMD_TX_ACKNOWLEDGE:
@@ -1268,7 +1290,6 @@ static netdev_tx_t kvaser_usb_start_xmit(struct sk_buff *skb,
 
 	buf = kmalloc(sizeof(struct kvaser_msg), GFP_ATOMIC);
 	if (!buf) {
-		netdev_err(netdev, "No memory left for USB buffer\n");
 		stats->tx_dropped++;
 		goto nobufmem;
 	}
@@ -1367,6 +1388,7 @@ static const struct net_device_ops kvaser_usb_netdev_ops = {
 	.ndo_open = kvaser_usb_open,
 	.ndo_stop = kvaser_usb_close,
 	.ndo_start_xmit = kvaser_usb_start_xmit,
+	.ndo_change_mtu = can_change_mtu,
 };
 
 static const struct can_bittiming_const kvaser_usb_bittiming_const = {
@@ -1508,6 +1530,7 @@ static int kvaser_usb_init_one(struct usb_interface *intf,
 	netdev->netdev_ops = &kvaser_usb_netdev_ops;
 
 	SET_NETDEV_DEV(netdev, &intf->dev);
+	netdev->dev_id = channel;
 
 	dev->nets[channel] = priv;
 
@@ -1524,9 +1547,9 @@ static int kvaser_usb_init_one(struct usb_interface *intf,
 	return 0;
 }
 
-static void kvaser_usb_get_endpoints(const struct usb_interface *intf,
-				     struct usb_endpoint_descriptor **in,
-				     struct usb_endpoint_descriptor **out)
+static int kvaser_usb_get_endpoints(const struct usb_interface *intf,
+				    struct usb_endpoint_descriptor **in,
+				    struct usb_endpoint_descriptor **out)
 {
 	const struct usb_host_interface *iface_desc;
 	struct usb_endpoint_descriptor *endpoint;
@@ -1537,12 +1560,18 @@ static void kvaser_usb_get_endpoints(const struct usb_interface *intf,
 	for (i = 0; i < iface_desc->desc.bNumEndpoints; ++i) {
 		endpoint = &iface_desc->endpoint[i].desc;
 
-		if (usb_endpoint_is_bulk_in(endpoint))
+		if (!*in && usb_endpoint_is_bulk_in(endpoint))
 			*in = endpoint;
 
-		if (usb_endpoint_is_bulk_out(endpoint))
+		if (!*out && usb_endpoint_is_bulk_out(endpoint))
 			*out = endpoint;
+
+		/* use first bulk endpoint for in and out */
+		if (*in && *out)
+			return 0;
 	}
+
+	return -ENODEV;
 }
 
 static int kvaser_usb_probe(struct usb_interface *intf,
@@ -1556,8 +1585,8 @@ static int kvaser_usb_probe(struct usb_interface *intf,
 	if (!dev)
 		return -ENOMEM;
 
-	kvaser_usb_get_endpoints(intf, &dev->bulk_in, &dev->bulk_out);
-	if (!dev->bulk_in || !dev->bulk_out) {
+	err = kvaser_usb_get_endpoints(intf, &dev->bulk_in, &dev->bulk_out);
+	if (err) {
 		dev_err(&intf->dev, "Cannot get usb endpoint(s)");
 		return err;
 	}

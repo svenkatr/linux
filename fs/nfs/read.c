@@ -91,12 +91,16 @@ void nfs_readdata_release(struct nfs_read_data *rdata)
 	put_nfs_open_context(rdata->args.context);
 	if (rdata->pages.pagevec != rdata->pages.page_array)
 		kfree(rdata->pages.pagevec);
-	if (rdata != &read_header->rpc_data)
-		kfree(rdata);
-	else
+	if (rdata == &read_header->rpc_data) {
 		rdata->header = NULL;
+		rdata = NULL;
+	}
 	if (atomic_dec_and_test(&hdr->refcnt))
 		hdr->completion_ops->completion(hdr);
+	/* Note: we only free the rpc_task after callbacks are done.
+	 * See the comment in rpc_free_task() for why
+	 */
+	kfree(rdata);
 }
 EXPORT_SYMBOL_GPL(nfs_readdata_release);
 
@@ -159,9 +163,9 @@ static void nfs_readpage_release(struct nfs_page *req)
 
 	unlock_page(req->wb_page);
 
-	dprintk("NFS: read done (%s/%Ld %d@%Ld)\n",
+	dprintk("NFS: read done (%s/%Lu %d@%Ld)\n",
 			req->wb_context->dentry->d_inode->i_sb->s_id,
-			(long long)NFS_FILEID(req->wb_context->dentry->d_inode),
+			(unsigned long long)NFS_FILEID(req->wb_context->dentry->d_inode),
 			req->wb_bytes,
 			(long long)req_offset(req));
 	nfs_release_request(req);
@@ -224,11 +228,11 @@ int nfs_initiate_read(struct rpc_clnt *clnt,
 	/* Set up the initial task struct. */
 	NFS_PROTO(inode)->read_setup(data, &msg);
 
-	dprintk("NFS: %5u initiated read call (req %s/%lld, %u bytes @ "
+	dprintk("NFS: %5u initiated read call (req %s/%llu, %u bytes @ "
 			"offset %llu)\n",
 			data->task.tk_pid,
 			inode->i_sb->s_id,
-			(long long)NFS_FILEID(inode),
+			(unsigned long long)NFS_FILEID(inode),
 			data->args.count,
 			(unsigned long long)data->args.offset);
 
@@ -509,7 +513,10 @@ static void nfs_readpage_release_common(void *calldata)
 void nfs_read_prepare(struct rpc_task *task, void *calldata)
 {
 	struct nfs_read_data *data = calldata;
-	NFS_PROTO(data->header->inode)->read_rpc_prepare(task, data);
+	int err;
+	err = NFS_PROTO(data->header->inode)->read_rpc_prepare(task, data);
+	if (err)
+		rpc_exit(task, err);
 }
 
 static const struct rpc_call_ops nfs_read_common_ops = {
@@ -623,9 +630,9 @@ int nfs_readpages(struct file *filp, struct address_space *mapping,
 	unsigned long npages;
 	int ret = -ESTALE;
 
-	dprintk("NFS: nfs_readpages (%s/%Ld %d)\n",
+	dprintk("NFS: nfs_readpages (%s/%Lu %d)\n",
 			inode->i_sb->s_id,
-			(long long)NFS_FILEID(inode),
+			(unsigned long long)NFS_FILEID(inode),
 			nr_pages);
 	nfs_inc_stats(inode, NFSIOS_VFSREADPAGES);
 

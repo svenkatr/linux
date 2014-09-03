@@ -11,11 +11,10 @@ if [ "$KBUILD_VERBOSE" = "1" ]; then
 	set -x
 fi
 
-# This is a duplicate of RCS_FIND_IGNORE without escaped '()'
-ignore="( -name SCCS -o -name BitKeeper -o -name .svn -o \
-          -name CVS  -o -name .pc       -o -name .hg  -o \
-          -name .git )                                   \
-          -prune -o"
+# RCS_FIND_IGNORE has escaped ()s -- remove them.
+ignore="$(echo "$RCS_FIND_IGNORE" | sed 's|\\||g' )"
+# tags and cscope files should also ignore MODVERSION *.mod.c files
+ignore="$ignore ( -name *.mod.c ) -prune -o"
 
 # Do not use full path if we do not use O=.. builds
 # Use make O=. {tags|cscope}
@@ -149,12 +148,18 @@ dogtags()
 exuberant()
 {
 	all_target_sources | xargs $1 -a                        \
-	-I __initdata,__exitdata,__acquires,__releases          \
-	-I __read_mostly,____cacheline_aligned                  \
+	-I __initdata,__exitdata,__initconst,			\
+	-I __cpuinitdata,__initdata_memblock			\
+	-I __refdata,__attribute,__maybe_unused,__always_unused \
+	-I __acquires,__releases,__deprecated			\
+	-I __read_mostly,__aligned,____cacheline_aligned        \
 	-I ____cacheline_aligned_in_smp                         \
+	-I __cacheline_aligned,__cacheline_aligned_in_smp	\
 	-I ____cacheline_internodealigned_in_smp                \
-	-I EXPORT_SYMBOL,EXPORT_SYMBOL_GPL                      \
+	-I __used,__packed,__packed2__,__must_check,__must_hold	\
+	-I EXPORT_SYMBOL,EXPORT_SYMBOL_GPL,ACPI_EXPORT_SYMBOL   \
 	-I DEFINE_TRACE,EXPORT_TRACEPOINT_SYMBOL,EXPORT_TRACEPOINT_SYMBOL_GPL \
+	-I static,const						\
 	--extra=+f --c-kinds=+px                                \
 	--regex-asm='/^(ENTRY|_GLOBAL)\(([^)]*)\).*/\2/'        \
 	--regex-c='/^SYSCALL_DEFINE[[:digit:]]?\(([^,)]*).*/sys_\1/' \
@@ -182,8 +187,21 @@ exuberant()
 	--regex-c++='/TESTCLEARFLAG_FALSE\(([^,)]*).*/TestClearPage\1/' \
 	--regex-c++='/__TESTCLEARFLAG_FALSE\(([^,)]*).*/__TestClearPage\1/' \
 	--regex-c++='/_PE\(([^,)]*).*/PEVENT_ERRNO__\1/'		\
-	--regex-c='/PCI_OP_READ\(([a-z]*[a-z]).*[1-4]\)/pci_bus_read_config_\1/' \
-	--regex-c='/PCI_OP_WRITE\(([a-z]*[a-z]).*[1-4]\)/pci_bus_write_config_\1/'
+	--regex-c='/PCI_OP_READ\((\w*).*[1-4]\)/pci_bus_read_config_\1/' \
+	--regex-c='/PCI_OP_WRITE\((\w*).*[1-4]\)/pci_bus_write_config_\1/' \
+	--regex-c='/DEFINE_(MUTEX|SEMAPHORE|SPINLOCK)\((\w*)/\2/v/'	\
+	--regex-c='/DEFINE_(RAW_SPINLOCK|RWLOCK|SEQLOCK)\((\w*)/\2/v/'	\
+	--regex-c='/DECLARE_(RWSEM|COMPLETION)\((\w*)/\2/v/'		\
+	--regex-c='/DECLARE_BITMAP\((\w*)/\1/v/'			\
+	--regex-c='/(^|\s)(|L|H)LIST_HEAD\((\w*)/\3/v/'			\
+	--regex-c='/(^|\s)RADIX_TREE\((\w*)/\2/v/'			\
+	--regex-c='/DEFINE_PER_CPU\(([^,]*,\s*)(\w*).*\)/\2/v/'		\
+	--regex-c='/DEFINE_PER_CPU_SHARED_ALIGNED\(([^,]*,\s*)(\w*).*\)/\2/v/' \
+	--regex-c='/DECLARE_WAIT_QUEUE_HEAD\((\w*)/\1/v/'		\
+	--regex-c='/DECLARE_(TASKLET|WORK|DELAYED_WORK)\((\w*)/\2/v/'	\
+	--regex-c='/DEFINE_PCI_DEVICE_TABLE\((\w*)/\1/v/'		\
+	--regex-c='/(^\s)OFFSET\((\w*)/\2/v/'				\
+	--regex-c='/(^\s)DEFINE\((\w*)/\2/v/'
 
 	all_kconfigs | xargs $1 -a                              \
 	--langdef=kconfig --language-force=kconfig              \
@@ -201,34 +219,34 @@ exuberant()
 emacs()
 {
 	all_target_sources | xargs $1 -a                        \
-	--regex='/^(ENTRY|_GLOBAL)(\([^)]*\)).*/\2/'            \
+	--regex='/^\(ENTRY\|_GLOBAL\)(\([^)]*\)).*/\2/'         \
 	--regex='/^SYSCALL_DEFINE[0-9]?(\([^,)]*\).*/sys_\1/'   \
 	--regex='/^TRACE_EVENT(\([^,)]*\).*/trace_\1/'		\
 	--regex='/^DEFINE_EVENT([^,)]*, *\([^,)]*\).*/trace_\1/' \
-	--regex='/PAGEFLAG\(([^,)]*).*/Page\1/'			\
-	--regex='/PAGEFLAG\(([^,)]*).*/SetPage\1/'		\
-	--regex='/PAGEFLAG\(([^,)]*).*/ClearPage\1/'		\
-	--regex='/TESTSETFLAG\(([^,)]*).*/TestSetPage\1/'	\
-	--regex='/TESTPAGEFLAG\(([^,)]*).*/Page\1/'		\
-	--regex='/SETPAGEFLAG\(([^,)]*).*/SetPage\1/'		\
-	--regex='/__SETPAGEFLAG\(([^,)]*).*/__SetPage\1/'	\
-	--regex='/TESTCLEARFLAG\(([^,)]*).*/TestClearPage\1/'	\
-	--regex='/__TESTCLEARFLAG\(([^,)]*).*/TestClearPage\1/'	\
-	--regex='/CLEARPAGEFLAG\(([^,)]*).*/ClearPage\1/'	\
-	--regex='/__CLEARPAGEFLAG\(([^,)]*).*/__ClearPage\1/'	\
-	--regex='/__PAGEFLAG\(([^,)]*).*/__SetPage\1/'		\
-	--regex='/__PAGEFLAG\(([^,)]*).*/__ClearPage\1/'	\
-	--regex='/PAGEFLAG_FALSE\(([^,)]*).*/Page\1/'		\
-	--regex='/TESTSCFLAG\(([^,)]*).*/TestSetPage\1/'	\
-	--regex='/TESTSCFLAG\(([^,)]*).*/TestClearPage\1/'	\
-	--regex='/SETPAGEFLAG_NOOP\(([^,)]*).*/SetPage\1/'	\
-	--regex='/CLEARPAGEFLAG_NOOP\(([^,)]*).*/ClearPage\1/'	\
-	--regex='/__CLEARPAGEFLAG_NOOP\(([^,)]*).*/__ClearPage\1/' \
-	--regex='/TESTCLEARFLAG_FALSE\(([^,)]*).*/TestClearPage\1/' \
-	--regex='/__TESTCLEARFLAG_FALSE\(([^,)]*).*/__TestClearPage\1/' \
-	--regex='/_PE\(([^,)]*).*/PEVENT_ERRNO__\1/'		\
-	--regex='/PCI_OP_READ\(([a-z]*[a-z]).*[1-4]\)/pci_bus_read_config_\1/' \
-	--regex='/PCI_OP_WRITE\(([a-z]*[a-z]).*[1-4]\)/pci_bus_write_config_\1/'
+	--regex='/PAGEFLAG(\([^,)]*\).*/Page\1/'			\
+	--regex='/PAGEFLAG(\([^,)]*\).*/SetPage\1/'		\
+	--regex='/PAGEFLAG(\([^,)]*\).*/ClearPage\1/'		\
+	--regex='/TESTSETFLAG(\([^,)]*\).*/TestSetPage\1/'	\
+	--regex='/TESTPAGEFLAG(\([^,)]*\).*/Page\1/'		\
+	--regex='/SETPAGEFLAG(\([^,)]*\).*/SetPage\1/'		\
+	--regex='/__SETPAGEFLAG(\([^,)]*\).*/__SetPage\1/'	\
+	--regex='/TESTCLEARFLAG(\([^,)]*\).*/TestClearPage\1/'	\
+	--regex='/__TESTCLEARFLAG(\([^,)]*\).*/TestClearPage\1/'	\
+	--regex='/CLEARPAGEFLAG(\([^,)]*\).*/ClearPage\1/'	\
+	--regex='/__CLEARPAGEFLAG(\([^,)]*\).*/__ClearPage\1/'	\
+	--regex='/__PAGEFLAG(\([^,)]*\).*/__SetPage\1/'		\
+	--regex='/__PAGEFLAG(\([^,)]*\).*/__ClearPage\1/'	\
+	--regex='/PAGEFLAG_FALSE(\([^,)]*\).*/Page\1/'		\
+	--regex='/TESTSCFLAG(\([^,)]*\).*/TestSetPage\1/'	\
+	--regex='/TESTSCFLAG(\([^,)]*\).*/TestClearPage\1/'	\
+	--regex='/SETPAGEFLAG_NOOP(\([^,)]*\).*/SetPage\1/'	\
+	--regex='/CLEARPAGEFLAG_NOOP(\([^,)]*\).*/ClearPage\1/'	\
+	--regex='/__CLEARPAGEFLAG_NOOP(\([^,)]*\).*/__ClearPage\1/' \
+	--regex='/TESTCLEARFLAG_FALSE(\([^,)]*\).*/TestClearPage\1/' \
+	--regex='/__TESTCLEARFLAG_FALSE(\([^,)]*\).*/__TestClearPage\1/' \
+	--regex='/_PE(\([^,)]*\).*/PEVENT_ERRNO__\1/'		\
+	--regex='/PCI_OP_READ(\([a-z]*[a-z]\).*[1-4])/pci_bus_read_config_\1/' \
+	--regex='/PCI_OP_WRITE(\([a-z]*[a-z]\).*[1-4])/pci_bus_write_config_\1/'
 
 	all_kconfigs | xargs $1 -a                              \
 	--regex='/^[ \t]*\(\(menu\)*config\)[ \t]+\([a-zA-Z0-9_]+\)/\3/'

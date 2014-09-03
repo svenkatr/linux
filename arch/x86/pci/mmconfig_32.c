@@ -14,7 +14,6 @@
 #include <linux/rcupdate.h>
 #include <asm/e820.h>
 #include <asm/pci_x86.h>
-#include <acpi/acpi.h>
 
 /* Assume systems with more busses have correct MCFG */
 #define mmcfg_virt_addr ((void __iomem *) fix_to_virt(FIX_PCIE_MCFG))
@@ -142,7 +141,7 @@ void __init pci_mmcfg_arch_free(void)
 {
 }
 
-int __devinit pci_mmcfg_arch_map(struct pci_mmcfg_region *cfg)
+int pci_mmcfg_arch_map(struct pci_mmcfg_region *cfg)
 {
 	return 0;
 }

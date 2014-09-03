@@ -635,20 +635,20 @@ int rts51x_get_epc_status(struct rts51x_chip *chip, u16 *status)
 	ep = chip->usb->pusb_dev->ep_in[usb_pipeendpoint(pipe)];
 
 	/* fill and submit the URB */
-	/* We set interval to 1 here, so the polling interval is controlled
-	 * by our polling thread */
+	/* Set interval to 10 here to match the endpoint descriptor,
+	 * the polling interval is controlled by the polling thread */
 	usb_fill_int_urb(chip->usb->intr_urb, chip->usb->pusb_dev, pipe,
-			 status, 2, urb_done_completion, &urb_done, 1);
+			 status, 2, urb_done_completion, &urb_done, 10);
 
-	result = rts51x_msg_common(chip, chip->usb->intr_urb, 50);
+	result = rts51x_msg_common(chip, chip->usb->intr_urb, 100);
 
 	return interpret_urb_result(chip, pipe, 2, result,
 				    chip->usb->intr_urb->actual_length);
 }
 
-u8 media_not_present[] = {
+static u8 media_not_present[] = {
 	0x70, 0, 0x02, 0, 0, 0, 0, 10, 0, 0, 0, 0, 0x3A, 0, 0, 0, 0, 0 };
-u8 invalid_cmd_field[] = {
+static u8 invalid_cmd_field[] = {
 	0x70, 0, 0x05, 0, 0, 0, 0, 10, 0, 0, 0, 0, 0x24, 0, 0, 0, 0, 0 };
 
 void rts51x_invoke_transport(struct scsi_cmnd *srb, struct rts51x_chip *chip)

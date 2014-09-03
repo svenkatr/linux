@@ -26,14 +26,12 @@
 #include <linux/time.h>
 #include <linux/uaccess.h>
 #include <linux/workqueue.h>
+#include <linux/if_ether.h>
+#include <linux/if_vlan.h>
 
 #include "cpts.h"
 
 #ifdef CONFIG_TI_CPTS
-
-static struct sock_filter ptp_filter[] = {
-	PTP_FILTER
-};
 
 #define cpts_read32(c, r)	__raw_readl(&c->reg->r)
 #define cpts_write32(c, v, r)	__raw_writel(v, &c->reg->r)
@@ -94,7 +92,7 @@ static int cpts_fifo_read(struct cpts *cpts, int match)
 		case CPTS_EV_HW:
 			break;
 		default:
-			pr_err("cpts: unkown event type\n");
+			pr_err("cpts: unknown event type\n");
 			break;
 		}
 		if (type == match)
@@ -217,6 +215,7 @@ static struct ptp_clock_info cpts_info = {
 	.name		= "CTPS timer",
 	.max_adj	= 1000000,
 	.n_ext_ts	= 0,
+	.n_pins		= 0,
 	.pps		= 0,
 	.adjfreq	= cpts_ptp_adjfreq,
 	.adjtime	= cpts_ptp_adjtime,
@@ -247,8 +246,7 @@ static void cpts_clk_init(struct cpts *cpts)
 		cpts->refclk = NULL;
 		return;
 	}
-	clk_enable(cpts->refclk);
-	cpts->freq = cpts->refclk->recalc(cpts->refclk);
+	clk_prepare_enable(cpts->refclk);
 }
 
 static void cpts_clk_release(struct cpts *cpts)
@@ -301,7 +299,7 @@ static u64 cpts_find_ts(struct cpts *cpts, struct sk_buff *skb, int ev_type)
 	u64 ns = 0;
 	struct cpts_event *event;
 	struct list_head *this, *next;
-	unsigned int class = sk_run_filter(skb, ptp_filter);
+	unsigned int class = ptp_classify_raw(skb);
 	unsigned long flags;
 	u16 seqid;
 	u8 mtype;
@@ -372,10 +370,6 @@ int cpts_register(struct device *dev, struct cpts *cpts,
 	int err, i;
 	unsigned long flags;
 
-	if (ptp_filter_init(ptp_filter, ARRAY_SIZE(ptp_filter))) {
-		pr_err("cpts: bad ptp filter\n");
-		return -EINVAL;
-	}
 	cpts->info = cpts_info;
 	cpts->clock = ptp_clock_register(&cpts->info, dev);
 	if (IS_ERR(cpts->clock)) {

@@ -293,7 +293,7 @@ static int __ccdc_lsc_enable(struct isp_ccdc_device *ccdc, int enable)
 			isp_reg_clr(isp, OMAP3_ISP_IOMEM_CCDC,
 				    ISPCCDC_LSC_CONFIG, ISPCCDC_LSC_ENABLE);
 			ccdc->lsc.state = LSC_STATE_STOPPED;
-			dev_warn(to_device(ccdc), "LSC prefecth timeout\n");
+			dev_warn(to_device(ccdc), "LSC prefetch timeout\n");
 			return -ETIMEDOUT;
 		}
 		ccdc->lsc.state = LSC_STATE_RUNNING;
@@ -674,7 +674,7 @@ static void ccdc_config_imgattr(struct isp_ccdc_device *ccdc, u32 colptn)
 /*
  * ccdc_config - Set CCDC configuration from userspace
  * @ccdc: Pointer to ISP CCDC device.
- * @userspace_add: Structure containing CCDC configuration sent from userspace.
+ * @ccdc_struct: Structure containing CCDC configuration sent from userspace.
  *
  * Returns 0 if successful, -EINVAL if the pointer to the configuration
  * structure is null, or the copy_from_user function fails to copy user space
@@ -793,7 +793,7 @@ static void ccdc_apply_controls(struct isp_ccdc_device *ccdc)
 
 /*
  * omap3isp_ccdc_restore_context - Restore values of the CCDC module registers
- * @dev: Pointer to ISP device
+ * @isp: Pointer to ISP device
  */
 void omap3isp_ccdc_restore_context(struct isp_device *isp)
 {
@@ -1120,7 +1120,7 @@ static void ccdc_configure(struct isp_ccdc_device *ccdc)
 	u32 syn_mode;
 	u32 ccdc_pattern;
 
-	pad = media_entity_remote_source(&ccdc->pads[CCDC_PAD_SINK]);
+	pad = media_entity_remote_pad(&ccdc->pads[CCDC_PAD_SINK]);
 	sensor = media_entity_to_v4l2_subdev(pad->entity);
 	if (ccdc->input == CCDC_INPUT_PARALLEL)
 		pdata = &((struct isp_v4l2_subdevs_group *)sensor->host_priv)
@@ -1516,6 +1516,8 @@ static int ccdc_isr_buffer(struct isp_ccdc_device *ccdc)
 
 	if (ccdc_sbl_wait_idle(ccdc, 1000)) {
 		dev_info(isp->dev, "CCDC won't become idle!\n");
+		isp->crashed |= 1U << ccdc->subdev.entity.id;
+		omap3isp_pipeline_cancel_stream(pipe);
 		goto done;
 	}
 
@@ -2484,7 +2486,8 @@ static int ccdc_init_entities(struct isp_ccdc_device *ccdc)
 	v4l2_set_subdevdata(sd, ccdc);
 	sd->flags |= V4L2_SUBDEV_FL_HAS_EVENTS | V4L2_SUBDEV_FL_HAS_DEVNODE;
 
-	pads[CCDC_PAD_SINK].flags = MEDIA_PAD_FL_SINK;
+	pads[CCDC_PAD_SINK].flags = MEDIA_PAD_FL_SINK
+				    | MEDIA_PAD_FL_MUST_CONNECT;
 	pads[CCDC_PAD_SOURCE_VP].flags = MEDIA_PAD_FL_SOURCE;
 	pads[CCDC_PAD_SOURCE_OF].flags = MEDIA_PAD_FL_SOURCE;
 
@@ -2522,7 +2525,7 @@ error_video:
 
 /*
  * omap3isp_ccdc_init - CCDC module initialization.
- * @dev: Device pointer specific to the OMAP3 ISP.
+ * @isp: Device pointer specific to the OMAP3 ISP.
  *
  * TODO: Get the initialisation values from platform data.
  *
@@ -2561,7 +2564,7 @@ int omap3isp_ccdc_init(struct isp_device *isp)
 
 /*
  * omap3isp_ccdc_cleanup - CCDC module cleanup.
- * @dev: Device pointer specific to the OMAP3 ISP.
+ * @isp: Device pointer specific to the OMAP3 ISP.
  */
 void omap3isp_ccdc_cleanup(struct isp_device *isp)
 {

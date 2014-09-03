@@ -26,10 +26,17 @@
 static struct dentry *mwifiex_dfs_dir;
 
 static char *bss_modes[] = {
-	"Unknown",
-	"Ad-hoc",
-	"Managed",
-	"Auto"
+	"UNSPECIFIED",
+	"ADHOC",
+	"STATION",
+	"AP",
+	"AP_VLAN",
+	"WDS",
+	"MONITOR",
+	"MESH_POINT",
+	"P2P_CLIENT",
+	"P2P_GO",
+	"P2P_DEVICE",
 };
 
 /* size/addr for mwifiex_debug_info */
@@ -58,8 +65,6 @@ static struct mwifiex_debug_data items[] = {
 	 item_addr(packets_out[WMM_AC_BE]), 1},
 	{"wmm_ac_bk", item_size(packets_out[WMM_AC_BK]),
 	 item_addr(packets_out[WMM_AC_BK]), 1},
-	{"max_tx_buf_size", item_size(max_tx_buf_size),
-	 item_addr(max_tx_buf_size), 1},
 	{"tx_buf_size", item_size(tx_buf_size),
 	 item_addr(tx_buf_size), 1},
 	{"curr_tx_buf_size", item_size(curr_tx_buf_size),
@@ -80,8 +85,8 @@ static struct mwifiex_debug_data items[] = {
 	 item_addr(hs_activated), 1},
 	{"num_tx_timeout", item_size(num_tx_timeout),
 	 item_addr(num_tx_timeout), 1},
-	{"num_cmd_timeout", item_size(num_cmd_timeout),
-	 item_addr(num_cmd_timeout), 1},
+	{"is_cmd_timedout", item_size(is_cmd_timedout),
+	 item_addr(is_cmd_timedout), 1},
 	{"timeout_cmd_id", item_size(timeout_cmd_id),
 	 item_addr(timeout_cmd_id), 1},
 	{"timeout_cmd_act", item_size(timeout_cmd_act),
@@ -202,7 +207,12 @@ mwifiex_info_read(struct file *file, char __user *ubuf,
 	p += sprintf(p, "driver_version = %s", fmt);
 	p += sprintf(p, "\nverext = %s", priv->version_str);
 	p += sprintf(p, "\ninterface_name=\"%s\"\n", netdev->name);
-	p += sprintf(p, "bss_mode=\"%s\"\n", bss_modes[info.bss_mode]);
+
+	if (info.bss_mode >= ARRAY_SIZE(bss_modes))
+		p += sprintf(p, "bss_mode=\"%d\"\n", info.bss_mode);
+	else
+		p += sprintf(p, "bss_mode=\"%s\"\n", bss_modes[info.bss_mode]);
+
 	p += sprintf(p, "media_state=\"%s\"\n",
 		     (!priv->media_connected ? "Disconnected" : "Connected"));
 	p += sprintf(p, "mac_address=\"%pM\"\n", netdev->dev_addr);
@@ -483,7 +493,7 @@ mwifiex_regrdwr_write(struct file *file,
 {
 	unsigned long addr = get_zeroed_page(GFP_KERNEL);
 	char *buf = (char *) addr;
-	size_t buf_size = min(count, (size_t) (PAGE_SIZE - 1));
+	size_t buf_size = min_t(size_t, count, PAGE_SIZE - 1);
 	int ret;
 	u32 reg_type = 0, reg_offset = 0, reg_value = UINT_MAX;
 
@@ -584,7 +594,7 @@ mwifiex_rdeeprom_write(struct file *file,
 {
 	unsigned long addr = get_zeroed_page(GFP_KERNEL);
 	char *buf = (char *) addr;
-	size_t buf_size = min(count, (size_t) (PAGE_SIZE - 1));
+	size_t buf_size = min_t(size_t, count, PAGE_SIZE - 1);
 	int ret = 0;
 	int offset = -1, bytes = -1;
 

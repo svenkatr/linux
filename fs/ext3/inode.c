@@ -27,6 +27,7 @@
 #include <linux/writeback.h>
 #include <linux/mpage.h>
 #include <linux/namei.h>
+#include <linux/aio.h>
 #include "ext3.h"
 #include "xattr.h"
 #include "acl.h"
@@ -218,7 +219,8 @@ void ext3_evict_inode (struct inode *inode)
 	 */
 	if (inode->i_nlink && ext3_should_journal_data(inode) &&
 	    EXT3_SB(inode->i_sb)->s_journal &&
-	    (S_ISLNK(inode->i_mode) || S_ISREG(inode->i_mode))) {
+	    (S_ISLNK(inode->i_mode) || S_ISREG(inode->i_mode)) &&
+	    inode->i_ino != EXT3_JOURNAL_INO) {
 		tid_t commit_tid = atomic_read(&ei->i_datasync_tid);
 		journal_t *journal = EXT3_SB(inode->i_sb)->s_journal;
 
@@ -226,7 +228,7 @@ void ext3_evict_inode (struct inode *inode)
 		log_wait_commit(journal, commit_tid);
 		filemap_write_and_wait(&inode->i_data);
 	}
-	truncate_inode_pages(&inode->i_data, 0);
+	truncate_inode_pages_final(&inode->i_data);
 
 	ext3_discard_reservation(inode);
 	rsv = ei->i_block_alloc_info;
@@ -676,6 +678,10 @@ static int ext3_alloc_branch(handle_t *handle, struct inode *inode,
 		 * parent to disk.
 		 */
 		bh = sb_getblk(inode->i_sb, new_blocks[n-1]);
+		if (unlikely(!bh)) {
+			err = -ENOMEM;
+			goto failed;
+		}
 		branch[n].bh = bh;
 		lock_buffer(bh);
 		BUFFER_TRACE(bh, "call get_create_access");
@@ -717,7 +723,7 @@ failed:
 		BUFFER_TRACE(branch[i].bh, "call journal_forget");
 		ext3_journal_forget(handle, branch[i].bh);
 	}
-	for (i = 0; i <indirect_blks; i++)
+	for (i = 0; i < indirect_blks; i++)
 		ext3_free_blocks(handle, inode, new_blocks[i], 1);
 
 	ext3_free_blocks(handle, inode, new_blocks[i], num);
@@ -1078,8 +1084,8 @@ struct buffer_head *ext3_getblk(handle_t *handle, struct inode *inode,
 	if (!err && buffer_mapped(&dummy)) {
 		struct buffer_head *bh;
 		bh = sb_getblk(inode->i_sb, dummy.b_blocknr);
-		if (!bh) {
-			*errp = -EIO;
+		if (unlikely(!bh)) {
+			*errp = -ENOMEM;
 			goto err;
 		}
 		if (buffer_new(&dummy)) {
@@ -1553,56 +1559,17 @@ static int buffer_unmapped(handle_t *handle, struct buffer_head *bh)
 }
 
 /*
- * Note that we always start a transaction even if we're not journalling
- * data.  This is to preserve ordering: any hole instantiation within
- * __block_write_full_page -> ext3_get_block() should be journalled
- * along with the data so we don't crash and then get metadata which
+ * Note that whenever we need to map blocks we start a transaction even if
+ * we're not journalling data.  This is to preserve ordering: any hole
+ * instantiation within __block_write_full_page -> ext3_get_block() should be
+ * journalled along with the data so we don't crash and then get metadata which
  * refers to old data.
  *
  * In all journalling modes block_write_full_page() will start the I/O.
  *
- * Problem:
- *
- *	ext3_writepage() -> kmalloc() -> __alloc_pages() -> page_launder() ->
- *		ext3_writepage()
- *
- * Similar for:
- *
- *	ext3_file_write() -> generic_file_write() -> __alloc_pages() -> ...
- *
- * Same applies to ext3_get_block().  We will deadlock on various things like
- * lock_journal and i_truncate_mutex.
- *
- * Setting PF_MEMALLOC here doesn't work - too many internal memory
- * allocations fail.
- *
- * 16May01: If we're reentered then journal_current_handle() will be
- *	    non-zero. We simply *return*.
- *
- * 1 July 2001: @@@ FIXME:
- *   In journalled data mode, a data buffer may be metadata against the
- *   current transaction.  But the same file is part of a shared mapping
- *   and someone does a writepage() on it.
- *
- *   We will move the buffer onto the async_data list, but *after* it has
- *   been dirtied. So there's a small window where we have dirty data on
- *   BJ_Metadata.
- *
- *   Note that this only applies to the last partial page in the file.  The
- *   bit which block_write_full_page() uses prepare/commit for.  (That's
- *   broken code anyway: it's wrong for msync()).
- *
- *   It's a rare case: affects the final partial page, for journalled data
- *   where the file is subject to bith write() and writepage() in the same
- *   transction.  To fix it we'll need a custom block_write_full_page().
- *   We'll probably need that anyway for journalling writepage() output.
- *
  * We don't honour synchronous mounts for writepage().  That would be
  * disastrous.  Any write() or metadata operation will sync the fs for
  * us.
- *
- * AKPM2: if all the page's buffers are mapped to disk and !data=journal,
- * we don't need to open a transaction here.
  */
 static int ext3_ordered_writepage(struct page *page,
 				struct writeback_control *wbc)
@@ -1667,12 +1634,9 @@ static int ext3_ordered_writepage(struct page *page,
 	 * block_write_full_page() succeeded.  Otherwise they are unmapped,
 	 * and generally junk.
 	 */
-	if (ret == 0) {
-		err = walk_page_buffers(handle, page_bufs, 0, PAGE_CACHE_SIZE,
+	if (ret == 0)
+		ret = walk_page_buffers(handle, page_bufs, 0, PAGE_CACHE_SIZE,
 					NULL, journal_dirty_data_fn);
-		if (!ret)
-			ret = err;
-	}
 	walk_page_buffers(handle, page_bufs, 0,
 			PAGE_CACHE_SIZE, NULL, bput_one);
 	err = ext3_journal_stop(handle);
@@ -1819,19 +1783,20 @@ ext3_readpages(struct file *file, struct address_space *mapping,
 	return mpage_readpages(mapping, pages, nr_pages, ext3_get_block);
 }
 
-static void ext3_invalidatepage(struct page *page, unsigned long offset)
+static void ext3_invalidatepage(struct page *page, unsigned int offset,
+				unsigned int length)
 {
 	journal_t *journal = EXT3_JOURNAL(page->mapping->host);
 
-	trace_ext3_invalidatepage(page, offset);
+	trace_ext3_invalidatepage(page, offset, length);
 
 	/*
 	 * If it's a full truncate we just forget about the pending dirtying
 	 */
-	if (offset == 0)
+	if (offset == 0 && length == PAGE_CACHE_SIZE)
 		ClearPageChecked(page);
 
-	journal_invalidatepage(journal, page, offset);
+	journal_invalidatepage(journal, page, offset, length);
 }
 
 static int ext3_releasepage(struct page *page, gfp_t wait)
@@ -1918,6 +1883,8 @@ retry:
 			 * and pretend the write failed... */
 			ext3_truncate_failed_direct_write(inode);
 			ret = PTR_ERR(handle);
+			if (inode->i_nlink)
+				ext3_orphan_del(NULL, inode);
 			goto out;
 		}
 		if (inode->i_nlink)
@@ -1978,6 +1945,7 @@ static const struct address_space_operations ext3_ordered_aops = {
 	.direct_IO		= ext3_direct_IO,
 	.migratepage		= buffer_migrate_page,
 	.is_partially_uptodate  = block_is_partially_uptodate,
+	.is_dirty_writeback	= buffer_check_dirty_writeback,
 	.error_remove_page	= generic_error_remove_page,
 };
 
@@ -2729,12 +2697,12 @@ static int __ext3_get_inode_loc(struct inode *inode,
 		return -EIO;
 
 	bh = sb_getblk(inode->i_sb, block);
-	if (!bh) {
+	if (unlikely(!bh)) {
 		ext3_error (inode->i_sb, "ext3_get_inode_loc",
 				"unable to read inode block - "
 				"inode=%lu, block="E3FSBLK,
 				 inode->i_ino, block);
-		return -EIO;
+		return -ENOMEM;
 	}
 	if (!buffer_uptodate(bh)) {
 		lock_buffer(bh);
@@ -2783,7 +2751,7 @@ static int __ext3_get_inode_loc(struct inode *inode,
 
 			bitmap_bh = sb_getblk(inode->i_sb,
 					le32_to_cpu(desc->bg_inode_bitmap));
-			if (!bitmap_bh)
+			if (unlikely(!bitmap_bh))
 				goto make_io;
 
 			/*
@@ -3204,21 +3172,20 @@ out_brelse:
  *
  * We are called from a few places:
  *
- * - Within generic_file_write() for O_SYNC files.
+ * - Within generic_file_aio_write() -> generic_write_sync() for O_SYNC files.
  *   Here, there will be no transaction running. We wait for any running
  *   transaction to commit.
  *
- * - Within sys_sync(), kupdate and such.
- *   We wait on commit, if tol to.
+ * - Within flush work (for sys_sync(), kupdate and such).
+ *   We wait on commit, if told to.
  *
- * - Within prune_icache() (PF_MEMALLOC == true)
- *   Here we simply return.  We can't afford to block kswapd on the
- *   journal commit.
+ * - Within iput_final() -> write_inode_now()
+ *   We wait on commit, if told to.
  *
  * In all cases it is actually safe for us to return without doing anything,
  * because the inode has been copied into a raw inode buffer in
- * ext3_mark_inode_dirty().  This is a correctness thing for O_SYNC and for
- * knfsd.
+ * ext3_mark_inode_dirty().  This is a correctness thing for WB_SYNC_ALL
+ * writeback.
  *
  * Note that we are absolutely dependent upon all inode dirtiers doing the
  * right thing: they *must* call mark_inode_dirty() after dirtying info in
@@ -3230,13 +3197,13 @@ out_brelse:
  *	stuff();
  *	inode->i_size = expr;
  *
- * is in error because a kswapd-driven write_inode() could occur while
- * `stuff()' is running, and the new i_size will be lost.  Plus the inode
- * will no longer be on the superblock's dirty inode list.
+ * is in error because write_inode() could occur while `stuff()' is running,
+ * and the new i_size will be lost.  Plus the inode will no longer be on the
+ * superblock's dirty inode list.
  */
 int ext3_write_inode(struct inode *inode, struct writeback_control *wbc)
 {
-	if (current->flags & PF_MEMALLOC)
+	if (WARN_ON_ONCE(current->flags & PF_MEMALLOC))
 		return 0;
 
 	if (ext3_journal_current_handle()) {
@@ -3245,7 +3212,12 @@ int ext3_write_inode(struct inode *inode, struct writeback_control *wbc)
 		return -EIO;
 	}
 
-	if (wbc->sync_mode != WB_SYNC_ALL)
+	/*
+	 * No need to force transaction in WB_SYNC_NONE mode. Also
+	 * ext3_sync_fs() will force the commit after everything is
+	 * written.
+	 */
+	if (wbc->sync_mode != WB_SYNC_ALL || wbc->for_sync)
 		return 0;
 
 	return ext3_force_commit(inode->i_sb);
@@ -3357,7 +3329,7 @@ int ext3_setattr(struct dentry *dentry, struct iattr *attr)
 	mark_inode_dirty(inode);
 
 	if (ia_valid & ATTR_MODE)
-		rc = ext3_acl_chmod(inode);
+		rc = posix_acl_chmod(inode, inode->i_mode);
 
 err_out:
 	ext3_std_error(inode->i_sb, error);

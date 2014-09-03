@@ -449,11 +449,26 @@ static int tag_chunk(struct inode *inode, struct audit_tree *tree)
 	return 0;
 }
 
+static void audit_log_remove_rule(struct audit_krule *rule)
+{
+	struct audit_buffer *ab;
+
+	ab = audit_log_start(NULL, GFP_KERNEL, AUDIT_CONFIG_CHANGE);
+	if (unlikely(!ab))
+		return;
+	audit_log_format(ab, "op=");
+	audit_log_string(ab, "remove rule");
+	audit_log_format(ab, " dir=");
+	audit_log_untrustedstring(ab, rule->tree->pathname);
+	audit_log_key(ab, rule->filterkey);
+	audit_log_format(ab, " list=%d res=1", rule->listnr);
+	audit_log_end(ab);
+}
+
 static void kill_rules(struct audit_tree *tree)
 {
 	struct audit_krule *rule, *next;
 	struct audit_entry *entry;
-	struct audit_buffer *ab;
 
 	list_for_each_entry_safe(rule, next, &tree->rules, rlist) {
 		entry = container_of(rule, struct audit_entry, rule);
@@ -461,14 +476,7 @@ static void kill_rules(struct audit_tree *tree)
 		list_del_init(&rule->rlist);
 		if (rule->tree) {
 			/* not a half-baked one */
-			ab = audit_log_start(NULL, GFP_KERNEL, AUDIT_CONFIG_CHANGE);
-			audit_log_format(ab, "op=");
-			audit_log_string(ab, "remove rule");
-			audit_log_format(ab, " dir=");
-			audit_log_untrustedstring(ab, rule->tree->pathname);
-			audit_log_key(ab, rule->filterkey);
-			audit_log_format(ab, " list=%d res=1", rule->listnr);
-			audit_log_end(ab);
+			audit_log_remove_rule(rule);
 			rule->tree = NULL;
 			list_del_rcu(&entry->list);
 			list_del(&entry->rule.list);
@@ -609,9 +617,9 @@ void audit_trim_trees(void)
 		}
 		spin_unlock(&hash_lock);
 		trim_marked(tree);
-		put_tree(tree);
 		drop_collected_mounts(root_mnt);
 skip_it:
+		put_tree(tree);
 		mutex_lock(&audit_filter_mutex);
 	}
 	list_del(&cursor);
@@ -650,6 +658,7 @@ int audit_add_tree_rule(struct audit_krule *rule)
 	struct vfsmount *mnt;
 	int err;
 
+	rule->tree = NULL;
 	list_for_each_entry(tree, &tree_list, list) {
 		if (!strcmp(seed->pathname, tree->pathname)) {
 			put_tree(seed);
@@ -903,12 +912,13 @@ static void evict_chunk(struct audit_chunk *chunk)
 }
 
 static int audit_tree_handle_event(struct fsnotify_group *group,
+				   struct inode *to_tell,
 				   struct fsnotify_mark *inode_mark,
-				   struct fsnotify_mark *vfsmonut_mark,
-				   struct fsnotify_event *event)
+				   struct fsnotify_mark *vfsmount_mark,
+				   u32 mask, void *data, int data_type,
+				   const unsigned char *file_name, u32 cookie)
 {
-	BUG();
-	return -EOPNOTSUPP;
+	return 0;
 }
 
 static void audit_tree_freeing_mark(struct fsnotify_mark *entry, struct fsnotify_group *group)
@@ -924,19 +934,8 @@ static void audit_tree_freeing_mark(struct fsnotify_mark *entry, struct fsnotify
 	BUG_ON(atomic_read(&entry->refcnt) < 1);
 }
 
-static bool audit_tree_send_event(struct fsnotify_group *group, struct inode *inode,
-				  struct fsnotify_mark *inode_mark,
-				  struct fsnotify_mark *vfsmount_mark,
-				  __u32 mask, void *data, int data_type)
-{
-	return false;
-}
-
 static const struct fsnotify_ops audit_tree_ops = {
 	.handle_event = audit_tree_handle_event,
-	.should_send_event = audit_tree_send_event,
-	.free_group_priv = NULL,
-	.free_event_priv = NULL,
 	.freeing_mark = audit_tree_freeing_mark,
 };
 

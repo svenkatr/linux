@@ -13,15 +13,12 @@
  * to devices.
  */
 
-static inline void mb(void)
-{
 #ifdef CONFIG_HAVE_MARCH_Z196_FEATURES
-	/* Fast-BCR without checkpoint synchronization */
-	asm volatile("bcr 14,0" : : : "memory");
+/* Fast-BCR without checkpoint synchronization */
+#define mb() do {  asm volatile("bcr 14,0" : : : "memory"); } while (0)
 #else
-	asm volatile("bcr 15,0" : : : "memory");
+#define mb() do {  asm volatile("bcr 15,0" : : : "memory"); } while (0)
 #endif
-}
 
 #define rmb()				mb()
 #define wmb()				mb()
@@ -34,5 +31,20 @@ static inline void mb(void)
 #define smp_mb__after_clear_bit()	smp_mb()
 
 #define set_mb(var, value)		do { var = value; mb(); } while (0)
+
+#define smp_store_release(p, v)						\
+do {									\
+	compiletime_assert_atomic_type(*p);				\
+	barrier();							\
+	ACCESS_ONCE(*p) = (v);						\
+} while (0)
+
+#define smp_load_acquire(p)						\
+({									\
+	typeof(*p) ___p1 = ACCESS_ONCE(*p);				\
+	compiletime_assert_atomic_type(*p);				\
+	barrier();							\
+	___p1;								\
+})
 
 #endif /* __ASM_BARRIER_H */

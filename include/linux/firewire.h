@@ -200,6 +200,7 @@ struct fw_device {
 	unsigned irmc:1;
 	unsigned bc_implemented:2;
 
+	work_func_t workfn;
 	struct delayed_work work;
 	struct fw_attribute_group attribute_group;
 };
@@ -251,8 +252,10 @@ struct ieee1394_device_id;
 
 struct fw_driver {
 	struct device_driver driver;
+	int (*probe)(struct fw_unit *unit, const struct ieee1394_device_id *id);
 	/* Called when the parent device sits through a bus reset. */
 	void (*update)(struct fw_unit *unit);
+	void (*remove)(struct fw_unit *unit);
 	const struct ieee1394_device_id *id_table;
 };
 
@@ -434,6 +437,7 @@ struct fw_iso_context {
 	int type;
 	int channel;
 	int speed;
+	bool drop_overflow_headers;
 	size_t header_size;
 	union {
 		fw_iso_callback_t sc;

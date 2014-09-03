@@ -441,7 +441,7 @@ static int test_unit_ready(struct scsi_cmnd *srb, struct rts51x_chip *chip)
 	return TRANSPORT_GOOD;
 }
 
-unsigned char formatter_inquiry_str[20] = {
+static unsigned char formatter_inquiry_str[20] = {
 	'M', 'E', 'M', 'O', 'R', 'Y', 'S', 'T', 'I', 'C', 'K',
 	'-', 'M', 'G',		/* Byte[47:49] */
 	0x0B,			/* Byte[50]: MG, MS, MSPro, MSXC */
@@ -973,7 +973,7 @@ static int get_dev_status(struct scsi_cmnd *srb, struct rts51x_chip *chip)
 
 	rts51x_pp_status(chip, lun, status, 32);
 
-	buf_len = min(scsi_bufflen(srb), (unsigned int)sizeof(status));
+	buf_len = min_t(unsigned int, scsi_bufflen(srb), sizeof(status));
 	rts51x_set_xfer_buf(status, buf_len, srb);
 	scsi_set_resid(srb, scsi_bufflen(srb) - buf_len);
 
@@ -988,7 +988,7 @@ static int read_status(struct scsi_cmnd *srb, struct rts51x_chip *chip)
 
 	rts51x_read_status(chip, lun, rts51x_status, 16);
 
-	buf_len = min(scsi_bufflen(srb), (unsigned int)sizeof(rts51x_status));
+	buf_len = min_t(unsigned int, scsi_bufflen(srb), sizeof(rts51x_status));
 	rts51x_set_xfer_buf(rts51x_status, buf_len, srb);
 	scsi_set_resid(srb, scsi_bufflen(srb) - buf_len);
 
@@ -1968,18 +1968,16 @@ int slave_configure(struct scsi_device *sdev)
 
 /* we use this macro to help us write into the buffer */
 #undef SPRINTF
-#define SPRINTF(args...) \
-	do { if (pos < buffer+length) pos += sprintf(pos, ## args); } while (0)
+#define SPRINTF(args...) seq_printf(m, ##args)
 
-int proc_info(struct Scsi_Host *host, char *buffer,
-	      char **start, off_t offset, int length, int inout)
+static int write_info(struct Scsi_Host *host, char *buffer, int length)
 {
-	char *pos = buffer;
-
 	/* if someone is sending us data, just throw it away */
-	if (inout)
-		return length;
+	return length;
+}
 
+static int show_info(struct seq_file *m, struct Scsi_Host *host)
+{
 	/* print the controller name */
 	SPRINTF("   Host scsi%d: %s\n", host->host_no, RTS51X_NAME);
 
@@ -1987,24 +1985,12 @@ int proc_info(struct Scsi_Host *host, char *buffer,
 	SPRINTF("       Vendor: Realtek Corp.\n");
 	SPRINTF("      Product: RTS51xx USB Card Reader\n");
 	SPRINTF("      Version: %s\n", DRIVER_VERSION);
-	SPRINTF("        Build: %s\n", __TIME__);
-
-	/*
-	 * Calculate start of next buffer, and return value.
-	 */
-	*start = buffer + offset;
-
-	if ((pos - buffer) < offset)
-		return 0;
-	else if ((pos - buffer - offset) < length)
-		return pos - buffer - offset;
-	else
-		return length;
+	return 0;
 }
 
 /* queue a command */
 /* This is always called with scsi_lock(host) held */
-int queuecommand_lck(struct scsi_cmnd *srb, void (*done) (struct scsi_cmnd *))
+static int queuecommand_lck(struct scsi_cmnd *srb, void (*done) (struct scsi_cmnd *))
 {
 	struct rts51x_chip *chip = host_to_rts51x(srb->device->host);
 
@@ -2072,7 +2058,7 @@ int command_abort(struct scsi_cmnd *srb)
 
 /* This invokes the transport reset mechanism to reset the state of the
  * device */
-int device_reset(struct scsi_cmnd *srb)
+static int device_reset(struct scsi_cmnd *srb)
 {
 	int result = 0;
 
@@ -2100,7 +2086,8 @@ struct scsi_host_template rts51x_host_template = {
 	/* basic userland interface stuff */
 	.name = RTS51X_NAME,
 	.proc_name = RTS51X_NAME,
-	.proc_info = proc_info,
+	.show_info = show_info,
+	.write_info = write_info,
 	.info = rts5139_info,
 
 	/* command interface -- queued only */

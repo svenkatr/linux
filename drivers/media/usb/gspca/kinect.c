@@ -155,10 +155,11 @@ static int send_cmd(struct gspca_dev *gspca_dev, uint16_t cmd, void *cmdbuf,
 	do {
 		actual_len = kinect_read(udev, ibuf, 0x200);
 	} while (actual_len == 0);
-	PDEBUG(D_USBO, "Control reply: %d", res);
+	PDEBUG(D_USBO, "Control reply: %d", actual_len);
 	if (actual_len < sizeof(*rhdr)) {
-		pr_err("send_cmd: Input control transfer failed (%d)\n", res);
-		return res;
+		pr_err("send_cmd: Input control transfer failed (%d)\n",
+		       actual_len);
+		return actual_len < 0 ? actual_len : -EREMOTEIO;
 	}
 	actual_len -= sizeof(*rhdr);
 
@@ -381,6 +382,7 @@ static const struct sd_desc sd_desc = {
 /* -- module initialisation -- */
 static const struct usb_device_id device_table[] = {
 	{USB_DEVICE(0x045e, 0x02ae)},
+	{USB_DEVICE(0x045e, 0x02bf)},
 	{}
 };
 
