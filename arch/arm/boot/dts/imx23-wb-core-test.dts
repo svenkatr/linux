@@ -1,0 +1,182 @@
+/*
+ * Copyright 2012 Freescale Semiconductor, Inc.
+ *
+ * Author: Fabio Estevam <fabio.estevam@freescale.com>
+ *
+ * The code contained herein is licensed under the GNU General Public
+ * License. You may obtain a copy of the GNU General Public License
+ * Version 2 or later at the following locations:
+ *
+ * http://www.opensource.org/licenses/gpl-license.html
+ * http://www.gnu.org/copyleft/gpl.html
+ */
+
+/dts-v1/;
+#include "imx23.dtsi"
+
+/ {
+	model = "Wiren Board core test (i.MX23)";
+	compatible = "contactless,imx23-wirenboard-coretest","contactless,imx23-wirenboard28", "olimex,imx23-olinuxino", "fsl,imx23";
+
+	memory {
+		reg = <0x40000000 0x04000000>;
+	};
+
+	apb@80000000 {
+		apbh@80000000 {
+			ssp0: ssp@80010000 {
+				compatible = "fsl,imx23-mmc";
+				pinctrl-names = "default";
+				pinctrl-0 = <&mmc0_4bit_pins_a &mmc0_pins_fixup>;
+				bus-width = <4>;
+				broken-cd;
+				status = "okay";
+			};
+
+			pinctrl@80018000 {
+				pinctrl-names = "default";
+				pinctrl-0 = <&hog_pins_a &spi2_pins_nocs &i2c0_pins_a_gpio &auart0_2pins_gpio>;
+
+				hog_pins_a: hog@0 {
+					reg = <0>;
+					fsl,pinmux-ids = <
+						0x2013 /* MX23_PAD_SSP1_DETECT__GPIO_2_1 */
+						0x0113 /* MX23_PAD_GPMI_ALE__GPIO_0_17 */
+					>;
+					fsl,drive-strength = <0>;
+					fsl,voltage = <1>;
+					fsl,pull-up = <0>;
+				};
+
+
+				auart0_2pins_gpio: auart0-2pins-gpio@0 {
+					reg = <0>;
+					fsl,pinmux-ids = <
+						MX23_PAD_I2C_SCL__GPIO_0_30
+						MX23_PAD_I2C_SDA__GPIO_0_31
+					>;
+					fsl,drive-strength = <MXS_DRIVE_4mA>;
+					fsl,voltage = <MXS_VOLTAGE_HIGH>;
+					fsl,pull-up = <MXS_PULL_DISABLE>;
+				};
+
+
+				led_pin_gpio2_1: led_gpio2_1@0 {
+					reg = <0>;
+					fsl,pinmux-ids = <
+						0x2013 /* MX23_PAD_SSP1_DETECT__GPIO_2_1 */
+					>;
+					fsl,drive-strength = <0>;
+					fsl,voltage = <1>;
+					fsl,pull-up = <0>;
+				};
+
+
+				i2c_gpio: i2c_gpio {
+					reg = <0>;
+					fsl,pinmux-ids = <
+						0x0173 // MX23_PAD_GPMI_WPN__GPIO_0_23
+						0x0193 // MX23_PAD_GPMI_RDN__GPIO_0_25
+					>;
+					fsl,pull-up = <1>;
+				};
+
+		        i2c0_pins_a_gpio: i2c0_pins_a_gpio {
+		           reg = <0>;
+		           fsl,pinmux-ids = <
+		           0x1173 /* MX23_PAD_LCD_ENABLE__GPIO_1_23 */
+		           0x1183 /* MX23_PAD_LCD_HSYNC__GPIO_1_24 */
+		           >;
+		           fsl,drive-strength = <1>;
+		           fsl,voltage = <1>;
+		           fsl,pull-up = <1>;
+		        };
+
+
+				spi2_pins_nocs: spi2@0 {
+					reg = <0>;
+					fsl,pinmux-ids = <
+					0x0183 /*MX23_PAD_GPMI_WRN__GPIO_0_24			 */
+					0x0143 /* MX23_PAD_GPMI_RDY1__GPIO_0_20	*/
+					0x0003 /* MX23_PAD_GPMI_D00__GPIO_0_0			*/
+					>;
+					fsl,drive-strength = <1>;
+					fsl,voltage = <1>;
+					fsl,pull-up = <1>;
+				};
+
+
+			};
+
+		};
+
+		apbx@80040000 {
+			lradc@80050000 {
+				status = "okay";
+			};
+
+
+			duart: serial@80070000 {
+				pinctrl-names = "default";
+				pinctrl-0 = <&duart_pins_a>;
+				status = "okay";
+			};
+
+			usbphy0: usbphy@8007c000 {
+				status = "okay";
+			};
+
+			codec: mxs-builtin-codec {
+				compatible = "fsl,mxs-builtin-codec";
+				reg = <0x80048000 0x2000>, <0x8004c000 0x2000>,
+					<0x8005c000 0x2000>;
+				reg-names = "audioout", "audioin", "rtc";
+				clocks = <&clks 31>;
+				clock-names = "filt";
+			};
+
+			platform_dai: mxs-builtin-cpu-dai {
+				compatible = "fsl,mxs-builtin-cpu-dai";
+				reg = <0x80048000 0x2000>, <0x8004c000 0x2000>,
+				<0x8005c000 0x2000>;
+				reg-names = "audioout", "audioin", "rtc";
+				interrupts = <8 6 4>;
+				dmas = <&dma_apbx 0>, <&dma_apbx 1>;
+				dma-names = "rx", "tx";
+			};
+
+
+
+		};
+	};
+
+	ahb@80080000 {
+		usb0: usb@80080000 {
+		    /*vbus-supply = <&reg_33v_bus>;*/
+			status = "okay";
+
+
+
+		};
+
+
+
+	};
+
+
+	leds {
+		compatible = "gpio-leds";
+		pinctrl-names = "default";
+
+		som {
+			label = "som";
+			gpios = <&gpio2 1 0>;
+			linux,default-trigger = "timer";
+		};
+
+	};
+
+
+
+
+};
