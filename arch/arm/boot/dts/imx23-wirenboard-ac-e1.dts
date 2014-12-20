@@ -1,0 +1,309 @@
+/*
+ * Copyright 2012 Freescale Semiconductor, Inc.
+ *
+ * Author: Fabio Estevam <fabio.estevam@freescale.com>
+ *
+ * The code contained herein is licensed under the GNU General Public
+ * License. You may obtain a copy of the GNU General Public License
+ * Version 2 or later at the following locations:
+ *
+ * http://www.opensource.org/licenses/gpl-license.html
+ * http://www.gnu.org/copyleft/gpl.html
+ */
+
+/dts-v1/;
+#include "imx23.dtsi"
+
+/ {
+	model = "Wiren Board AC rev. E1.0 (i.MX23)";
+	compatible = "contactless,imx23-wirenboard-ac-e1", "contactless,imx23-wirenboard28", "olimex,imx23-olinuxino", "fsl,imx23";
+
+	memory {
+		reg = <0x40000000 0x04000000>;
+	};
+
+	apb@80000000 {
+		apbh@80000000 {
+			ssp0: ssp@80010000 {
+				compatible = "fsl,imx23-mmc";
+				pinctrl-names = "default";
+				pinctrl-0 = <&mmc0_4bit_pins_a &mmc0_pins_fixup>;
+				bus-width = <4>;
+				broken-cd;
+				status = "okay";
+			};
+
+			pinctrl@80018000 {
+				pinctrl-names = "default";
+				pinctrl-0 = <&hog_pins_a &pin_gpio_pu_0_2 &pin_gpio_pu_0_3 &pin_gpio_pu_0_4>;
+
+				hog_pins_a: hog@0 {
+					reg = <0>;
+					fsl,pinmux-ids = <
+						0x2013 /* MX23_PAD_SSP1_DETECT__GPIO_2_1 */
+						0x0113 /* MX23_PAD_GPMI_ALE__GPIO_0_17 */
+					>;
+					fsl,drive-strength = <0>;
+					fsl,voltage = <1>;
+					fsl,pull-up = <0>;
+				};
+
+
+				pin_gpio_pu_0_2: pin_gpio_pu_0_2@0 {
+					reg = <0>;
+					fsl,pinmux-ids = <
+						0x0023 /* MX23_PAD_GPMI_D02__GPIO_0_2 */
+
+					>;
+					fsl,drive-strength = <0>;
+					fsl,voltage = <1>;
+					/* enable 47K pull-up for TB9 gpio */
+					fsl,pull-up = <1>;
+				};
+
+				pin_gpio_pu_0_3: pin_gpio_pu_0_3@0 {
+					reg = <0>;
+					fsl,pinmux-ids = <
+						0x0033 /* MX23_PAD_GPMI_D03__GPIO_0_3 */
+
+					>;
+					fsl,drive-strength = <0>;
+					fsl,voltage = <1>;
+
+					/* enable 47K pull-up for TB10 gpios */
+					fsl,pull-up = <1>;
+				};
+
+				pin_gpio_pu_0_4: pin_gpio_pu_0_4@0 {
+					reg = <0>;
+					fsl,pinmux-ids = <
+						0x0043 /* MX23_PAD_GPMI_D04__GPIO_0_4 */
+
+					>;
+					fsl,drive-strength = <0>;
+					fsl,voltage = <1>;
+					/* enable 47K pull-up for TB11 gpio */
+					fsl,pull-up = <1>;
+				};
+
+
+				led_pin_gpio2_1: led_gpio2_1@0 {
+					reg = <0>;
+					fsl,pinmux-ids = <
+						0x2013 /* MX23_PAD_SSP1_DETECT__GPIO_2_1 */
+					>;
+					fsl,drive-strength = <0>;
+					fsl,voltage = <1>;
+					fsl,pull-up = <0>;
+				};
+
+
+				i2c_gpio: i2c_gpio {
+					reg = <0>;
+					fsl,pinmux-ids = <
+						0x0173 // MX23_PAD_GPMI_WPN__GPIO_0_23
+						0x0193 // MX23_PAD_GPMI_RDN__GPIO_0_25
+					>;
+					fsl,pull-up = <1>;
+				};
+
+		        i2c0_pins_a_gpio: i2c0_pins_a_gpio {
+		           reg = <0>;
+		           fsl,pinmux-ids = <
+		           0x1173 /* MX23_PAD_LCD_ENABLE__GPIO_1_23 */
+		           0x1183 /* MX23_PAD_LCD_HSYNC__GPIO_1_24 */
+		           >;
+		           fsl,drive-strength = <1>;
+		           fsl,voltage = <1>;
+		           fsl,pull-up = <1>;
+		        };
+
+
+		        i2c0_pins_a: i2c0@0 {
+		           reg = <0>;
+		           fsl,pinmux-ids = <
+		           0x1171 /* MX23_PAD_LCD_ENABLE__I2C_SCL */
+		           0x1181 /* MX23_PAD_LCD_HSYNC__I2C_SDA */
+		           >;
+		           fsl,drive-strength = <1>;
+		           fsl,voltage = <1>;
+		           fsl,pull-up = <1>;
+		        };
+
+				spi2_pins_nocs: spi2@0 {
+					reg = <0>;
+					fsl,pinmux-ids = <
+						0x0182 /* MX23_PAD_GPMI_WRN__SSP2_SCK */
+						0x0142 /* MX23_PAD_GPMI_RDY1__SSP2_CMD */
+						0x0002 /* MX23_PAD_GPMI_D00__SSP2_DATA0 */
+					>;
+					fsl,drive-strength = <1>;
+					fsl,voltage = <1>;
+					fsl,pull-up = <1>;
+				};
+
+
+
+			};
+
+			ssp1: ssp@80034000 {
+				#address-cells = <1>;
+				#size-cells = <0>;
+				compatible = "fsl,imx23-spi";
+				pinctrl-names = "default";
+				pinctrl-0 = <&spi2_pins_nocs>;
+				status = "okay";
+				cs-gpios = <&gpio0 3 0 /* cs0 fixme: use hardware cs directly*/
+							&gpio0 2 0 /* second rfid*/
+                            >;
+
+
+
+				spidev0: spidev@0 {
+					compatible = "spidev";
+					spi-max-frequency = <1000000>;
+					reg = <0>;
+				};
+
+
+				spidev1: spidev@1 {
+					compatible = "spidev";
+					spi-max-frequency = <1000000>;
+					reg = <1>;
+				};
+
+				spidev2: spidev@2 {
+					compatible = "spidev";
+					spi-max-frequency = <1000000>;
+					reg = <2>;
+				};
+
+
+				spidev@3 {
+					compatible = "spidev";
+					spi-max-frequency = <1000000>;
+					reg = <3>;
+				};
+				spidev@4 {
+					compatible = "spidev";
+					spi-max-frequency = <1000000>;
+					reg = <4>;
+				};
+
+
+			};
+		};
+
+		apbx@80040000 {
+			lradc@80050000 {
+				status = "okay";
+			};
+
+
+			i2c0: i2c@80058000 {
+				pinctrl-names = "default";
+				pinctrl-0 = <&i2c0_pins_a>;
+				status = "okay";
+
+				eeprom@50 {
+						compatible = "at,24c02";
+						reg = <0x50>;
+				};
+
+			};
+
+
+			duart: serial@80070000 {
+				pinctrl-names = "default";
+				pinctrl-0 = <&duart_pins_a>;
+				status = "okay";
+			};
+
+			auart0: serial@8006c000 {
+				pinctrl-names = "default";
+				pinctrl-0 = <&auart0_2pins_a>;
+				status = "okay";
+			};
+
+			usbphy0: usbphy@8007c000 {
+				status = "okay";
+			};
+
+			platform_dai: mxs-builtin-cpu-dai {
+				compatible = "fsl,mxs-builtin-cpu-dai";
+				reg = <0x80048000 0x2000>, <0x8004c000 0x2000>,
+				<0x8005c000 0x2000>;
+				reg-names = "audioout", "audioin", "rtc";
+				interrupts = <8 6 4>;
+				dmas = <&dma_apbx 0>, <&dma_apbx 1>;
+				dma-names = "rx", "tx";
+			};
+
+
+			pwm: pwm@80064000 {
+		            pinctrl-names = "default";
+		            pinctrl-0 = <&pwm2_pins_a>;
+		            status = "okay";
+		    };
+
+
+
+
+
+
+		};
+	};
+
+	ahb@80080000 {
+		usb0: usb@80080000 {
+		    /*vbus-supply = <&reg_33v_bus>;*/
+			status = "okay";
+
+
+
+		};
+
+
+
+	};
+
+
+	leds {
+		compatible = "gpio-leds";
+		pinctrl-names = "default";
+		pinctrl-0 = <&led_pin_gpio2_1>;
+
+		som {
+			label = "som";
+			gpios = <&gpio2 1 0>;
+			linux,default-trigger = "timer";
+		};
+
+		user-green {
+			label = "green";
+			gpios = <&gpio2 28 0>;
+            default-state = "off";
+		};
+
+		user-red {
+			label = "red";
+			gpios = <&gpio2 27 0>;
+            default-state = "on";
+		};
+
+
+	};
+
+
+
+	ne555: watchdog {
+		/* NE555 timer  */
+		compatible = "linux,wdt-gpio";
+		gpios = <&gpio0 6 0>;
+		hw_algo = "toggle";
+		hw_margin_ms = <1000>;
+		always-enabled;
+		timeout-sec = <30>;
+	};
+
+};
