@@ -451,6 +451,7 @@ dtb-$(CONFIG_ARCH_MXS) += \
 	imx23-wirenboard28.dtb \
 	imx23-wirenboard28_cin.dtb \
 	imx23-wirenboard32.dtb \
+	imx23-wirenboard41.dtb \
 	imx23-wirenboard-ac1.dtb \
 	imx23-wirenboard-ac-e1.dtb \
 	imx23-wirenboard-kmon1.dtb \
