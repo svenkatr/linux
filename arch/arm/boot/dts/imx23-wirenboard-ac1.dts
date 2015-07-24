@@ -262,13 +262,8 @@
 		usb0: usb@80080000 {
 		    /*vbus-supply = <&reg_33v_bus>;*/
 			status = "okay";
-
-
-
+			dr_mode = "host";
 		};
-
-
-
 	};
 
 
