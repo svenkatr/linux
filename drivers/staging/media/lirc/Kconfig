@@ -63,4 +63,11 @@ config LIRC_ZILOG
 	help
 	  Driver for the Zilog/Hauppauge IR Transmitter, found on
 	  PVR-150/500, HVR-1200/1250/1700/1800, HD-PVR and other cards
+
+config LIRC_PWM
+	tristate "Generic PWM & GPIO Transceiver"
+	depends on LIRC && PWM && OF
+	help
+	  Driver for IR Transceiver with bare PWM and/or GPIO
+
 endif
