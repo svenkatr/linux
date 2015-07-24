@@ -6,7 +6,6 @@
  *
  * Author: Alexey Ignatov <lexszero@gmail.com>
  */
-#define DEBUG
 #include <linux/module.h>
 #include <linux/sched.h>
 #include <linux/slab.h>
@@ -23,6 +22,7 @@
 
 #define DEFAULT_DUTY_CYCLE	50
 #define DEFAULT_FREQ		38000
+#define IDLE_PERIOD			1000000
 
 #define RBUF_LEN	4096
 
@@ -43,6 +43,7 @@ struct lirc_pwm_priv {
 		/* Calculated values of PWM period and duty times in nanoseconds */
 		unsigned int pwm_period;
 		unsigned int pwm_duty;
+		bool pwm_idle_active;
 
 		int (*toggle)(struct lirc_pwm_priv *, bool);
 		struct mutex lock;
@@ -309,8 +310,12 @@ static ssize_t lirc_pwm_write(struct file *filep, const char *buf,
 		safe_udelay(wbuf[i]);
 	}
 	send->toggle(priv, false);
-	if (send_using_pwm(priv))
-		pwm_disable(send->pwm);
+	if (send_using_pwm(priv)) {
+		if (send->pwm_idle_active)
+			pwm_config(send->pwm, IDLE_PERIOD-1, IDLE_PERIOD);
+		else
+			pwm_disable(send->pwm);
+	}
 
 	kfree(wbuf);
 	wbuf = NULL;
@@ -491,6 +496,8 @@ static int lirc_pwm_probe(struct platform_device *pdev)
 
 	send = &priv->send;
 	recv = &priv->recv;
+	
+	dev_set_drvdata(dev, priv);
 
 	/* Fetch everything we need from DT */
 	send->pwm = devm_of_pwm_get(dev, node, NULL);
@@ -505,7 +512,13 @@ static int lirc_pwm_probe(struct platform_device *pdev)
 		if (ret < 0 || send->pwm_max_duty > 100)
 			send->pwm_max_duty = 100;
 
-		dev_info(dev, "PWM transmitter on %s, max duty %d%\n",
+		if (of_find_property(node, "pwm-idle-active", NULL)) {
+			send->pwm_idle_active = true;
+			pwm_config(send->pwm, IDLE_PERIOD-1, IDLE_PERIOD);
+			pwm_enable(send->pwm);
+		}
+
+		dev_info(dev, "PWM transmitter on %s, max duty %d%%\n",
 				send->pwm->label ? : "<unnamed channel>",
 				send->pwm_max_duty);
 		send->toggle = send_toggle_pwm;
@@ -601,8 +614,6 @@ static int lirc_pwm_probe(struct platform_device *pdev)
 		goto exit_rbuf_free;
 	}
 
-	dev_set_drvdata(dev, priv);
-
 	dev_info(dev, "probed\n");
 	return 0;
 
@@ -617,6 +628,14 @@ static int lirc_pwm_remove(struct platform_device *pdev)
 	int ret;
 
 	dev_dbg(&pdev->dev, "removing\n");
+
+	if (send_using_pwm(priv)) {
+		pwm_disable(priv->send.pwm);
+	}
+
+	if (gpio_is_valid(priv->send.gpio)) {
+		gpio_direction_input(priv->send.gpio);
+	}
 
 	if (kfifo_initialized(&priv->recv.rbuf.fifo))
 		lirc_buffer_free(&priv->recv.rbuf);
