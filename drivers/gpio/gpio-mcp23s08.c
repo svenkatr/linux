@@ -759,6 +759,7 @@ static int mcp230xx_probe(struct i2c_client *client,
 	struct mcp23s08_platform_data *pdata, local_pdata;
 	struct mcp23s08 *mcp;
 	int status;
+	int val;
 	const struct of_device_id *match;
 
 	match = of_match_device(of_match_ptr(mcp23s08_i2c_of_match),
@@ -773,6 +774,12 @@ static int mcp230xx_probe(struct i2c_client *client,
 		pdata->mirror = of_property_read_bool(client->dev.of_node,
 						      "microchip,irq-mirror");
 		client->irq = irq_of_parse_and_map(client->dev.of_node, 0);
+
+		status = of_property_read_u32(client->dev.of_node,
+			    "linux,gpio-base", &val);
+		if (!status) {
+			pdata->base = val;
+		}
 	} else {
 		pdata = dev_get_platdata(&client->dev);
 		if (!pdata) {
