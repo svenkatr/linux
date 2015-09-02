@@ -97,6 +97,13 @@ config LEDS_TRIGGER_DEFAULT_ON
 	  This allows LEDs to be initialised in the ON state.
 	  If unsure, say Y.
 
+config LEDS_TRIGGER_DEFAULT_OFF
+	tristate "LED Default OFF Trigger"
+	depends on LEDS_TRIGGERS
+	help
+	  This allows LEDs to be initialised in the OFF state.
+	  If unsure, say N.
+
 comment "iptables trigger is under Netfilter config (LED target)"
 	depends on LEDS_TRIGGERS
 
