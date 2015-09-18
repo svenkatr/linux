@@ -13,10 +13,15 @@ Optional properties:
  - linux,open-drain: if specified, the data pin is considered in
 		     open-drain mode.
 
+ - pu-gpios: optional GPIO to control external "strong pull-up" FET.
+			 if not specified, data I/O pin will be used in output mode to
+			 emulate strong pull-up.
+
 Examples:
 
 	onewire@0 {
 		compatible = "w1-gpio";
 		gpios = <&gpio 126 0>, <&gpio 105 0>;
+		pu-gpios = <&gpio 123 0>;
 	};
 

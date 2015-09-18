@@ -43,6 +43,26 @@ static u8 w1_gpio_set_pullup(void *data, int delay)
 	return 0;
 }
 
+static u8 w1_gpio_set_strong_pullup(void *data, int delay)
+{
+	struct w1_gpio_platform_data *pdata = data;
+
+	if (delay) {
+		pdata->pullup_duration = delay;
+	} else {
+		if (pdata->pullup_duration) {
+			gpio_direction_output(pdata->strong_pullup_enable_pin, 1);
+
+			msleep(pdata->pullup_duration);
+
+			gpio_direction_output(pdata->strong_pullup_enable_pin, 0);
+		}
+		pdata->pullup_duration = 0;
+	}
+
+	return 0;
+}
+
 static void w1_gpio_write_bit_dir(void *data, u8 bit)
 {
 	struct w1_gpio_platform_data *pdata = data;
@@ -105,6 +125,12 @@ static int w1_gpio_probe_dt(struct platform_device *pdev)
 	/* ignore other errors as the pullup gpio is optional */
 	pdata->ext_pullup_enable_pin = gpio;
 
+	gpio = of_get_named_gpio(np, "pu-gpios", 0);
+	if (gpio == -EPROBE_DEFER)
+		return gpio;
+	/* ignore other errors as the strong pullup gpio is optional */
+	pdata->strong_pullup_enable_pin = gpio;
+
 	pdev->dev.platform_data = pdata;
 
 	return 0;
@@ -153,6 +179,17 @@ static int w1_gpio_probe(struct platform_device *pdev)
 		}
 	}
 
+	if (gpio_is_valid(pdata->strong_pullup_enable_pin)) {
+		err = devm_gpio_request_one(&pdev->dev,
+				pdata->strong_pullup_enable_pin, GPIOF_INIT_LOW,
+				"w1 strong pullup");
+		if (err < 0) {
+			dev_err(&pdev->dev, "gpio_request_one "
+					"(strong_pullup_enable_pin) failed\n");
+			return err;
+		}
+	}
+
 	master->data = pdata;
 	master->read_bit = w1_gpio_read_bit;
 
@@ -165,6 +202,10 @@ static int w1_gpio_probe(struct platform_device *pdev)
 		master->set_pullup = w1_gpio_set_pullup;
 	}
 
+	if (gpio_is_valid(pdata->strong_pullup_enable_pin))
+		master->set_pullup = w1_gpio_set_strong_pullup;
+
+
 	err = w1_add_master_device(master);
 	if (err) {
 		dev_err(&pdev->dev, "w1_add_master device failed\n");
@@ -176,6 +217,9 @@ static int w1_gpio_probe(struct platform_device *pdev)
 
 	if (gpio_is_valid(pdata->ext_pullup_enable_pin))
 		gpio_set_value(pdata->ext_pullup_enable_pin, 1);
+
+	if (gpio_is_valid(pdata->strong_pullup_enable_pin))
+		gpio_set_value(pdata->strong_pullup_enable_pin, 0);
 
 	platform_set_drvdata(pdev, master);
 
