@@ -675,8 +675,13 @@ static int pga_event(struct snd_soc_dapm_widget *w,
 			mxs_adc->aout_base + HW_AUDIOOUT_ANACTRL_CLR);
 		break;
 	case SND_SOC_DAPM_POST_PMD:
-		__raw_writel(BM_RTC_PERSISTENT0_RELEASE_GND,
-			mxs_adc->rtc_base + HW_RTC_PERSISTENT0_CLR);
+		/* For some reason, clearing RTC_PERSISTENT0_RELEASE_GND also affects
+		 * capture (it appears related to mic bias), so clear this bit only if
+		 * capture is not running.
+		 */
+		if (!(__raw_readl(mxs_adc->ain_base + HW_AUDIOIN_CTRL) & BM_AUDIOIN_CTRL_RUN))
+			__raw_writel(BM_RTC_PERSISTENT0_RELEASE_GND,
+					mxs_adc->rtc_base + HW_RTC_PERSISTENT0_CLR);
 		break;
 	}
 	return 0;
