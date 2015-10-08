@@ -108,8 +108,6 @@
 
 #define MXS_SAIF_MCLK		0
 
-#include "mxs-pcm.h"
-
 struct mxs_saif {
 	struct device *dev;
 	struct clk *clk;
