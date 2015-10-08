@@ -1,5 +1,7 @@
-menuconfig SND_MXS_SOC
-	tristate "SoC Audio for Freescale MXS CPUs"
+menu "SoC Audio for Freescale MXS CPUs"
+
+config SND_MXS_SOC
+	tristate "Serial Audio Interface (SAIF) support"
 	depends on ARCH_MXS || COMPILE_TEST
 	depends on COMMON_CLK
 	select SND_SOC_GENERIC_DMAENGINE_PCM
@@ -7,25 +9,21 @@ menuconfig SND_MXS_SOC
 	  Say Y or M if you want to add support for codecs attached to
 	  the MXS SAIF interface.
 
-
-if SND_MXS_SOC
-
 config SND_SOC_MXS_SGTL5000
 	tristate "SoC Audio support for MXS boards with sgtl5000"
-	depends on I2C
+	depends on I2C && SND_MXS_SOC
 	select SND_SOC_SGTL5000
 	help
 	  Say Y if you want to add support for SoC audio on an MXS board with
 	  a sgtl5000 codec.
 
-endif	# SND_MXS_SOC
-
-
 config SND_MXS_SOC_BUILTIN
-	tristate "SoC Audio for Freescale i.MX23 built-in codec"
+	tristate "i.MX23 built-in ADC/DAC Audio Interface support"
 	depends on ARCH_MXS
 	select SND_SOC_GENERIC_DMAENGINE_PCM
 	select SND_SOC_MXS_BUILTIN_CODEC
 	help
-	  Say Y or M if you want to add support for codecs attached to
-	  the MXS SAIF interface.
+	  Say Y or M if you want to add support for i.MX23 internal ADC/DAC
+	  audio interface.
+
+endmenu
