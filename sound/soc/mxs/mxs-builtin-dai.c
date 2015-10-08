@@ -20,9 +20,9 @@
 #include <sound/pcm.h>
 #include <sound/pcm_params.h>
 #include <sound/soc.h>
+#include <sound/dmaengine_pcm.h>
 
 #include "../codecs/mxs-builtin-codec.h"
-#include "mxs-builtin-pcm.h"
 
 #define ADC_VOLUME_MIN  0x37
 
@@ -462,6 +462,30 @@ static const struct snd_soc_component_driver mxs_adc_component = {
 	.name		= "mxs-xxx",	//TODO change this name
 };
 
+static const struct snd_pcm_hardware mxs_adc_hardware = {
+	.info			= SNDRV_PCM_INFO_MMAP |
+				  SNDRV_PCM_INFO_MMAP_VALID |
+				  SNDRV_PCM_INFO_PAUSE |
+				  SNDRV_PCM_INFO_RESUME |
+				  SNDRV_PCM_INFO_INTERLEAVED,
+	.formats		= SNDRV_PCM_FMTBIT_S16_LE |
+				  SNDRV_PCM_FMTBIT_S20_3LE |
+				  SNDRV_PCM_FMTBIT_S24_LE,
+	.channels_min		= 2,
+	.channels_max		= 2,
+	.period_bytes_min	= 32,
+	.period_bytes_max	= 8192,
+	.periods_min		= 1,
+	.periods_max		= 52,
+	.buffer_bytes_max	= 64 * 1024,
+	.fifo_size		= 32,
+};
+
+static const struct snd_dmaengine_pcm_config mxs_adc_dmaengine_pcm_config = {
+	.pcm_hardware = &mxs_adc_hardware,
+	.prealloc_buffer_size = 64 * 1024,
+};
+
 static int mxs_adc_probe(struct platform_device *pdev)
 {
 	struct device_node *np = pdev->dev.of_node;
@@ -542,7 +566,7 @@ static int mxs_adc_probe(struct platform_device *pdev)
 		return ret;
 	}
 
-	ret = mxs_adc_pcm_platform_register(&pdev->dev);
+	ret = devm_snd_dmaengine_pcm_register(&pdev->dev, &mxs_adc_dmaengine_pcm_config, 0);
 	if (ret) {
 		dev_err(&pdev->dev, "register PCM failed: %d\n", ret);
 		goto failed_pdev_alloc;
@@ -558,7 +582,6 @@ failed_pdev_alloc:
 
 static int mxs_adc_remove(struct platform_device *pdev)
 {
-	mxs_adc_pcm_platform_unregister(&pdev->dev);
 	snd_soc_unregister_component(&pdev->dev);
 
 	return 0;
