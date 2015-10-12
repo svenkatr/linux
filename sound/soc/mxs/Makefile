@@ -13,3 +13,8 @@ snd-soc-mxs-builtin-dai-objs := mxs-builtin-dai.o
 snd-soc-mxs-builtin-audio-objs := mxs-builtin-audio.o
 
 obj-$(CONFIG_SND_SOC_MXS_BUILTIN) += snd-soc-mxs-builtin-dai.o snd-soc-mxs-builtin-audio.o
+
+snd-soc-mxs-spdif-dai-objs := mxs-spdif-dai.o
+snd-soc-mxs-spdif-audio-objs := mxs-spdif-audio.o
+
+obj-$(CONFIG_SND_SOC_MXS_SPDIF) += snd-soc-mxs-spdif-dai.o snd-soc-mxs-spdif-audio.o

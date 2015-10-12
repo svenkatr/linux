@@ -26,4 +26,10 @@ config SND_SOC_MXS_BUILTIN
 	  Say Y or M if you want to add support for i.MX23 internal ADC/DAC
 	  audio interface.
 
+config SND_SOC_MXS_SPDIF
+	tristate "SPDIF Transmitter support"
+	depends on ARCH_MXS
+	select SND_SOC_GENERIC_DMAENGINE_PCM
+	select SND_SOC_MXS_SPDIF_CODEC
+
 endmenu
