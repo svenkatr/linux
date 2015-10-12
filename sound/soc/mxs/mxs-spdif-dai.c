@@ -185,8 +185,8 @@ static int mxs_spdif_hw_params(struct snd_pcm_substream *substream,
 				     mxs_spdif->base + HW_SPDIF_CTRL_SET);
 		break;
 	case SNDRV_PCM_FORMAT_S20_3LE:
-	case SNDRV_PCM_FORMAT_S24_LE:
-	case SNDRV_PCM_FORMAT_S32_LE:
+	case SNDRV_PCM_FORMAT_S24_3LE:
+	case SNDRV_PCM_FORMAT_S32:
 		if (playback)
 			__raw_writel(BM_SPDIF_CTRL_WORD_LENGTH,
 				     mxs_spdif->base + HW_SPDIF_CTRL_CLR);
@@ -321,13 +321,8 @@ struct snd_soc_dai_driver mxs_spdif_dai = {
 		.stream_name = "Playback",
 		.channels_min = 2,
 		.channels_max = 2,
-		.rates = (SNDRV_PCM_RATE_32000 | SNDRV_PCM_RATE_44100 | \
-				SNDRV_PCM_RATE_48000 | SNDRV_PCM_RATE_64000 | \
-				SNDRV_PCM_RATE_88200 | SNDRV_PCM_RATE_96000),
-		.formats = (SNDRV_PCM_FMTBIT_S16_LE | \
-				SNDRV_PCM_FMTBIT_S20_3LE | \
-				SNDRV_PCM_FMTBIT_S24_LE | \
-				SNDRV_PCM_FMTBIT_S32_LE),
+		.rates = MXS_SPDIF_RATES,
+		.formats = MXS_SPDIF_FORMATS
 	},
 	.ops = &mxs_spdif_dai_ops,
 };
@@ -362,22 +357,20 @@ static const struct snd_pcm_hardware mxs_spdif_pcm_hardware = {
 		SNDRV_PCM_INFO_MMAP_VALID |
 		SNDRV_PCM_INFO_PAUSE |
 		SNDRV_PCM_INFO_RESUME,
-	.formats = SNDRV_PCM_FMTBIT_S16_LE |
-		SNDRV_PCM_FMTBIT_S20_3LE |
-		SNDRV_PCM_FMTBIT_S24_LE,
+	.formats = MXS_SPDIF_FORMATS,
 	.channels_min = 2,
 	.channels_max = 2,
-	.period_bytes_min = 128,
-	.period_bytes_max = 8192,
-	.periods_min = 1,
-	.periods_max = 52,
-	.buffer_bytes_max = 64*1024,
+	.period_bytes_min = 512,
+	.period_bytes_max = (unsigned int) -1,
+	.periods_min = 2,
+	.periods_max = (unsigned int) -1,
+	.buffer_bytes_max = 128*1024,
 	.fifo_size = 32,
 };
 
 static const struct snd_dmaengine_pcm_config mxs_spdif_dmaengine_pcm_config = {
 	.pcm_hardware = &mxs_spdif_pcm_hardware,
-	.prealloc_buffer_size = 64*1024,
+	.prealloc_buffer_size = 128*1024,
 };
 
 static const struct snd_soc_component_driver mxs_spdif_component = {
