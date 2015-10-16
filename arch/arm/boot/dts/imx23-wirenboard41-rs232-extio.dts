@@ -1,0 +1,62 @@
+/*
+ * Copyright 2012 Freescale Semiconductor, Inc.
+ *
+ * Author: Fabio Estevam <fabio.estevam@freescale.com>
+ *
+ * The code contained herein is licensed under the GNU General Public
+ * License. You may obtain a copy of the GNU General Public License
+ * Version 2 or later at the following locations:
+ *
+ * http://www.opensource.org/licenses/gpl-license.html
+ * http://www.gnu.org/copyleft/gpl.html
+ */
+
+#include "imx23-wirenboard41.dts"
+#include <dt-bindings/interrupt-controller/irq.h>
+
+/ {
+
+	model = "Wiren Board rev. 4.1 with RS-232 ext. and extio (i.MX23)";
+
+	compatible = "contactless,imx23-wirenboard41-extio", "contactless,imx23-wirenboard41-rs232", "contactless,imx23-wirenboard41", "contactless,imx23-wirenboard32", "olimex,imx23-olinuxino", "fsl,imx23";
+
+
+	apb@80000000 {
+		apbh@80000000 {
+			ssp1: ssp@80034000 {
+				cs-gpios = <&gpio0 3 0 /* cs0 fixme: use hardware cs directly*/
+							&gpio0 4 0 /* rfm69 */
+							>;
+				sc16is7x2_0: sc16is7x2@0 {
+					rs485-enabled-at-boot-time-b = <0>;
+				};
+			};
+		};
+
+		apbx@80040000 {
+			i2c0: i2c@80058000 {
+				pinctrl-names = "default";
+				pinctrl-0 = <&i2c0_pins_a>;
+				status = "okay";
+				clock-frequency = <400000>;
+
+				gpiom1: gpio@20 {
+				        compatible = "microchip,mcp23017";
+				        gpio-controller;
+				        #gpio-cells = <2>;
+				        reg = <0x20>;
+
+				        interrupt-parent = <&gpio0>;
+				        interrupts = <23 IRQ_TYPE_LEVEL_LOW>;
+				        interrupt-controller;
+				        #interrupt-cells=<2>;
+				        microchip,irq-mirror;
+				        linux,gpio-base = <200>;
+
+				};
+			};
+		};
+
+	};
+
+};

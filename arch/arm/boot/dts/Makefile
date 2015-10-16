@@ -454,6 +454,7 @@ dtb-$(CONFIG_ARCH_MXS) += \
 	imx23-wirenboard32-rfm69-raw.dtb \
 	imx23-wirenboard41.dtb \
 	imx23-wirenboard41-rs232.dtb \
+	imx23-wirenboard41-rs232-extio.dtb \
 	imx23-wirenboard41-can.dtb \
 	imx23-wirenboard41-pobeda.dtb \
 	imx23-wirenboard41-extio.dtb \
