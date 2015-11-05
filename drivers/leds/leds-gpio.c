@@ -26,8 +26,24 @@ struct gpio_led_data {
 	struct gpio_desc *gpiod;
 	u8 can_sleep;
 	u8 blinking;
+	u8 open_drain;
 	gpio_blink_set_t platform_gpio_blink_set;
 };
+
+static void gpio_led_set_value(const struct gpio_led_data *led_dat, int value, int can_sleep)
+{
+	if (led_dat->open_drain) {
+		if (value)
+			gpiod_direction_input(led_dat->gpiod);
+		else
+			gpiod_direction_output(led_dat->gpiod, 0);
+	} else {
+		if (can_sleep)
+			gpiod_set_value_cansleep(led_dat->gpiod, value);
+		else
+			gpiod_set_value(led_dat->gpiod, value);
+	}
+}
 
 static inline struct gpio_led_data *
 			cdev_to_gpio_led_data(struct led_classdev *led_cdev)
@@ -51,10 +67,7 @@ static void gpio_led_set(struct led_classdev *led_cdev,
 						 NULL, NULL);
 		led_dat->blinking = 0;
 	} else {
-		if (led_dat->can_sleep)
-			gpiod_set_value_cansleep(led_dat->gpiod, level);
-		else
-			gpiod_set_value(led_dat->gpiod, level);
+		gpio_led_set_value(led_dat, level, 0);
 	}
 }
 
@@ -112,6 +125,7 @@ static int create_gpio_led(const struct gpio_led *template,
 
 	led_dat->cdev.name = template->name;
 	led_dat->cdev.default_trigger = template->default_trigger;
+	led_dat->open_drain = template->open_drain;
 	led_dat->can_sleep = gpiod_cansleep(led_dat->gpiod);
 	if (!led_dat->can_sleep)
 		led_dat->cdev.brightness_set = gpio_led_set;
@@ -135,9 +149,11 @@ static int create_gpio_led(const struct gpio_led *template,
 	if (template->panic_indicator)
 		led_dat->cdev.flags |= LED_PANIC_INDICATOR;
 
-	ret = gpiod_direction_output(led_dat->gpiod, state);
-	if (ret < 0)
-		return ret;
+	if (!led_dat->open_drain) {
+		ret = gpiod_direction_output(led_dat->gpiod, state);
+		if (ret < 0)
+			return ret;
+	}
 
 	return devm_led_classdev_register(parent, &led_dat->cdev);
 }
@@ -205,6 +221,8 @@ static struct gpio_leds_priv *gpio_leds_create(struct platform_device *pdev)
 			led.retain_state_suspended = 1;
 		if (fwnode_property_present(child, "panic-indicator"))
 			led.panic_indicator = 1;
+		if (fwnode_property_present(child, "open-drain"))
+			led.open_drain = 1;
 
 		ret = create_gpio_led(&led, led_dat, dev, NULL);
 		if (ret < 0) {

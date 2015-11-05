@@ -20,6 +20,8 @@ LED sub-node properties:
   as charge-led gpio.
 - panic-indicator : (optional)
   see Documentation/devicetree/bindings/leds/common.txt
+- open-drain: (optional) Emulate open-drain output. Logic "1" correspond to
+  high-Z state (GPIO configured as input), logic "0" is output low.
 
 Examples:
 
