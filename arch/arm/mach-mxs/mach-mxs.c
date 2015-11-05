@@ -29,6 +29,7 @@
 #include <asm/mach/map.h>
 #include <asm/mach/time.h>
 #include <asm/system_misc.h>
+#include <asm/system_info.h>
 
 #include "pm.h"
 
@@ -56,6 +57,9 @@
 #define MXS_SET_ADDR		0x4
 #define MXS_CLR_ADDR		0x8
 #define MXS_TOG_ADDR		0xc
+
+#define HW_OCOTP_OPS2       19 // 0x150
+#define HW_OCOTP_OPS3       20 // 0x160
 
 static u32 chipid;
 static u32 socid;
@@ -385,6 +389,7 @@ static void __init mxs_machine_init(void)
 	struct device *parent;
 	struct soc_device *soc_dev;
 	struct soc_device_attribute *soc_dev_attr;
+	const u32 *ocotp = mxs_get_ocotp();
 	int ret;
 
 	soc_dev_attr = kzalloc(sizeof(*soc_dev_attr), GFP_KERNEL);
@@ -399,6 +404,13 @@ static void __init mxs_machine_init(void)
 	soc_dev_attr->family = "Freescale MXS Family";
 	soc_dev_attr->soc_id = mxs_get_soc_id();
 	soc_dev_attr->revision = mxs_get_revision();
+
+	if (socid == HW_DIGCTL_CHIPID_MX23) {
+		system_serial_low = ocotp[HW_OCOTP_OPS3];
+	} else if (socid == HW_DIGCTL_CHIPID_MX28) {
+		system_serial_high = ocotp[HW_OCOTP_OPS2];
+		system_serial_low = ocotp[HW_OCOTP_OPS3];
+	}
 
 	soc_dev = soc_device_register(soc_dev_attr);
 	if (IS_ERR(soc_dev)) {
