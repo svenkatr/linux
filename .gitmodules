@@ -1,3 +1,6 @@
 [submodule "drivers/video/fbdev/fbtft"]
 	path = drivers/video/fbdev/fbtft
 	url = https://github.com/notro/fbtft.git
+[submodule "drivers/staging/rtl8723bu"]
+	path = drivers/staging/rtl8723bu
+	url = https://github.com/lwfinger/rtl8723bu.git
