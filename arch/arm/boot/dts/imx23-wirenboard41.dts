@@ -46,6 +46,15 @@
 				pinctrl-0 = <&hog_pins_a
 							>;
 
+				rfm69_raw_pins: rfm69_raw_pins@0 {
+					reg = <0>;
+					fsl,pinmux-ids = <
+						MX23_PAD_GPMI_CE1N__GPIO_2_27	/* RFM69_DIO2 */
+					>;
+					fsl,drive-strength = <0>;
+					fsl,voltage = <1>;
+					fsl,pull-up = <0>;
+				};
 
 				hog_pins_a: hog@0 {
 					reg = <0>;
@@ -315,12 +324,6 @@
 	};
 
 
-	lirc@0 {
-		compatible = "lirc-pwm";
-		pwms = <&pwm 2 0>;
-	};
-
-
 	mcp6542: watchdog {
 		/* watchdog timer on mcp6542  */
 		compatible = "linux,wdt-gpio";
@@ -332,5 +335,11 @@
 		status = "okay";
 	};
 
+	lirc-rfm69 {
+		compatible = "lirc-pwm";
+		pinctrl-names = "default";
+		pinctrl-0 = <&rfm69_raw_pins>;
+		gpio-recv = <&gpio2 27 0>;
+	};
 
 };

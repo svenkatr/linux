@@ -50,6 +50,15 @@
 							&pin_gpio_pu_0_16
 							>;
 
+				rfm69_raw_pins: rfm69_raw_pins@0 {
+					reg = <0>;
+					fsl,pinmux-ids = <
+						MX23_PAD_LCD_CS__GPIO_1_21	/* RFM69_DIO2 */
+					>;
+					fsl,drive-strength = <0>;
+					fsl,voltage = <1>;
+					fsl,pull-up = <0>;
+				};
 
 				hog_pins_a: hog@0 {
 					reg = <0>;
@@ -460,6 +469,13 @@
 
 			/*status = "okay";*/
 			status = "disabled";
+	};
+
+	lirc-rfm69 {
+		compatible = "lirc-pwm";
+		pinctrl-names = "default";
+		pinctrl-0 = <&rfm69_raw_pins>;
+		gpio-recv = <&gpio1 21 0>;
 	};
 
 
