@@ -493,6 +493,7 @@ dtb-$(CONFIG_ARCH_MXS) += \
 	imx28-tx28.dtb \
 	imx28-wirenboard50.dtb \
 	imx28-wirenboard52.dtb \
+	imx28-wirenboard52-test.dtb \
 	imx28-wirenboard52-functest.dtb
 dtb-$(CONFIG_ARCH_NOMADIK) += \
 	ste-nomadik-s8815.dtb \
