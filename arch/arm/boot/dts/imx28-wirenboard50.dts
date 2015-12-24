@@ -402,7 +402,7 @@
 		gpios = <&gpio2 13 0>;
 		hw_algo = "toggle";
 		hw_margin_ms = <100>;
-		always-enabled;
+		always-running;
 		timeout-sec = <30>;
 		status = "okay";
 	};

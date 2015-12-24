@@ -297,7 +297,7 @@
 		gpios = <&gpio2 27 0>;
 		hw_algo = "toggle";
 		hw_margin_ms = <50>;
-		always-enabled;
+		always-running;
 		timeout-sec = <30>;
 	};
 
