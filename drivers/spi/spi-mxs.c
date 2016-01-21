@@ -85,7 +85,10 @@ static int mxs_spi_setup_transfer(struct spi_device *dev,
 {
 	struct mxs_spi *spi = spi_master_get_devdata(dev->master);
 	struct mxs_ssp *ssp = &spi->ssp;
-	const unsigned int hz = min(dev->max_speed_hz, t->speed_hz);
+	unsigned int hz = dev->max_speed_hz;
+
+	if (t)
+		hz = min(hz, t->speed_hz);
 
 	if (hz == 0) {
 		dev_err(&dev->dev, "SPI clock rate of zero not allowed\n");
