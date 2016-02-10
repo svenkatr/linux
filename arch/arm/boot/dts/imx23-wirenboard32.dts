@@ -476,6 +476,7 @@
 		pinctrl-names = "default";
 		pinctrl-0 = <&rfm69_raw_pins>;
 		gpio-recv = <&gpio1 21 0>;
+		gpio-recv-disable-filter;
 	};
 
 

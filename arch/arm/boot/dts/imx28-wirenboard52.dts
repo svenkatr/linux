@@ -551,6 +551,7 @@
 	lirc-rfm69 {
 		compatible = "lirc-pwm";
 		gpio-recv = <&gpio1 5 0>;
+		gpio-recv-disable-filter;
 	};
 
 	lirc-cir {
