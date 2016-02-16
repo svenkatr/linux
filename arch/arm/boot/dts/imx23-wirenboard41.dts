@@ -179,7 +179,7 @@
 				};
 
 				spidev@4 {
-					compatible = "spidev";
+					compatible = "hoperf,rfm69w";
 					spi-max-frequency = <1000000>;
 					reg = <4>;
 				};

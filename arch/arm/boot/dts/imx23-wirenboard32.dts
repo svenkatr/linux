@@ -244,14 +244,14 @@
 
 				/* RFM69 spidev */
 				spidev@5 {
-					compatible = "spidev";
+					compatible = "hoperf,rfm69w";
 					spi-max-frequency = <100000>;
 					reg = <5>;
 				};
 
 				/* NRF24 spidev */
 				spidev@6 {
-					compatible = "spidev";
+					compatible = "nordicsemi,nrf24l01p";
 					spi-max-frequency = <100000>;
 					reg = <6>;
 				};
