@@ -552,6 +552,7 @@ static int mcp23s08_probe_one(struct mcp23s08 *mcp, struct device *dev,
 {
 	int status;
 	bool mirror = false;
+	bool irq_open_drain = false;
 
 	mutex_init(&mcp->lock);
 
@@ -624,15 +625,25 @@ static int mcp23s08_probe_one(struct mcp23s08 *mcp, struct device *dev,
 
 	mcp->irq_controller = pdata->irq_controller;
 	if (mcp->irq && mcp->irq_controller) {
+		irq_open_drain =
+			of_property_read_bool(mcp->chip.parent->of_node,
+					      "microchip,irq-open-drain");
+
 		mcp->irq_active_high =
 			of_property_read_bool(mcp->chip.parent->of_node,
 					      "microchip,irq-active-high");
+
+		if (irq_open_drain && mcp->irq_active_high) {
+			dev_warn(dev, "interrupt can't be both open-drain and \
+				active-high, set to open-drain\n");
+			mcp->irq_active_high = false;
+		}
 
 		mirror = pdata->mirror;
 	}
 
 	if ((status & IOCON_SEQOP) || !(status & IOCON_HAEN) || mirror ||
-	     mcp->irq_active_high) {
+	     mcp->irq_active_high || irq_open_drain) {
 		/* mcp23s17 has IOCON twice, make sure they are in sync */
 		status &= ~(IOCON_SEQOP | (IOCON_SEQOP << 8));
 		status |= IOCON_HAEN | (IOCON_HAEN << 8);
@@ -640,6 +651,11 @@ static int mcp23s08_probe_one(struct mcp23s08 *mcp, struct device *dev,
 			status |= IOCON_INTPOL | (IOCON_INTPOL << 8);
 		else
 			status &= ~(IOCON_INTPOL | (IOCON_INTPOL << 8));
+
+		if (irq_open_drain)
+			status |= IOCON_ODR | (IOCON_ODR << 8);
+		else
+			status &= ~(IOCON_ODR | (IOCON_ODR << 8));
 
 		if (mirror)
 			status |= IOCON_MIRROR | (IOCON_MIRROR << 8);
