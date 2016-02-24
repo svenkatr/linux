@@ -2301,6 +2301,11 @@ static int of_i2c_notify(struct notifier_block *nb, unsigned long action,
 			return NOTIFY_OK;
 		}
 
+		if (of_node_test_and_set_flag(rd->dn, OF_POPULATED)) {
+			put_device(&adap->dev);
+			return NOTIFY_OK;
+		}
+
 		client = of_i2c_register_device(adap, rd->dn);
 		put_device(&adap->dev);
 
