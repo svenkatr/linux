@@ -7,11 +7,11 @@
 set -e
 
 export ARCH=arm
-export DT=imx28-evk
+export DT=imx28-wirenboard5x-usbfw
 export LOCALVERSION=-imxv5-x0.1
 
 # You may want to change this if toolchain is not in $PATH
-export CROSS_COMPILE=arm-none-linux-gnueabi-
+export CROSS_COMPILE=arm-linux-gnueabi-
 
 # This address is valid for i.MX23/28 SoCs
 export LOADADDR=0x42008000
