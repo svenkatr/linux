@@ -241,12 +241,10 @@ static int i2c_demux_pinctrl_probe(struct platform_device *pdev)
 		}
 		priv->chan[i].parent_np = adap_np;
 
-		props[i].name = devm_kstrdup(&pdev->dev, "status", GFP_KERNEL);
-		props[i].value = devm_kstrdup(&pdev->dev, "ok", GFP_KERNEL);
-		props[i].length = 3;
 
 		of_changeset_init(&priv->chan[i].chgset);
-		of_changeset_update_property(&priv->chan[i].chgset, adap_np, &props[i]);
+		of_changeset_update_property_string(&priv->chan[i].chgset,
+				adap_np, "status", "okay");
 	}
 
 	priv->num_chan = num_chan;
