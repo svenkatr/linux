@@ -34,7 +34,7 @@ DTC_SOURCE="checks.c data.c dtc.c dtc.h flattree.c fstree.c livetree.c srcpos.c 
 		srcpos.h treesource.c util.c util.h version_gen.h Makefile.dtc \
 		dtc-lexer.l dtc-parser.y"
 DTC_GENERATED="dtc-lexer.lex.c dtc-parser.tab.c dtc-parser.tab.h"
-LIBFDT_SOURCE="Makefile.libfdt fdt.c fdt.h fdt_empty_tree.c fdt_ro.c fdt_rw.c fdt_strerror.c fdt_sw.c fdt_wip.c libfdt.h libfdt_env.h libfdt_internal.h"
+LIBFDT_SOURCE="Makefile.libfdt fdt.c fdt.h fdt_overlay.c fdt_empty_tree.c fdt_ro.c fdt_rw.c fdt_strerror.c fdt_sw.c fdt_wip.c libfdt.h libfdt_env.h libfdt_internal.h"
 
 # Build DTC
 cd $DTC_UPSTREAM_PATH
