@@ -222,6 +222,8 @@ EOF
 	chmod 755 "$tmpdir/DEBIAN/$script"
 done
 
+cp "$objtree/scripts/package/debian-wb.postinst" "$tmpdir$debhookdir/postinst.d/01wb"
+
 # Try to determine maintainer and email values
 if [ -n "$DEBEMAIL" ]; then
        email=$DEBEMAIL
