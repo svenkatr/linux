@@ -243,6 +243,10 @@
 	fsl,ext-reset-output;
 };
 
+&adc1 {
+	status = "okay";
+};
+
 &iomuxc {
 	pinctrl-names = "default";
 
