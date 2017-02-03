@@ -9,14 +9,45 @@
 #include <linux/mfd/syscon.h>
 #include <linux/mfd/syscon/imx6q-iomuxc-gpr.h>
 #include <linux/micrel_phy.h>
+#include <linux/of_address.h>
 #include <linux/of_platform.h>
 #include <linux/phy.h>
 #include <linux/regmap.h>
 #include <asm/mach/arch.h>
 #include <asm/mach/map.h>
+#include <asm/system_info.h>
 
 #include "common.h"
 #include "cpuidle.h"
+
+#define OCOTP_CFG0	0x410
+#define OCOTP_CFG1	0x420
+
+static void imx6ul_get_serial(void)
+{
+	struct device_node *np;
+	void __iomem *base;
+
+	np = of_find_compatible_node(NULL, NULL, "fsl,imx6ul-ocotp");
+	if (!np) {
+		pr_warn("failed to find ocotp node\n");
+		return;
+	}
+
+	base = of_iomap(np, 0);
+	if (!base) {
+		pr_warn("failed to map ocotp\n");
+		goto put_node;
+	}
+
+	system_serial_high = readl_relaxed(base + OCOTP_CFG0);
+	system_serial_low = readl_relaxed(base + OCOTP_CFG1);
+
+	iounmap(base);
+
+put_node:
+	of_node_put(np);
+}
 
 static void __init imx6ul_enet_clk_init(void)
 {
@@ -66,6 +97,7 @@ static void __init imx6ul_init_machine(void)
 		pr_warn("failed to initialize soc device\n");
 
 	of_platform_default_populate(NULL, NULL, parent);
+	imx6ul_get_serial();
 	imx6ul_enet_init();
 	imx_anatop_init();
 	imx6ul_pm_init();
