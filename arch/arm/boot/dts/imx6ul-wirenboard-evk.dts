@@ -36,6 +36,26 @@
 		#size-cells = <0>;
 	};
 
+        leds {
+            compatible = "gpio-leds";
+            pinctrl-names = "default";
+            pinctrl-0 = <&pinctrl_leds_pin_gpio>;
+
+            green {
+                label = "green";
+                gpios = <&gpio1 15 0>;
+                linux,default-trigger = "default-off";
+                default-state = "on";
+                open-drain;
+            };
+
+            red {
+                label = "red";
+                gpios = <&gpio1 14 0>;
+                linux,default-trigger = "timer";
+            };
+        };
+
 	sound {
 		compatible = "simple-audio-card";
 		simple-audio-card,name = "mx6ul-wm8960";
@@ -444,4 +464,12 @@
 			MX6UL_PAD_LCD_RESET__WDOG1_WDOG_ANY    0x30b0
 		>;
 	};
+
+        pinctrl_leds_pin_gpio: leds_pin_gpio {
+            fsl,pins = <
+                    MX6UL_PAD_JTAG_TCK__GPIO1_IO14    0x30b0
+                    MX6UL_PAD_JTAG_TRST_B__GPIO1_IO15    0x30b0
+            >;
+        };
+
 };
