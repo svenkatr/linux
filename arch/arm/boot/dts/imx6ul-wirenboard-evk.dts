@@ -1,4 +1,5 @@
 /*
+ * Copyright (C) 2016-2017 Contactless Devices, LLC
  * Copyright (C) 2015 Freescale Semiconductor, Inc.
  *
  * This program is free software; you can redistribute it and/or modify
@@ -23,17 +24,22 @@
 	};
 
 	backlight {
-		compatible = "pwm-backlight";
-		pwms = <&pwm1 0 5000000>;
-		brightness-levels = <0 4 8 16 32 64 128 255>;
-		default-brightness-level = <6>;
-		status = "okay";
+		status = "disabled";
 	};
 
 	regulators {
 		compatible = "simple-bus";
 		#address-cells = <1>;
 		#size-cells = <0>;
+
+		reg_vref_3v3: regulator@0 {
+			reg = <0>;
+			compatible = "regulator-fixed";
+			regulator-name = "vref-3v3";
+			regulator-min-microvolt = <3300000>;
+			regulator-max-microvolt = <3300000>;
+		};
+
 	};
 
         leds {
@@ -56,39 +62,6 @@
             };
         };
 
-	sound {
-		compatible = "simple-audio-card";
-		simple-audio-card,name = "mx6ul-wm8960";
-		simple-audio-card,format = "i2s";
-		simple-audio-card,bitclock-master = <&dailink_master>;
-		simple-audio-card,frame-master = <&dailink_master>;
-		simple-audio-card,widgets =
-			"Microphone", "Mic Jack",
-			"Line", "Line In",
-			"Line", "Line Out",
-			"Speaker", "Speaker",
-			"Headphone", "Headphone Jack";
-		simple-audio-card,routing =
-			"Headphone Jack", "HP_L",
-			"Headphone Jack", "HP_R",
-			"Speaker", "SPK_LP",
-			"Speaker", "SPK_LN",
-			"Speaker", "SPK_RP",
-			"Speaker", "SPK_RN",
-			"LINPUT1", "Mic Jack",
-			"LINPUT3", "Mic Jack",
-			"RINPUT1", "Mic Jack",
-			"RINPUT2", "Mic Jack";
-
-		simple-audio-card,cpu {
-			sound-dai = <&sai2>;
-		};
-
-		dailink_master: simple-audio-card,codec {
-			sound-dai = <&codec>;
-			clocks = <&clks IMX6UL_CLK_SAI2>;
-		};
-	};
 };
 
 &clks {
@@ -148,42 +121,11 @@
 
 
 &lcdif {
-	pinctrl-names = "default";
-	pinctrl-0 = <&pinctrl_lcdif_dat
-		     &pinctrl_lcdif_ctrl>;
-	display = <&display0>;
-	status = "okay";
-
-	display0: display {
-		bits-per-pixel = <16>;
-		bus-width = <24>;
-
-		display-timings {
-			native-mode = <&timing0>;
-
-			timing0: timing0 {
-				clock-frequency = <9200000>;
-				hactive = <480>;
-				vactive = <272>;
-				hfront-porch = <8>;
-				hback-porch = <4>;
-				hsync-len = <41>;
-				vback-porch = <2>;
-				vfront-porch = <4>;
-				vsync-len = <10>;
-				hsync-active = <0>;
-				vsync-active = <0>;
-				de-active = <1>;
-				pixelclk-active = <0>;
-			};
-		};
-	};
+	status = "disabled";
 };
 
 &pwm1 {
-	pinctrl-names = "default";
-	pinctrl-0 = <&pinctrl_pwm1>;
-	status = "okay";
+	status = "disabled";
 };
 
 &qspi {
@@ -208,7 +150,7 @@
 	assigned-clock-parents = <&clks IMX6UL_CLK_PLL4_AUDIO_DIV>;
 	assigned-clock-rates = <0>, <12288000>;
 	fsl,sai-mclk-direction-output;
-	status = "okay";
+	status = "disabled";
 };
 
 &snvs_poweroff {
@@ -216,12 +158,7 @@
 };
 
 &tsc {
-	pinctrl-names = "default";
-	pinctrl-0 = <&pinctrl_tsc>;
-	xnur-gpio = <&gpio1 3 GPIO_ACTIVE_LOW>;
-	measure-delay-time = <0xffff>;
-	pre-charge-time = <0xfff>;
-	status = "okay";
+	status = "disabled";
 };
 
 &uart1 {
@@ -264,7 +201,10 @@
 };
 
 &adc1 {
+	pinctrl-names = "default";
+	pinctrl-0 = <&pinctrl_adc1>;
 	status = "okay";
+	vref-supply = <&reg_vref_3v3>;
 };
 
 &iomuxc {
@@ -406,12 +346,6 @@
 		>;
 	};
 
-	pinctrl_pwm1: pwm1grp {
-		fsl,pins = <
-			MX6UL_PAD_GPIO1_IO08__PWM1_OUT   0x110b0
-		>;
-	};
-
 	pinctrl_sim2: sim2grp {
 		fsl,pins = <
 			MX6UL_PAD_CSI_DATA03__SIM2_PORT1_PD		0xb808
@@ -423,15 +357,6 @@
 		>;
 	};
 
-	pinctrl_tsc: tscgrp {
-		fsl,pins = <
-			MX6UL_PAD_GPIO1_IO01__GPIO1_IO01		0xb0
-			MX6UL_PAD_GPIO1_IO02__GPIO1_IO02		0xb0
-			MX6UL_PAD_GPIO1_IO03__GPIO1_IO03		0xb0
-			MX6UL_PAD_GPIO1_IO04__GPIO1_IO04		0xb0
-		>;
-	};
-
 	pinctrl_uart1: uart1grp {
 		fsl,pins = <
 			MX6UL_PAD_UART1_TX_DATA__UART1_DCE_TX 0x1b0b1
@@ -439,14 +364,21 @@
 		>;
 	};
 
-	pinctrl_uart2: uart2grp {
-		fsl,pins = <
-			MX6UL_PAD_UART2_TX_DATA__UART2_DCE_TX	0x1b0b1
-			MX6UL_PAD_UART2_RX_DATA__UART2_DCE_RX	0x1b0b1
-			MX6UL_PAD_UART3_RX_DATA__UART2_DCE_RTS	0x1b0b1
-			MX6UL_PAD_UART3_TX_DATA__UART2_DCE_CTS	0x1b0b1
-		>;
-	};
+        pinctrl_uart2: uart2grp {
+                fsl,pins = <
+                MX6UL_PAD_UART2_TX_DATA__UART2_DCE_TX   0x1b0b1
+                MX6UL_PAD_UART2_RX_DATA__UART2_DCE_RX   0x1b0b1
+                MX6UL_PAD_UART2_CTS_B__UART2_DCE_CTS   0x1b0b1
+                >;
+        };
+
+        pinctrl_uart4: uart4grp {
+                fsl,pins = <
+                MX6UL_PAD_UART4_TX_DATA__UART4_DCE_TX   0x1b0b1
+                MX6UL_PAD_UART4_RX_DATA__UART4_DCE_RX   0x1b0b1
+                MX6UL_PAD_LCD_HSYNC__UART4_DCE_CTS   0x1b0b1
+                >;
+        };
 
 	pinctrl_usdhc2: usdhc2grp {
 		fsl,pins = <
@@ -469,7 +401,32 @@
             fsl,pins = <
                     MX6UL_PAD_JTAG_TCK__GPIO1_IO14    0x30b0
                     MX6UL_PAD_JTAG_TRST_B__GPIO1_IO15    0x30b0
+
+                    /* temporary gpio as gpio */
+		    MX6UL_PAD_NAND_WP_B__GPIO4_IO11    0x30b0
+                    MX6UL_PAD_JTAG_TMS__GPIO1_IO11    0x30b0
+                    MX6UL_PAD_LCD_DATA10__GPIO3_IO15    0x30b0
+                    MX6UL_PAD_LCD_DATA11__GPIO3_IO16    0x30b0
+                    MX6UL_PAD_LCD_DATA12__GPIO3_IO17    0x30b0
+                    MX6UL_PAD_LCD_DATA13__GPIO3_IO18    0x30b0
+                    MX6UL_PAD_NAND_DQS__GPIO4_IO16    0x30b0
+                    MX6UL_PAD_JTAG_TDI__GPIO1_IO13    0x30b0
+                    MX6UL_PAD_LCD_DATA18__GPIO3_IO23    0x30b0
+                    MX6UL_PAD_LCD_DATA15__GPIO3_IO20    0x30b0
+                    MX6UL_PAD_LCD_DATA14__GPIO3_IO19    0x30b0
+                    MX6UL_PAD_UART2_RTS_B__GPIO1_IO23    0x30b0
+                    MX6UL_PAD_GPIO1_IO05__GPIO1_IO05    0x30b0
             >;
         };
+
+	pinctrl_adc1: adc1grp {
+		fsl,pins = <
+			MX6UL_PAD_GPIO1_IO01__GPIO1_IO01        0xb0
+			MX6UL_PAD_GPIO1_IO02__GPIO1_IO02        0xb0
+			MX6UL_PAD_GPIO1_IO03__GPIO1_IO03        0xb0
+			MX6UL_PAD_GPIO1_IO04__GPIO1_IO04        0xb0
+			MX6UL_PAD_GPIO1_IO08__GPIO1_IO08        0xb0
+		>;
+	};
 
 };
