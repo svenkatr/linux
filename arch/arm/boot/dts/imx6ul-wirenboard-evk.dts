@@ -12,8 +12,8 @@
 #include "imx6ul.dtsi"
 
 / {
-	model = "Wiren Board rev. 6.0 (i.MX6UL) EVK Board";
-	compatible = "contactless,imx6ul-wirenboard-evk", "fsl,imx6ul-14x14-evk", "fsl,imx6ul";
+	model = "Wiren Board rev. 6.0.1 (i.MX6UL)";
+	compatible = "contactless,imx6ul-wirenboard60", "contactless,imx6ul-wirenboard-evk", "fsl,imx6ul-14x14-evk", "fsl,imx6ul";
 
 	chosen {
 		stdout-path = &uart1;
