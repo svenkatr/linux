@@ -124,8 +124,10 @@
 	status = "disabled";
 };
 
-&pwm1 {
-	status = "disabled";
+&pwm4 {
+	pinctrl-names = "default";
+	pinctrl-0 = <&pinctrl_pwm4_m17>;
+	status = "okay";
 };
 
 &qspi {
@@ -429,4 +431,9 @@
 		>;
 	};
 
+	pinctrl_pwm4_m17: pwm4grp {
+		fsl,pins = <
+			MX6UL_PAD_GPIO1_IO05__PWM4_OUT	0x30b0
+		>;
+	};
 };
