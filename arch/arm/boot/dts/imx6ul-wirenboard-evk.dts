@@ -82,7 +82,37 @@
 		pu-gpios = <&gpio1 13 0>;
 	};
 
+	lirc-rfm69 {
+		compatible = "lirc-pwm";
 
+		pinctrl-names = "default";
+		pinctrl-0 = <&pinctrl_rfm69_dio2>;
+
+		gpio-recv = <&gpio3 14 0>;
+		gpio-recv-disable-filter;
+	};
+
+	spi-rfm69 {
+		compatible = "spi-gpio";
+
+		pinctrl-names = "default";
+		pinctrl-0 = <&pinctrl_rfm69_spi_irq>;
+		status = "okay";
+
+		gpio-sck = <&gpio3 25 0>;
+		gpio-mosi = <&gpio3 27 0>;
+		gpio-miso = <&gpio3 28 0>;
+		cs-gpios = <&gpio3 26 0>;
+		num-chipselects = <1>;
+		#address-cells = <1>;
+		#size-cells = <0>;
+
+		spidev@0 {
+			compatible = "hoperf,rfm69w";
+			spi-max-frequency = <10000>;
+			reg = <0>;
+		};
+	};
 };
 
 &clks {
@@ -465,6 +495,22 @@
 		fsl,pins = <
                     MX6UL_PAD_JTAG_TMS__GPIO1_IO11    0x30b0
                     MX6UL_PAD_JTAG_TDI__GPIO1_IO13    0x30b0
+	        >;
+        };
+
+        pinctrl_rfm69_spi_irq: rfm69spigrp {
+		fsl,pins = <
+                    MX6UL_PAD_LCD_DATA23__GPIO3_IO28    0x30b0
+                    MX6UL_PAD_LCD_DATA22__GPIO3_IO27    0x30b0
+                    MX6UL_PAD_LCD_DATA21__GPIO3_IO26    0x30b0
+                    MX6UL_PAD_LCD_DATA20__GPIO3_IO25    0x30b0
+                    MX6UL_PAD_LCD_DATA09__GPIO3_IO14    0x30b0
+	        >;
+        };
+
+        pinctrl_rfm69_dio2: rfm69diogrp {
+		fsl,pins = <
+                    MX6UL_PAD_LCD_DATA08__GPIO3_IO13    0x30b0
 	        >;
         };
 
