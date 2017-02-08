@@ -170,6 +170,15 @@
 	pinctrl-names = "default";
 	pinctrl-0 = <&pinctrl_uart2>;
 	uart-has-rtscts;
+	linux,rs485-enabled-at-boot-time;
+	status = "okay";
+};
+
+&uart4 {
+	pinctrl-names = "default";
+	pinctrl-0 = <&pinctrl_uart4>;
+	uart-has-rtscts;
+	linux,rs485-enabled-at-boot-time;
 	status = "okay";
 };
 
