@@ -42,26 +42,25 @@
 
 	};
 
-        leds {
-            compatible = "gpio-leds";
-            pinctrl-names = "default";
-            pinctrl-0 = <&pinctrl_leds_pin_gpio>;
+	leds {
+		compatible = "gpio-leds";
+		pinctrl-names = "default";
+		pinctrl-0 = <&pinctrl_leds_pin_gpio>;
 
-            green {
-                label = "green";
-                gpios = <&gpio1 15 0>;
-                linux,default-trigger = "default-off";
-                default-state = "on";
-                open-drain;
-            };
+		green {
+			label = "green";
+			gpios = <&gpio1 15 0>;
+			linux,default-trigger = "default-off";
+			default-state = "on";
+			open-drain;
+		};
 
-            red {
-                label = "red";
-                gpios = <&gpio1 14 0>;
-                linux,default-trigger = "timer";
-            };
-        };
-
+		red {
+			label = "red";
+			gpios = <&gpio1 14 0>;
+			linux,default-trigger = "timer";
+		};
+	};
 };
 
 &clks {
@@ -364,21 +363,21 @@
 		>;
 	};
 
-        pinctrl_uart2: uart2grp {
-                fsl,pins = <
-                MX6UL_PAD_UART2_TX_DATA__UART2_DCE_TX   0x1b0b1
-                MX6UL_PAD_UART2_RX_DATA__UART2_DCE_RX   0x1b0b1
-                MX6UL_PAD_UART2_CTS_B__UART2_DCE_CTS   0x1b0b1
-                >;
-        };
+	pinctrl_uart2: uart2grp {
+		fsl,pins = <
+		MX6UL_PAD_UART2_TX_DATA__UART2_DCE_TX   0x1b0b1
+		MX6UL_PAD_UART2_RX_DATA__UART2_DCE_RX   0x1b0b1
+		MX6UL_PAD_UART2_CTS_B__UART2_DCE_CTS   0x1b0b1
+		>;
+	};
 
-        pinctrl_uart4: uart4grp {
-                fsl,pins = <
-                MX6UL_PAD_UART4_TX_DATA__UART4_DCE_TX   0x1b0b1
-                MX6UL_PAD_UART4_RX_DATA__UART4_DCE_RX   0x1b0b1
-                MX6UL_PAD_LCD_HSYNC__UART4_DCE_CTS   0x1b0b1
-                >;
-        };
+	pinctrl_uart4: uart4grp {
+		fsl,pins = <
+		MX6UL_PAD_UART4_TX_DATA__UART4_DCE_TX   0x1b0b1
+		MX6UL_PAD_UART4_RX_DATA__UART4_DCE_RX   0x1b0b1
+		MX6UL_PAD_LCD_HSYNC__UART4_DCE_CTS   0x1b0b1
+		>;
+	};
 
 	pinctrl_usdhc2: usdhc2grp {
 		fsl,pins = <
@@ -397,27 +396,27 @@
 		>;
 	};
 
-        pinctrl_leds_pin_gpio: leds_pin_gpio {
-            fsl,pins = <
-                    MX6UL_PAD_JTAG_TCK__GPIO1_IO14    0x30b0
-                    MX6UL_PAD_JTAG_TRST_B__GPIO1_IO15    0x30b0
-
-                    /* temporary gpio as gpio */
-		    MX6UL_PAD_NAND_WP_B__GPIO4_IO11    0x30b0
-                    MX6UL_PAD_JTAG_TMS__GPIO1_IO11    0x30b0
-                    MX6UL_PAD_LCD_DATA10__GPIO3_IO15    0x30b0
-                    MX6UL_PAD_LCD_DATA11__GPIO3_IO16    0x30b0
-                    MX6UL_PAD_LCD_DATA12__GPIO3_IO17    0x30b0
-                    MX6UL_PAD_LCD_DATA13__GPIO3_IO18    0x30b0
-                    MX6UL_PAD_NAND_DQS__GPIO4_IO16    0x30b0
-                    MX6UL_PAD_JTAG_TDI__GPIO1_IO13    0x30b0
-                    MX6UL_PAD_LCD_DATA18__GPIO3_IO23    0x30b0
-                    MX6UL_PAD_LCD_DATA15__GPIO3_IO20    0x30b0
-                    MX6UL_PAD_LCD_DATA14__GPIO3_IO19    0x30b0
-                    MX6UL_PAD_UART2_RTS_B__GPIO1_IO23    0x30b0
-                    MX6UL_PAD_GPIO1_IO05__GPIO1_IO05    0x30b0
-            >;
-        };
+	pinctrl_leds_pin_gpio: leds_pin_gpio {
+		fsl,pins = <
+			MX6UL_PAD_JTAG_TCK__GPIO1_IO14    0x30b0
+			MX6UL_PAD_JTAG_TRST_B__GPIO1_IO15    0x30b0
+			
+			/* temporary gpio as gpio */
+			MX6UL_PAD_NAND_WP_B__GPIO4_IO11    0x30b0
+			MX6UL_PAD_JTAG_TMS__GPIO1_IO11    0x30b0
+			MX6UL_PAD_LCD_DATA10__GPIO3_IO15    0x30b0
+			MX6UL_PAD_LCD_DATA11__GPIO3_IO16    0x30b0
+			MX6UL_PAD_LCD_DATA12__GPIO3_IO17    0x30b0
+			MX6UL_PAD_LCD_DATA13__GPIO3_IO18    0x30b0
+			MX6UL_PAD_NAND_DQS__GPIO4_IO16    0x30b0
+			MX6UL_PAD_JTAG_TDI__GPIO1_IO13    0x30b0
+			MX6UL_PAD_LCD_DATA18__GPIO3_IO23    0x30b0
+			MX6UL_PAD_LCD_DATA15__GPIO3_IO20    0x30b0
+			MX6UL_PAD_LCD_DATA14__GPIO3_IO19    0x30b0
+			MX6UL_PAD_UART2_RTS_B__GPIO1_IO23    0x30b0
+			MX6UL_PAD_GPIO1_IO05__GPIO1_IO05    0x30b0
+		>;
+	};
 
 	pinctrl_adc1: adc1grp {
 		fsl,pins = <
