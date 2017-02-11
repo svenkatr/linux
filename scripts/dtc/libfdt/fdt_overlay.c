@@ -359,9 +359,6 @@ static int overlay_fixup_one_phandle(void *fdt, void *fdto,
 	int symbol_off, fixup_off;
 	int prop_len;
 
-	if (symbols_off < 0)
-		return symbols_off;
-
 	symbol_path = fdt_getprop(fdt, symbols_off, label,
 				  &prop_len);
 	if (!symbol_path)
@@ -495,9 +492,7 @@ static int overlay_fixup_phandles(void *fdt, void *fdto)
 
 	/* We can have overlays without any fixups */
 	fixups_off = fdt_path_offset(fdto, "/__fixups__");
-	if (fixups_off == -FDT_ERR_NOTFOUND)
-		return 0; /* nothing to do */
-	if (fixups_off < 0)
+	if ((fixups_off < 0 && (fixups_off != -FDT_ERR_NOTFOUND)))
 		return fixups_off;
 
 	/* And base DTs without symbols */

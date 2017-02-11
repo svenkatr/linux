@@ -32,7 +32,7 @@ extern void yyerror(char const *s);
 		treesource_error = true; \
 	} while (0)
 
-extern struct dt_info *parser_output;
+extern struct boot_info *the_boot_info;
 extern bool treesource_error;
 %}
 
@@ -74,8 +74,8 @@ extern bool treesource_error;
 
 %type <data> propdata
 %type <data> propdataprefix
-%type <flags> header
-%type <flags> headers
+%type <flags> versioninfo
+%type <flags> plugindecl
 %type <re> memreserve
 %type <re> memreserves
 %type <array> arrayprefix
@@ -106,31 +106,33 @@ extern bool treesource_error;
 %%
 
 sourcefile:
-	  headers memreserves devicetree
+	  versioninfo plugindecl memreserves devicetree
 		{
-			parser_output = build_dt_info($1, $2, $3,
-			                              guess_boot_cpuid($3));
+			the_boot_info = build_boot_info($1 | $2, $3, $4,
+							guess_boot_cpuid($4));
 		}
 	;
 
-header:
+versioninfo:
+	v1tag
+		{
+			$$ = DTSVF_V1;
+		}
+	;
+
+v1tag:
 	  DT_V1 ';'
-		{
-			$$ = DTSF_V1;
-		}
-	| DT_V1 ';' DT_PLUGIN ';'
-		{
-			$$ = DTSF_V1 | DTSF_PLUGIN;
-		}
-	;
+	| DT_V1
+	| DT_V1 ';' v1tag
 
-headers:
-	  header
-	| header headers
+plugindecl:
+	DT_PLUGIN ';'
 		{
-			if ($2 != $1)
-				ERROR(&@2, "Header flags don't match earlier ones");
-			$$ = $1;
+			$$ = DTSVF_PLUGIN;
+		}
+	| /* empty */
+		{
+			$$ = 0;
 		}
 	;
 
@@ -182,10 +184,19 @@ devicetree:
 		{
 			struct node *target = get_node_by_ref($1, $2);
 
-			if (target)
+			if (target) {
 				merge_nodes(target, $3);
-			else
-				ERROR(&@2, "Label or path %s not found", $2);
+			} else {
+				/*
+				 * We rely on the rule being always:
+				 *   versioninfo plugindecl memreserves devicetree
+				 * so $-1 is what we want (plugindecl)
+				 */
+				if ($<flags>-1 & DTSVF_PLUGIN)
+					add_orphan_node($1, $3, $2);
+				else
+					ERROR(&@2, "Label or path %s not found", $2);
+			}
 			$$ = $1;
 		}
 	| devicetree DT_DEL_NODE DT_REF ';'
@@ -199,6 +210,11 @@ devicetree:
 
 
 			$$ = $1;
+		}
+	| /* empty */
+		{
+			/* build empty node */
+			$$ = name_node(build_node(NULL, NULL), "");
 		}
 	;
 

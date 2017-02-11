@@ -1117,16 +1117,16 @@ YY_RULE_SETUP
 			if (d.len == 1) {
 				lexical_error("Empty character literal");
 				yylval.integer = 0;
-			} else {
-				yylval.integer = (unsigned char)d.val[0];
-
-				if (d.len > 2)
-					lexical_error("Character literal has %d"
-						      " characters instead of 1",
-						      d.len - 1);
+				return DT_CHAR_LITERAL;
 			}
 
-			data_free(d);
+			yylval.integer = (unsigned char)d.val[0];
+
+			if (d.len > 2)
+				lexical_error("Character literal has %d"
+					      " characters instead of 1",
+					      d.len - 1);
+
 			return DT_CHAR_LITERAL;
 		}
 	YY_BREAK
