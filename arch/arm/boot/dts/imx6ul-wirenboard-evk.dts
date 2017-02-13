@@ -140,6 +140,51 @@
 			reg = <0>;
 		};
 	};
+
+	mcp6542: watchdog {
+		/* external watchdog timer using mcp6542  */
+		compatible = "linux,wdt-gpio";
+
+		pinctrl-names = "default";
+		pinctrl-0 = <&pinctrl_wdg_gpio>;
+
+		gpios = <&gpio2 12 0>;
+		hw_algo = "toggle";
+		hw_margin_ms = <100>;
+		always-running;
+		timeout-sec = <30>;
+		status = "okay";
+	};
+
+	rtc_i2c {
+		compatible = "i2c-gpio";
+
+		#address-cells = <1>;
+		#size-cells = <0>;
+
+		gpios = <
+			&gpio2 16 0 /* sda */
+			&gpio2 17 0 /* scl */
+		>;
+
+		i2c-gpio,delay-us = <50>;        /* ~20 kHz */
+
+		pinctrl-names = "default";
+		pinctrl-0 = <&pinctrl_rtc_gpio>;
+
+		status = "okay";
+
+		rtc@6f {
+			compatible = "microchip,mcp7941x";
+			reg = <0x6f>;
+		};
+
+		eeprom@57 {
+				compatible = "at,24c02";
+				reg = <0x57>;
+		};
+	};
+
 };
 
 &clks {
@@ -157,13 +202,6 @@
 	pinctrl-names = "default";
 	pinctrl-0 = <&pinctrl_i2c2>;
 	status = "okay";
-
-	codec: wm8960@1a {
-		#sound-dai-cells = <0>;
-		compatible = "wlf,wm8960";
-		reg = <0x1a>;
-		wlf,shared-lrclk;
-	};
 };
 
 &fec1 {
@@ -244,7 +282,7 @@
 &uart1 {
 	pinctrl-names = "default";
 	pinctrl-0 = <&pinctrl_uart1>;
-	status = "okay";
+	status = "disabled";
 };
 
 &uart2 {
@@ -260,6 +298,13 @@
 	pinctrl-0 = <&pinctrl_uart4>;
 	uart-has-rtscts;
 	linux,rs485-enabled-at-boot-time;
+	status = "okay";
+};
+
+&uart6 {
+	pinctrl-names = "default";
+	pinctrl-0 = <&pinctrl_uart6>;
+	uart-has-rtscts;
 	status = "okay";
 };
 
@@ -300,6 +345,7 @@
 
 &iomuxc {
 	pinctrl-names = "default";
+	pinctrl-0 = <&pinctrl_io_gpio>;
 
 	pinctrl_csi1: csi1grp {
 		fsl,pins = <
@@ -372,6 +418,7 @@
 		fsl,pins = <
 			MX6UL_PAD_UART5_TX_DATA__I2C2_SCL 0x4001b8b0
 			MX6UL_PAD_UART5_RX_DATA__I2C2_SDA 0x4001b8b0
+			MX6UL_PAD_SD1_DATA0__GPIO2_IO18 0x30b0 /* INT */
 		>;
 	};
 
@@ -471,6 +518,16 @@
                 >;
         };
 
+        pinctrl_uart6: uart6grp {
+                fsl,pins = <
+	                MX6UL_PAD_CSI_MCLK__UART6_DCE_TX   0x1b0b1
+	                MX6UL_PAD_CSI_PIXCLK__UART6_DCE_RX   0x1b0b1
+	                MX6UL_PAD_CSI_VSYNC__UART6_DCE_RTS   0x1b0b1
+	                MX6UL_PAD_CSI_HSYNC__UART6_DCE_CTS   0x1b0b1
+                >;
+        };
+
+
 	pinctrl_usdhc2: usdhc2grp {
 		fsl,pins = <
 			MX6UL_PAD_NAND_RE_B__USDHC2_CLK     0x17059
@@ -492,17 +549,26 @@
             fsl,pins = <
                     MX6UL_PAD_JTAG_TCK__GPIO1_IO14    0x30b0
                     MX6UL_PAD_JTAG_TRST_B__GPIO1_IO15    0x30b0
+            >;
+        };
 
-                    /* temporary gpio as gpio */
-                    MX6UL_PAD_LCD_DATA10__GPIO3_IO15    0x30b0
-                    MX6UL_PAD_LCD_DATA11__GPIO3_IO16    0x30b0
-                    MX6UL_PAD_LCD_DATA12__GPIO3_IO17    0x30b0
-                    MX6UL_PAD_LCD_DATA13__GPIO3_IO18    0x30b0
-                    MX6UL_PAD_LCD_DATA18__GPIO3_IO23    0x30b0
-                    MX6UL_PAD_LCD_DATA15__GPIO3_IO20    0x30b0
-                    MX6UL_PAD_LCD_DATA14__GPIO3_IO19    0x30b0
-                    MX6UL_PAD_UART2_RTS_B__GPIO1_IO23    0x30b0
-                    MX6UL_PAD_GPIO1_IO05__GPIO1_IO05    0x30b0
+        pinctrl_io_gpio: iogrp {
+            fsl,pins = <
+                    MX6UL_PAD_LCD_DATA10__GPIO3_IO15    0x30b0 /* FET1 */
+                    MX6UL_PAD_LCD_DATA11__GPIO3_IO16    0x30b0 /* FET2 */
+                    MX6UL_PAD_LCD_DATA12__GPIO3_IO17    0x30b0 /* FET3 */
+                    MX6UL_PAD_LCD_DATA13__GPIO3_IO18    0x30b0 /* FET4 */
+                    MX6UL_PAD_LCD_DATA18__GPIO3_IO23    0x30b0 /* RESET_SIM900 */
+                    MX6UL_PAD_LCD_DATA15__GPIO3_IO20    0x30b0 /* POWER_SIM900 */
+                    MX6UL_PAD_LCD_DATA14__GPIO3_IO19    0x30b0 /* STATUS SIM900 */
+                    MX6UL_PAD_SD1_DATA1__GPIO2_IO19     0x30b0 /* Battery STAT1 */
+                    MX6UL_PAD_LCD_DATA19__GPIO3_IO24	0x30b0 /* SIM select */
+            >;
+        };
+
+        pinctrl_wdg_gpio: wdggrp {
+            fsl,pins = <
+                    MX6UL_PAD_UART2_RTS_B__GPIO1_IO23   0x30b0 /* watchdog toggle out */
             >;
         };
 
@@ -544,6 +610,13 @@
                     MX6UL_PAD_LCD_DATA20__GPIO3_IO25    0x30b0
                     MX6UL_PAD_LCD_DATA09__GPIO3_IO14    0x30b0
 	        >;
+        };
+
+        pinctrl_rtc_gpio: rtcgrp {
+		fsl,pins = <
+			MX6UL_PAD_SD1_CMD__GPIO2_IO16	0x30b0 /* RTC_SDA */
+			MX6UL_PAD_SD1_CLK__GPIO2_IO17	0x30b0 /* RTC_SCL */
+		>;
         };
 
         pinctrl_rfm69_dio2: rfm69diogrp {
