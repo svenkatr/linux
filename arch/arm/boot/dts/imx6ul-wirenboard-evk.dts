@@ -285,6 +285,12 @@
 	status = "okay";
 };
 
+&can2 {
+	pinctrl-names = "default";
+	pinctrl-0 = <&pinctrl_flexcan2>;
+	status = "okay";
+};
+
 &usbotg1 {
 	vbus-supply = <&reg_usb1_vbus>;
 	dr_mode = "peripheral";
@@ -372,8 +378,8 @@
 
 	pinctrl_flexcan2: flexcan2grp{
 		fsl,pins = <
-			MX6UL_PAD_UART2_RTS_B__FLEXCAN2_RX	0x1b020
-			MX6UL_PAD_UART2_CTS_B__FLEXCAN2_TX	0x1b020
+			MX6UL_PAD_SD1_DATA3__FLEXCAN2_RX	0x1b020
+			MX6UL_PAD_SD1_DATA2__FLEXCAN2_TX	0x1b020
 		>;
 	};
 
