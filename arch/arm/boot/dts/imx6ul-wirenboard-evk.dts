@@ -256,12 +256,28 @@
 	status = "okay";
 };
 
+// uart on mod1
+&uart3 {
+	pinctrl-names = "default";
+	pinctrl-0 = <&pinctrl_uart3>;
+	uart-has-rtscts;
+	status = "disabled";
+};
+
 &uart4 {
 	pinctrl-names = "default";
 	pinctrl-0 = <&pinctrl_uart4>;
 	uart-has-rtscts;
 	linux,rs485-enabled-at-boot-time;
 	status = "okay";
+};
+
+// uart on mod3
+&uart5 {
+	pinctrl-names = "default";
+	pinctrl-0 = <&pinctrl_uart5>;
+	uart-has-rtscts;
+	status = "disabled";
 };
 
 &uart6 {
@@ -271,10 +287,24 @@
 	status = "okay";
 };
 
+// uart on mod2
+&uart7 {
+	pinctrl-names = "default";
+	pinctrl-0 = <&pinctrl_uart7>;
+	uart-has-rtscts;
+	status = "disabled";
+};
+
 &can2 {
 	pinctrl-names = "default";
 	pinctrl-0 = <&pinctrl_flexcan2>;
 	status = "okay";
+};
+
+&ecspi1 {
+	pinctrl-names = "default";
+	pinctrl-0 = <&pinctrl_ecspi1>;
+	status = "disabled";
 };
 
 &usbotg1 {
@@ -375,11 +405,27 @@
 		>;
 	};
 
+	pinctrl_uart3: uart3grp {
+		fsl,pins = <
+			MX6UL_PAD_UART3_TX_DATA__UART3_DCE_TX	0x1b0b1
+			MX6UL_PAD_UART3_RX_DATA__UART3_DCE_RX	0x1b0b1
+			MX6UL_PAD_UART3_CTS_B__UART3_DCE_CTS	0x1b0b1
+		>;
+	};
+
 	pinctrl_uart4: uart4grp {
 		fsl,pins = <
 			MX6UL_PAD_UART4_TX_DATA__UART4_DCE_TX   0x1b0b1
 			MX6UL_PAD_UART4_RX_DATA__UART4_DCE_RX   0x1b0b1
 			MX6UL_PAD_LCD_HSYNC__UART4_DCE_CTS   0x1b0b1
+		>;
+	};
+
+	pinctrl_uart5: uart5grp {
+		fsl,pins = <
+			MX6UL_PAD_CSI_DATA00__UART5_DCE_TX   0x1b0b1
+			MX6UL_PAD_CSI_DATA01__UART5_DCE_RX   0x1b0b1
+			MX6UL_PAD_GPIO1_IO09__UART5_DCE_CTS  0x1b0b1
 		>;
 	};
 
@@ -389,6 +435,23 @@
 			MX6UL_PAD_CSI_PIXCLK__UART6_DCE_RX   0x1b0b1
 			MX6UL_PAD_CSI_VSYNC__UART6_DCE_RTS   0x1b0b1
 			MX6UL_PAD_CSI_HSYNC__UART6_DCE_CTS   0x1b0b1
+		>;
+	};
+
+	pinctrl_uart7: uart7grp {
+		fsl,pins = <
+			MX6UL_PAD_LCD_DATA16__UART7_DCE_TX   0x1b0b1
+			MX6UL_PAD_LCD_DATA17__UART7_DCE_RX   0x1b0b1
+			MX6UL_PAD_LCD_DATA06__UART7_DCE_CTS  0x1b0b1
+		>;
+	};
+
+	pinctrl_ecspi1: ecspi1grp {
+		fsl,pins = <
+			MX6UL_PAD_CSI_DATA06__ECSPI1_MOSI	0x100b1
+			MX6UL_PAD_CSI_DATA07__ECSPI1_MISO	0x100b1
+			MX6UL_PAD_CSI_DATA04__ECSPI1_SCLK	0x100b1
+			MX6UL_PAD_CSI_DATA05__GPIO4_IO26	0x0b0b1
 		>;
 	};
 
@@ -498,6 +561,39 @@
 	pinctrl_usb2vbus_gpio: usb2vbusgrp {
 		fsl,pins = <
 			MX6UL_PAD_LCD_DATA05__GPIO3_IO10	0x30b0
+		>;
+	};
+
+	pinctrl_mod1_gpio: mod1gpiogrp {
+		fsl,pins = <
+			MX6UL_PAD_UART3_TX_DATA__GPIO1_IO24	0x30b0
+			MX6UL_PAD_UART3_RX_DATA__GPIO1_IO25	0x30b0
+			MX6UL_PAD_UART3_CTS_B__GPIO1_IO26	0x30b0
+		>;
+	};
+
+	pinctrl_mod2_gpio: mod2gpiogrp {
+		fsl,pins = <
+			MX6UL_PAD_LCD_DATA16__GPIO3_IO21	0x30b0
+			MX6UL_PAD_LCD_DATA17__GPIO3_IO22	0x30b0
+			MX6UL_PAD_GPIO1_IO09__GPIO1_IO09	0x30b0
+		>;
+	};
+
+	pinctrl_mod3_uart_gpio: mod3uartgpiogrp {
+		fsl,pins = <
+			MX6UL_PAD_CSI_DATA00__GPIO4_IO21	0x30b0
+			MX6UL_PAD_CSI_DATA01__GPIO4_IO22	0x30b0
+			MX6UL_PAD_LCD_DATA06__GPIO3_IO11	0x30b0
+		>;
+	};
+
+	pinctrl_mod3_spi_gpio: mod3spigpiogrp {
+		fsl,pins = <
+			MX6UL_PAD_CSI_DATA06__GPIO4_IO27	0x30b0
+			MX6UL_PAD_CSI_DATA07__GPIO4_IO28	0x30b0
+			MX6UL_PAD_CSI_DATA04__GPIO4_IO25	0x30b0
+			MX6UL_PAD_CSI_DATA05__GPIO4_IO26	0x30b0
 		>;
 	};
 };
