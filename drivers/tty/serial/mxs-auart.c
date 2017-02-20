@@ -542,7 +542,7 @@ enum hrtimer_restart rs485_rts_timer_callback( struct hrtimer *timer )
 {
 	struct mxs_auart_port* s = container_of(timer, struct mxs_auart_port, rs485_rts_timer);
 
-	mxs_set(AUART_CTRL2_RTS, s, AUART_CTRL2);
+	mxs_set(AUART_CTRL2_RTS, s, REG_CTRL2);
 
 	return HRTIMER_NORESTART;
 }
@@ -636,7 +636,7 @@ static void mxs_auart_tx_chars(struct mxs_auart_port *s, int chars_in_flight)
 			if (s->rs485.flags & SER_RS485_ENABLED) {
 				if (s->rs485.delay_rts_after_send)
 					mdelay(s->rs485.delay_rts_after_send);
-                mxs_set(AUART_CTRL2_RTS, s, AUART_CTRL2);
+                mxs_set(AUART_CTRL2_RTS, s, REG_CTRL2);
 			}
 
 			clear_bit(MXS_AUART_DMA_TX_SYNC, &s->flags);
@@ -683,14 +683,14 @@ static void mxs_auart_tx_chars(struct mxs_auart_port *s, int chars_in_flight)
 				/* 10us and less is probably too low for hrtimers to reliably perform.
 				   Falling back to polling+delay mechanism */
 				
-				while(!(__raw_readl(s->port.membase + AUART_STAT) & AUART_STAT_TXFE)) {
+				while(!(mxs_read(s, REG_STAT) & AUART_STAT_TXFE)) {
 					/* Just wait for TX FIFO empty state */
 				}
 
 				/* If FIFO is empty, we still need to wait the transmit of last char */
 				ndelay(s->rs485_delay_char_tx_nsecs);
 
-				mxs_set(AUART_CTRL2_RTS, s, AUART_CTRL2);
+				mxs_set(AUART_CTRL2_RTS, s, REG_CTRL2);
 			} else {
 				/* RTS will be cleared in timer callback.
 				   Timer can be delayed for 1 char max
@@ -1369,7 +1369,7 @@ static void mxs_auart_start_tx(struct uart_port *u)
 	struct mxs_auart_port *s = to_auart_port(u);
 
 	if (s->rs485.flags & SER_RS485_ENABLED) {
-		mxs_clr(AUART_CTRL2_RTS, s, AUART_CTRL2);
+		mxs_clr(AUART_CTRL2_RTS, s, REG_CTRL2);
 
 		if (s->rs485.delay_rts_before_send)
 			mdelay(s->rs485.delay_rts_before_send);
