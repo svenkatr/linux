@@ -326,16 +326,42 @@
 			phy-mode = "rmii";
 			pinctrl-names = "default";
 			pinctrl-0 = <&mac0_pins_a>;
+			phy-handle = <&ethphy0>;
 			phy-reset-gpios = <&gpio4 13 0>;
 			phy-reset-duration = <100>;
 			status = "okay";
+
+			mdio {
+				#address-cells = <1>;
+				#size-cells = <0>;
+
+				ethphy0: ethernet-phy@0 {
+					compatible = "ethernet-phy-ieee802.3-c22";
+					max-speed = <100>;
+					reg = <0>;
+					smsc,disable-energy-detect;
+				};
+			 };
 		};
 
 		mac1: ethernet@800f4000 {
 			phy-mode = "rmii";
 			pinctrl-names = "default";
 			pinctrl-0 = <&mac1_pins_a>;
+			phy-handle = <&ethphy1>;
 			status = "okay";
+
+			mdio {
+				#address-cells = <1>;
+				#size-cells = <0>;
+
+				ethphy1: ethernet-phy@0 {
+					compatible = "ethernet-phy-ieee802.3-c22";
+					max-speed = <100>;
+					reg = <0>;
+					smsc,disable-energy-detect;
+				};
+			};
 		};
 	};
 
