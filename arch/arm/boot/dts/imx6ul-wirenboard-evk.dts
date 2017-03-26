@@ -46,7 +46,7 @@
 			pinctrl-names = "default";
 			pinctrl-0 = <&pinctrl_usb1vbus_gpio>;
 
-			gpio = <&gpio4 12>;
+			gpio = <&gpio4 12 0>;
 			enable-active-high;
 		};
 
@@ -309,7 +309,7 @@
 
 &usbotg1 {
 	vbus-supply = <&reg_usb1_vbus>;
-	dr_mode = "peripheral";
+	dr_mode = "auto";
 	status = "okay";
 };
 
