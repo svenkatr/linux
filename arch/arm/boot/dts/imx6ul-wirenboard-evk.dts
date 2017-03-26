@@ -145,7 +145,7 @@
 		pinctrl-names = "default";
 		pinctrl-0 = <&pinctrl_wdg_gpio>;
 
-		gpios = <&gpio2 12 0>;
+		gpios = <&gpio1 23 0>;
 		hw_algo = "toggle";
 		hw_margin_ms = <100>;
 		always-running;
