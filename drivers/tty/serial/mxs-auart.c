@@ -1119,6 +1119,7 @@ static void mxs_auart_settermios(struct uart_port *u,
 		ctrl |= AUART_LINECTRL_STP2;
 
 	/* figure out the hardware flow control settings */
+	ctrl2 &= ~(AUART_CTRL2_CTSEN | AUART_CTRL2_RTSEN);
 	if ((cflag & CRTSCTS) && ((s->port.rs485.flags & SER_RS485_ENABLED) == 0)) {
 		/*
 		 * The DMA has a bug(see errata:2836) in mx23.
