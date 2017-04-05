@@ -570,6 +570,14 @@
 				};
 			};
 
+			tempmon: tempmon {
+				compatible = "fsl,imx6sx-tempmon", "fsl,imx6q-tempmon";
+				interrupts = <GIC_SPI 49 IRQ_TYPE_LEVEL_HIGH>;
+				fsl,tempmon = <&anatop>;
+				fsl,tempmon-data = <&ocotp>;
+				clocks = <&clks IMX6UL_CLK_USBPHY1>;
+			};
+
 			usbphy1: usbphy@020c9000 {
 				compatible = "fsl,imx6ul-usbphy", "fsl,imx23-usbphy";
 				reg = <0x020c9000 0x1000>;
