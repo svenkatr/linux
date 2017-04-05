@@ -2587,8 +2587,9 @@ intel_fill_fb_info(struct drm_i915_private *dev_priv,
 			 * We only keep the x/y offsets, so push all of the
 			 * gtt offset into the x/y offsets.
 			 */
-			_intel_adjust_tile_offset(&x, &y, tile_size,
-						  tile_width, tile_height, pitch_tiles,
+			_intel_adjust_tile_offset(&x, &y,
+						  tile_width, tile_height,
+						  tile_size, pitch_tiles,
 						  gtt_offset_rotated * tile_size, 0);
 
 			gtt_offset_rotated += rot_info->plane[i].width * rot_info->plane[i].height;
@@ -2974,6 +2975,9 @@ int skl_check_plane_surface(struct intel_plane_state *plane_state)
 	const struct drm_framebuffer *fb = plane_state->base.fb;
 	unsigned int rotation = plane_state->base.rotation;
 	int ret;
+
+	if (!plane_state->base.visible)
+		return 0;
 
 	/* Rotate src coordinates to match rotated GTT view */
 	if (intel_rotation_90_or_270(rotation))
@@ -4276,10 +4280,10 @@ static void page_flip_completed(struct intel_crtc *intel_crtc)
 	drm_crtc_vblank_put(&intel_crtc->base);
 
 	wake_up_all(&dev_priv->pending_flip_queue);
-	queue_work(dev_priv->wq, &work->unpin_work);
-
 	trace_i915_flip_complete(intel_crtc->plane,
 				 work->pending_flip_obj);
+
+	queue_work(dev_priv->wq, &work->unpin_work);
 }
 
 static int intel_crtc_wait_for_pending_flips(struct drm_crtc *crtc)
@@ -6865,6 +6869,12 @@ static void intel_crtc_disable_noatomic(struct drm_crtc *crtc)
 	}
 
 	state = drm_atomic_state_alloc(crtc->dev);
+	if (!state) {
+		DRM_DEBUG_KMS("failed to disable [CRTC:%d:%s], out of memory",
+			      crtc->base.id, crtc->name);
+		return;
+	}
+
 	state->acquire_ctx = crtc->dev->mode_config.acquire_ctx;
 
 	/* Everything's already locked, -EDEADLK can't happen. */
