@@ -41,6 +41,7 @@ static unsigned int transition_latency;
 
 static u32 *imx6_soc_volt;
 static u32 soc_opp_count;
+static bool soc_is_imx6ul;
 
 static int imx6q_set_target(struct cpufreq_policy *policy, unsigned int index)
 {
@@ -102,7 +103,7 @@ static int imx6q_set_target(struct cpufreq_policy *policy, unsigned int index)
 	 *  - Reprogram pll1_sys_clk and reparent pll1_sw_clk back to it
 	 *  - Disable pll2_pfd2_396m_clk
 	 */
-	if (of_machine_is_compatible("fsl,imx6ul")) {
+	if (soc_is_imx6ul) {
 		/*
 		 * When changing pll1_sw_clk's parent to pll1_sys_clk,
 		 * CPU may run at higher than 528MHz, this will lead to
@@ -210,7 +211,8 @@ static int imx6q_cpufreq_probe(struct platform_device *pdev)
 		goto put_clk;
 	}
 
-	if (of_machine_is_compatible("fsl,imx6ul")) {
+	if (of_machine_is_compatible("fsl,imx6ul") ||
+			of_machine_is_compatible("fsl,imx6ull")) {
 		pll2_bus_clk = clk_get(cpu_dev, "pll2_bus");
 		secondary_sel_clk = clk_get(cpu_dev, "secondary_sel");
 		if (IS_ERR(pll2_bus_clk) || IS_ERR(secondary_sel_clk)) {
@@ -218,6 +220,7 @@ static int imx6q_cpufreq_probe(struct platform_device *pdev)
 			ret = -ENOENT;
 			goto put_clk;
 		}
+		soc_is_imx6ul = true;
 	}
 
 	arm_reg = regulator_get(cpu_dev, "arm");
