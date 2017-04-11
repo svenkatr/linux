@@ -545,8 +545,8 @@
 
 	pinctrl_rtc_gpio: rtcgrp {
 		fsl,pins = <
-			MX6UL_PAD_SD1_CMD__GPIO2_IO16	0x30b0 /* RTC_SDA */
-			MX6UL_PAD_SD1_CLK__GPIO2_IO17	0x30b0 /* RTC_SCL */
+			MX6UL_PAD_SD1_CMD__GPIO2_IO16	0x1b0b0 /* RTC_SDA */
+			MX6UL_PAD_SD1_CLK__GPIO2_IO17	0x1b0b0 /* RTC_SCL */
 		>;
 	};
 
