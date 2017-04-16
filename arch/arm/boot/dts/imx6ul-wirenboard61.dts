@@ -97,8 +97,8 @@
 		pinctrl-names = "default";
 		pinctrl-0 = <&pinctrl_w1_gpio>;
 
-		gpios = <&gpio4 11 0>;
-		pu-gpios = <&gpio4 16 0>;
+		gpios = <&gpio1 11 0>;
+		pu-gpios = <&gpio1 13 0>;
 	};
 
 	/* Enable 1-wire network on terminal block W2 */
@@ -107,8 +107,8 @@
 		pinctrl-names = "default";
 		pinctrl-0 = <&pinctrl_w2_gpio>;
 
-		gpios = <&gpio1 11 0>;
-		pu-gpios = <&gpio1 13 0>;
+		gpios = <&gpio4 12 0>;
+		pu-gpios = <&gpio4 16 0>;
 	};
 
 	lirc-rfm69 {
@@ -521,15 +521,15 @@
 
 	pinctrl_w1_gpio: w1grp {
 		fsl,pins = <
-			MX6UL_PAD_NAND_WP_B__GPIO4_IO11	0x30b0
-			MX6UL_PAD_NAND_DQS__GPIO4_IO16	0x30b0
+			MX6UL_PAD_JTAG_TMS__GPIO1_IO11	0x30b0
+			MX6UL_PAD_JTAG_TDI__GPIO1_IO13	0x30b0
 		>;
 	};
 
 	pinctrl_w2_gpio: w2grp {
 		fsl,pins = <
-			MX6UL_PAD_JTAG_TMS__GPIO1_IO11	0x30b0
-			MX6UL_PAD_JTAG_TDI__GPIO1_IO13	0x30b0
+			MX6UL_PAD_NAND_READY_B__GPIO4_IO12	0x30b0
+			MX6UL_PAD_NAND_DQS__GPIO4_IO16	0x30b0
 		>;
 	};
 
