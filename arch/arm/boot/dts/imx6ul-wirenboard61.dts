@@ -187,6 +187,54 @@
 		};
 	};
 
+	i2c_eeprom1 {
+		compatible = "i2c-gpio";
+
+		#address-cells = <1>;
+		#size-cells = <0>;
+
+		gpios = <
+			&gpio3 3 0 /* sda */
+			&gpio3 1 0 /* scl */
+		>;
+
+		i2c-gpio,delay-us = <50>;        /* ~20 kHz */
+
+		pinctrl-names = "default";
+		pinctrl-0 = <&pinctrl_i2c_gpio_eeprom1>;
+
+		status = "okay";
+
+		eeprom@28 {
+			compatible = "at,24c02";
+			reg = <0x28>;
+		};
+	};
+
+	i2c_eeprom2 {
+		compatible = "i2c-gpio";
+
+		#address-cells = <1>;
+		#size-cells = <0>;
+
+		gpios = <
+			&gpio3 6 0 /* sda */
+			&gpio3 7 0 /* scl */
+		>;
+
+		i2c-gpio,delay-us = <50>;        /* ~20 kHz */
+
+		pinctrl-names = "default";
+		pinctrl-0 = <&pinctrl_i2c_gpio_eeprom2>;
+
+		status = "okay";
+
+		eeprom@28 {
+			compatible = "at,24c02";
+			reg = <0x28>;
+		};
+	};
+
 };
 
 &clks {
@@ -547,6 +595,20 @@
 		fsl,pins = <
 			MX6UL_PAD_SD1_CMD__GPIO2_IO16	0x1b0b0 /* RTC_SDA */
 			MX6UL_PAD_SD1_CLK__GPIO2_IO17	0x1b0b0 /* RTC_SCL */
+		>;
+	};
+
+	pinctrl_i2c_gpio_eeprom1: eeprom1grp {
+		fsl,pins = <
+			MX6UL_PAD_LCD_VSYNC__GPIO3_IO03	0x1b0b0 /* EEPR_SDA-1 */
+			MX6UL_PAD_LCD_ENABLE__GPIO3_IO01	0x1b0b0 /* EEPR_SCL-1 */
+		>;
+	};
+
+	pinctrl_i2c_gpio_eeprom2: eeprom2grp {
+		fsl,pins = <
+			MX6UL_PAD_LCD_DATA01__GPIO3_IO06	0x1b0b0 /* EEPR_SDA-2 */
+			MX6UL_PAD_LCD_DATA02__GPIO3_IO07	0x1b0b0 /* EEPR_SCL-2 */
 		>;
 	};
 
