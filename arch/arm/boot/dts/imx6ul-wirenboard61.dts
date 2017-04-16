@@ -182,14 +182,14 @@
 
 		status = "okay";
 
-		rtc@6f {
-			compatible = "microchip,mcp7941x";
-			reg = <0x6f>;
+		rtc@51 {
+			compatible = "nxp,pcf8563";
+			reg = <0x51>;
 		};
 
-		eeprom@57 {
-			compatible = "at,24c02";
-			reg = <0x57>;
+		lm75@48 {
+			compatible = "lm75";
+			reg = <0x48>;
 		};
 	};
 
