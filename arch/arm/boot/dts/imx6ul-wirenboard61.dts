@@ -89,6 +89,12 @@
 			gpios = <&gpio1 14 0>;
 			linux,default-trigger = "timer";
 		};
+
+		eth {
+			label = "eth";
+			gpios = <&gpio3 4 0>;
+			linux,default-trigger = "default-off";
+		};
 	};
 
 	/* Enable 1-wire network on terminal block W1 */
@@ -526,6 +532,7 @@
 		fsl,pins = <
 			MX6UL_PAD_JTAG_TCK__GPIO1_IO14	0x30b0
 			MX6UL_PAD_JTAG_TRST_B__GPIO1_IO15	0x30b0
+			MX6UL_PAD_LCD_RESET__GPIO3_IO04	0x30b0
 		>;
 	};
 
