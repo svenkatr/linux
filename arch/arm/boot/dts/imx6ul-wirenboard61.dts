@@ -51,7 +51,7 @@
 			pinctrl-names = "default";
 			pinctrl-0 = <&pinctrl_usb1vbus_gpio>;
 
-			gpio = <&gpio4 12 0>;
+			gpio = <&gpio4 11 0>;
 			enable-active-high;
 		};
 
@@ -156,7 +156,7 @@
 		pinctrl-names = "default";
 		pinctrl-0 = <&pinctrl_wdg_gpio>;
 
-		gpios = <&gpio1 23 0>;
+		gpios = <&gpio2 19 0>;
 		hw_algo = "toggle";
 		hw_margin_ms = <100>;
 		always-running;
@@ -544,19 +544,23 @@
 			MX6UL_PAD_LCD_DATA11__GPIO3_IO16	0x30b0 /* FET2 */
 			MX6UL_PAD_LCD_DATA12__GPIO3_IO17	0x30b0 /* FET3 */
 			MX6UL_PAD_LCD_DATA13__GPIO3_IO18	0x30b0 /* FET4 */
-			MX6UL_PAD_LCD_DATA18__GPIO3_IO23	0x30b0 /* RESET_SIM900 */
+			MX6UL_PAD_CSI_DATA02__GPIO4_IO23	0x30b0 /* RESET_SIM900 */
 			MX6UL_PAD_LCD_DATA15__GPIO3_IO20	0x30b0 /* POWER_SIM900 */
 			MX6UL_PAD_LCD_DATA14__GPIO3_IO19	0x30b0 /* STATUS SIM900 */
-			MX6UL_PAD_SD1_DATA1__GPIO2_IO19	 0x30b0 /* Battery STAT1 */
 			MX6UL_PAD_LCD_DATA19__GPIO3_IO24	0x30b0 /* SIM select */
+			MX6UL_PAD_UART1_CTS_B__GPIO1_IO18	0x30b0 /* Battery STAT1 */
+			MX6UL_PAD_UART1_RTS_B__GPIO1_IO19	0x30b0 /* Battery STAT2 */
 			MX6UL_PAD_JTAG_TDO__CCM_CLKO2	0xb0 /* 24MHz clock output */
 			MX6UL_PAD_ENET2_RX_ER__GPIO2_IO15	0x30b0 /* 5V enable */
+			MX6UL_PAD_LCD_DATA18__GPIO3_IO23	0x30b0 /* CAN_OFF */
+			MX6UL_PAD_LCD_DATA04__GPIO3_IO09	0x30b0 /* V_OUT_ON */
+			MX6UL_PAD_LCD_DATA03__GPIO3_IO08	0x30b0 /* V_OUT_ST */
 		>;
 	};
 
 	pinctrl_wdg_gpio: wdggrp {
 		fsl,pins = <
-			MX6UL_PAD_UART2_RTS_B__GPIO1_IO23   0x30b0 /* watchdog toggle out */
+			MX6UL_PAD_SD1_DATA1__GPIO2_IO19	 0x30b0 /* watchdog toggle out */
 		>;
 	};
 
@@ -566,6 +570,7 @@
 			MX6UL_PAD_GPIO1_IO02__GPIO1_IO02        0xb0
 			MX6UL_PAD_GPIO1_IO03__GPIO1_IO03        0xb0
 			MX6UL_PAD_GPIO1_IO04__GPIO1_IO04        0xb0
+			MX6UL_PAD_GPIO1_IO05__GPIO1_IO05        0xb0
 			MX6UL_PAD_GPIO1_IO08__GPIO1_IO08        0xb0
 		>;
 	};
@@ -629,7 +634,7 @@
 
 	pinctrl_usb1vbus_gpio: usb1vbusgrp {
 		fsl,pins = <
-			MX6UL_PAD_NAND_READY_B__GPIO4_IO12	0x30b0
+			MX6UL_PAD_NAND_WP_B__GPIO4_IO11	0x30b0 /* PRTCTL3 */
 		>;
 	};
 
