@@ -331,7 +331,7 @@
 	status = "okay";
 };
 
-// uart on mod3
+// uart on mod2
 &uart5 {
 	pinctrl-names = "default";
 	pinctrl-0 = <&pinctrl_uart5>;
@@ -346,7 +346,7 @@
 	status = "okay";
 };
 
-// uart on mod2
+// uart on mod3
 &uart7 {
 	pinctrl-names = "default";
 	pinctrl-0 = <&pinctrl_uart7>;
@@ -483,6 +483,7 @@
 		fsl,pins = <
 			MX6UL_PAD_CSI_DATA00__UART5_DCE_TX   0x1b0b1
 			MX6UL_PAD_CSI_DATA01__UART5_DCE_RX   0x1b0b1
+			MX6UL_PAD_GPIO1_IO09__UART5_DCE_CTS  0x1b0b1
 		>;
 	};
 
@@ -499,6 +500,7 @@
 		fsl,pins = <
 			MX6UL_PAD_LCD_DATA16__UART7_DCE_TX   0x1b0b1
 			MX6UL_PAD_LCD_DATA17__UART7_DCE_RX   0x1b0b1
+			MX6UL_PAD_LCD_DATA06__UART7_DCE_CTS  0x1b0b1
 		>;
 	};
 
@@ -647,16 +649,16 @@
 
 	pinctrl_mod2_gpio: mod2gpiogrp {
 		fsl,pins = <
-			MX6UL_PAD_LCD_DATA16__GPIO3_IO21	0x30b0
-			MX6UL_PAD_LCD_DATA17__GPIO3_IO22	0x30b0
+			MX6UL_PAD_CSI_DATA00__GPIO4_IO21	0x30b0
+			MX6UL_PAD_CSI_DATA01__GPIO4_IO22	0x30b0
 			MX6UL_PAD_GPIO1_IO09__GPIO1_IO09	0x30b0
 		>;
 	};
 
 	pinctrl_mod3_uart_gpio: mod3uartgpiogrp {
 		fsl,pins = <
-			MX6UL_PAD_CSI_DATA00__GPIO4_IO21	0x30b0
-			MX6UL_PAD_CSI_DATA01__GPIO4_IO22	0x30b0
+			MX6UL_PAD_LCD_DATA16__GPIO3_IO21	0x30b0
+			MX6UL_PAD_LCD_DATA17__GPIO3_IO22	0x30b0
 			MX6UL_PAD_LCD_DATA06__GPIO3_IO11	0x30b0
 		>;
 	};
