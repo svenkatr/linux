@@ -291,9 +291,9 @@
 	};
 };
 
-&pwm4 {
+&pwm1 {
 	pinctrl-names = "default";
-	pinctrl-0 = <&pinctrl_pwm4_m17>;
+	pinctrl-0 = <&pinctrl_pwm1>;
 	status = "okay";
 };
 
@@ -594,9 +594,9 @@
 		>;
 	};
 
-	pinctrl_pwm4_m17: pwm4grp {
+	pinctrl_pwm1: pwm1grp {
 		fsl,pins = <
-			MX6UL_PAD_GPIO1_IO05__PWM4_OUT	0x30b0
+			MX6UL_PAD_LCD_DATA00__PWM1_OUT	0x30b0
 		>;
 	};
 
