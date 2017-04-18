@@ -635,7 +635,7 @@ static void mxs_auart_tx_chars(struct mxs_auart_port *s, int chars_in_flight)
 			if (s->port.rs485.flags & SER_RS485_ENABLED) {
 				if (s->port.rs485.delay_rts_after_send)
 					mdelay(s->port.rs485.delay_rts_after_send);
-                mxs_set(AUART_CTRL2_RTS, s, REG_CTRL2);
+					mxs_set(AUART_CTRL2_RTS, s, REG_CTRL2);
 			}
 
 			clear_bit(MXS_AUART_DMA_TX_SYNC, &s->flags);
