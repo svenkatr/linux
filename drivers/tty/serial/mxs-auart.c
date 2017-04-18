@@ -1340,7 +1340,7 @@ static void mxs_auart_shutdown(struct uart_port *u)
 	if (auart_dma_enabled(s))
 		mxs_auart_dma_exit(s);
 
-	if (uart_console(u)) {
+	if (uart_console(u) || (s->port.rs485.flags & SER_RS485_ENABLED)) {
 		mxs_clr(AUART_CTRL2_UARTEN, s, REG_CTRL2);
 
 		mxs_clr(AUART_INTR_RXIEN | AUART_INTR_RTIEN |
