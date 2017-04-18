@@ -1267,6 +1267,12 @@ static void mxs_auart_reset_deassert(struct mxs_auart_port *s)
 		udelay(3);
 	}
 	mxs_clr(AUART_CTRL0_CLKGATE, s, REG_CTRL0);
+
+        /* initialize RS485 RTS (TXEN) line (TX disabled) */
+        if (s->port.rs485.flags & SER_RS485_ENABLED) {
+                mxs_clr(AUART_CTRL2_RTSEN, s, REG_CTRL2);
+                mxs_set(AUART_CTRL2_RTS, s, REG_CTRL2);
+        }
 }
 
 static void mxs_auart_reset_assert(struct mxs_auart_port *s)
