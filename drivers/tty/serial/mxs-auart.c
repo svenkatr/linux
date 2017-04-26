@@ -692,7 +692,7 @@ static void mxs_auart_tx_chars(struct mxs_auart_port *s, int chars_in_flight)
 				mxs_set(AUART_CTRL2_RTS, s, REG_CTRL2);
 			} else {
 				/* RTS will be cleared in timer callback.
-				   Timer can be delayed for 1 char max
+				   Timer can be delayed for 1/5 of a bit max
 				*/
 				hrtimer_start_range_ns(&s->rs485_rts_timer,
 							  s->port.rs485.delay_rts_after_send ? 
@@ -700,7 +700,7 @@ static void mxs_auart_tx_chars(struct mxs_auart_port *s, int chars_in_flight)
 								  ms_to_ktime(s->port.rs485.delay_rts_after_send),
 								  nsecs) :
 							    ns_to_ktime(nsecs),
-							  s->rs485_delay_char_tx_nsecs,
+							  s->rs485_delay_char_tx_nsecs/40,
 						      HRTIMER_MODE_REL);
 			}
 		}
