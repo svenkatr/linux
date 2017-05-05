@@ -272,7 +272,7 @@
 	pinctrl-names = "default";
 	pinctrl-0 = <&pinctrl_enet2>;
 	phy-mode = "rmii";
-	phy-handle = <&ethphy1>;
+	phy-handle = <&ethphy3>;
 	status = "okay";
 
 	mdio {
@@ -284,9 +284,12 @@
 			smsc,disable-energy-detect;
 		};
 
-		ethphy1: ethernet-phy@1 {
-			reg = <1>;
-			smsc,disable-energy-detect;
+		ethphy3: ethernet-phy@3 {
+                    compatible = "ethernet-phy-ieee802.3-c22";
+                    max-speed = <100>;
+                    reg = <3>;
+                    clocks = <&clks IMX6UL_CLK_ENET_REF>;
+                    clock-names = "rmii-ref";
 		};
 	};
 };
