@@ -229,7 +229,6 @@
 
                         MX28_PAD_LCD_D06__GPIO_1_6      /* IRQ_RFM69 */
                         MX28_PAD_LCD_D05__GPIO_1_5      /* RFM69_DIO2 */
-                        MX28_PAD_GPMI_D03__GPIO_0_3     /* RFM69_CS */
                         MX28_PAD_LCD_RESET__GPIO_3_30   /* STAT1 */
                         MX28_PAD_LCD_WR_RWN__GPIO_1_25  /* STAT2 */
 
