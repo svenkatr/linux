@@ -78,10 +78,9 @@
 
 		green {
 			label = "green";
-			gpios = <&gpio1 15 0>;
+			gpios = <&gpio1 15 1>;
 			linux,default-trigger = "default-off";
 			default-state = "on";
-			open-drain;
 		};
 
 		red {
@@ -90,9 +89,9 @@
 			linux,default-trigger = "timer";
 		};
 
-		eth {
-			label = "eth";
-			gpios = <&gpio3 4 0>;
+		eth2_yellow {
+			label = "eth2_yellow";
+			gpios = <&gpio3 4 1>;
 			linux,default-trigger = "default-off";
 		};
 	};
@@ -123,7 +122,7 @@
 		pinctrl-names = "default";
 		pinctrl-0 = <&pinctrl_rfm69_dio2>;
 
-		gpio-recv = <&gpio3 14 0>;
+		gpio-recv = <&gpio3 13 0>;
 		gpio-recv-disable-filter;
 	};
 
@@ -188,7 +187,9 @@
 		};
 
 		lm75@48 {
-			compatible = "lm75";
+			/* NXP LM75AD has 11 bits of resolution, just like
+			   standard LM75B. */
+			compatible = "lm75b";
 			reg = <0x48>;
 		};
 	};
@@ -200,8 +201,8 @@
 		#size-cells = <0>;
 
 		gpios = <
-			&gpio3 3 0 /* sda */
-			&gpio3 1 0 /* scl */
+			&gpio3 12 0 /* sda */
+			&gpio3 3 0 /* scl */
 		>;
 
 		i2c-gpio,delay-us = <50>;        /* ~20 kHz */
@@ -211,9 +212,9 @@
 
 		status = "okay";
 
-		eeprom@28 {
+		eeprom@50 {
 			compatible = "at,24c02";
-			reg = <0x28>;
+			reg = <0x50>;
 		};
 	};
 
@@ -235,9 +236,9 @@
 
 		status = "okay";
 
-		eeprom@28 {
+		eeprom@50 {
 			compatible = "at,24c02";
-			reg = <0x28>;
+			reg = <0x50>;
 		};
 	};
 
@@ -272,7 +273,7 @@
 	pinctrl-names = "default";
 	pinctrl-0 = <&pinctrl_enet2>;
 	phy-mode = "rmii";
-	phy-handle = <&ethphy1>;
+	phy-handle = <&ethphy3>;
 	status = "okay";
 
 	mdio {
@@ -284,9 +285,12 @@
 			smsc,disable-energy-detect;
 		};
 
-		ethphy1: ethernet-phy@1 {
-			reg = <1>;
-			smsc,disable-energy-detect;
+		ethphy3: ethernet-phy@3 {
+                    compatible = "ethernet-phy-ieee802.3-c22";
+                    max-speed = <100>;
+                    reg = <3>;
+                    clocks = <&clks IMX6UL_CLK_ENET_REF>;
+                    clock-names = "rmii-ref";
 		};
 	};
 };
@@ -388,11 +392,6 @@
 	status = "okay";
 };
 
-&wdog1 {
-	pinctrl-names = "default";
-	pinctrl-0 = <&pinctrl_wdog>;
-	fsl,ext-reset-output;
-};
 
 &adc1 {
 	pinctrl-names = "default";
@@ -543,12 +542,6 @@
 		>;
 	};
 
-	pinctrl_wdog: wdoggrp {
-		fsl,pins = <
-			MX6UL_PAD_LCD_RESET__WDOG1_WDOG_ANY    0x30b0
-		>;
-	};
-
 	pinctrl_leds_pin_gpio: leds_pin_gpio {
 		fsl,pins = <
 			MX6UL_PAD_JTAG_TCK__GPIO1_IO14	0x30b0
@@ -563,17 +556,19 @@
 			MX6UL_PAD_LCD_DATA11__GPIO3_IO16	0x30b0 /* FET2 */
 			MX6UL_PAD_LCD_DATA12__GPIO3_IO17	0x30b0 /* FET3 */
 			MX6UL_PAD_LCD_DATA13__GPIO3_IO18	0x30b0 /* FET4 */
-			MX6UL_PAD_CSI_DATA02__GPIO4_IO23	0x30b0 /* RESET_SIM900 */
+			MX6UL_PAD_CSI_DATA03__GPIO4_IO24	0x30b0 /* RESET_SIM900 */
 			MX6UL_PAD_LCD_DATA15__GPIO3_IO20	0x30b0 /* POWER_SIM900 */
 			MX6UL_PAD_LCD_DATA14__GPIO3_IO19	0x30b0 /* STATUS SIM900 */
 			MX6UL_PAD_LCD_DATA19__GPIO3_IO24	0x30b0 /* SIM select */
 			MX6UL_PAD_UART1_CTS_B__GPIO1_IO18	0x30b0 /* Battery STAT1 */
 			MX6UL_PAD_UART1_RTS_B__GPIO1_IO19	0x30b0 /* Battery STAT2 */
 			MX6UL_PAD_JTAG_TDO__CCM_CLKO2	0xb0 /* 24MHz clock output */
-			MX6UL_PAD_ENET2_RX_ER__GPIO2_IO15	0x30b0 /* 5V enable */
+			MX6UL_PAD_UART3_RTS_B__GPIO1_IO27	0x30b0 /* 5V enable */
 			MX6UL_PAD_UART2_RTS_B__GPIO1_IO23	0xf0b0 /* CAN_OFF, 22k pullup */
 			MX6UL_PAD_LCD_DATA04__GPIO3_IO09	0x30b0 /* V_OUT_ON */
 			MX6UL_PAD_LCD_DATA03__GPIO3_IO08	0x30b0 /* V_OUT_ST */
+			MX6UL_PAD_CSI_DATA02__GPIO4_IO23        0x30b0 /* RS-485-1 failsafe bias */
+			MX6UL_PAD_LCD_DATA18__GPIO3_IO23        0x30b0 /* RS-485-2 failsafe bias */
 		>;
 	};
 
@@ -633,8 +628,8 @@
 
 	pinctrl_i2c_gpio_eeprom1: eeprom1grp {
 		fsl,pins = <
-			MX6UL_PAD_LCD_VSYNC__GPIO3_IO03	0x1b0b0 /* EEPR_SDA-1 */
-			MX6UL_PAD_LCD_ENABLE__GPIO3_IO01	0x1b0b0 /* EEPR_SCL-1 */
+			MX6UL_PAD_LCD_DATA07__GPIO3_IO12	0x1b0b0 /* EEPR_SDA-1 */
+			MX6UL_PAD_LCD_VSYNC__GPIO3_IO03	0x1b0b0 /* EEPR_SCL-1 */
 		>;
 	};
 
