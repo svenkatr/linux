@@ -85,10 +85,9 @@
 
 	leds-pwm {
 		compatible = "pwm-leds";
-		pinctrl-names = "default";
-		pinctrl-0 = <&pinctrl_green_led_pin_pwm
-			     &pinctrl_red_led_pin_pwm
-		>;
+		pinctrl-names = "default", "default";
+		pinctrl-0 = <&pinctrl_green_led_pin_pwm>;
+		pinctrl-1 = <&pinctrl_red_led_pin_pwm>;
 
 		green {
 			label = "green";
