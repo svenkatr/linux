@@ -29,6 +29,7 @@ static struct clk *pll1_sys_clk;
 static struct clk *pll1_sw_clk;
 static struct clk *step_clk;
 static struct clk *pll2_pfd2_396m_clk;
+static struct clk *pll1;
 
 /* clk used by i.MX6UL */
 static struct clk *pll2_bus_clk;
@@ -119,6 +120,11 @@ static int imx6q_set_target(struct cpufreq_policy *policy, unsigned int index)
 			clk_set_parent(secondary_sel_clk, pll2_pfd2_396m_clk);
 		clk_set_parent(step_clk, secondary_sel_clk);
 		clk_set_parent(pll1_sw_clk, step_clk);
+		if (freq_hz > clk_get_rate(pll2_bus_clk)) {
+			clk_set_rate(pll1, new_freq * 1000);
+			clk_set_parent(pll1_sw_clk, pll1_sys_clk);
+		}
+
 	} else {
 		clk_set_parent(step_clk, pll2_pfd2_396m_clk);
 		clk_set_parent(pll1_sw_clk, step_clk);
@@ -204,8 +210,10 @@ static int imx6q_cpufreq_probe(struct platform_device *pdev)
 	pll1_sw_clk = clk_get(cpu_dev, "pll1_sw");
 	step_clk = clk_get(cpu_dev, "step");
 	pll2_pfd2_396m_clk = clk_get(cpu_dev, "pll2_pfd2_396m");
+	pll1 = devm_clk_get(cpu_dev, "pll1");
+
 	if (IS_ERR(arm_clk) || IS_ERR(pll1_sys_clk) || IS_ERR(pll1_sw_clk) ||
-	    IS_ERR(step_clk) || IS_ERR(pll2_pfd2_396m_clk)) {
+	    IS_ERR(step_clk) || IS_ERR(pll2_pfd2_396m_clk) || IS_ERR(pll1)) {
 		dev_err(cpu_dev, "failed to get clocks\n");
 		ret = -ENOENT;
 		goto put_clk;
