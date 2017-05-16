@@ -18,6 +18,8 @@
 
 	aliases {
 		spi10 = &spi_rfm69;
+		usb0 = &usbotg1;
+		usb1 = &usbotg2;
 	};
 
 	chosen {
