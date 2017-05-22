@@ -276,14 +276,6 @@
 	phy-mode = "rmii";
 	phy-handle = <&ethphy0>;
 	status = "okay";
-};
-
-&fec2 {
-	pinctrl-names = "default";
-	pinctrl-0 = <&pinctrl_enet2>;
-	phy-mode = "rmii";
-	phy-handle = <&ethphy3>;
-	status = "okay";
 
 	mdio {
 		#address-cells = <1>;
@@ -302,6 +294,15 @@
                     clock-names = "rmii-ref";
 		};
 	};
+};
+
+&fec2 {
+	pinctrl-names = "default";
+	pinctrl-0 = <&pinctrl_enet2>;
+	phy-mode = "rmii";
+	phy-handle = <&ethphy3>;
+	status = "okay";
+
 };
 
 &pwm1 {

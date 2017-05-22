@@ -214,14 +214,6 @@
 	phy-mode = "rmii";
 	phy-handle = <&ethphy0>;
 	status = "okay";
-};
-
-&fec2 {
-	pinctrl-names = "default";
-	pinctrl-0 = <&pinctrl_enet2>;
-	phy-mode = "rmii";
-	phy-handle = <&ethphy1>;
-	status = "okay";
 
 	mdio {
 		#address-cells = <1>;
@@ -236,7 +228,15 @@
 			reg = <1>;
 			smsc,disable-energy-detect;
 		};
-	};
+	};};
+
+&fec2 {
+	pinctrl-names = "default";
+	pinctrl-0 = <&pinctrl_enet2>;
+	phy-mode = "rmii";
+	phy-handle = <&ethphy1>;
+	status = "okay";
+
 };
 
 &pwm4 {
