@@ -71,19 +71,24 @@
 
 	};
 
+	leds {
+		compatible = "gpio-leds";
+		pinctrl-names = "default";
+		pinctrl-0 = <&pinctrl_leds_pin_gpio>;
+
+		green {
+			label = "green";
+			gpios = <&gpio1 15 0>;
+			linux,default-trigger = "default-off";
+			default-state = "on";
+			open-drain;
+		};
+	};
+
 	leds-pwm {
 		compatible = "pwm-leds";
 		pinctrl-names = "default";
 		pinctrl-0 = <&pinctrl_leds_pin_pwm>;
-
-		green {
-			label = "green";
-			pwms = <&pwm8 0 1000000>;
-			max-brightness = <255>;
-			linux,default-trigger = "default-off";
-			default-state = "on";
-			active-low;
-		};
 
 		red {
 			label = "red";
@@ -250,7 +255,7 @@
 	status = "okay";
 };
 &pwm8 {
-	status = "okay";
+	status = "disabled";
 };
 
 &snvs_poweroff {
@@ -502,14 +507,12 @@
 
 	pinctrl_leds_pin_gpio: ledsgrp {
 		fsl,pins = <
-			MX6UL_PAD_JTAG_TCK__GPIO1_IO14	0x30b0
 			MX6UL_PAD_JTAG_TRST_B__GPIO1_IO15	0x30b0
 		>;
 	};
 
-	pinctrl_leds_pin_pwm: ledsgrp {
+	pinctrl_leds_pin_pwm: ledsgrppwm {
 		fsl,pins = <
-			MX6UL_PAD_JTAG_TRST_B__PWM8_OUT	0x30b0
 			MX6UL_PAD_JTAG_TCK__PWM7_OUT	0x30b0
 		>;
 	};
