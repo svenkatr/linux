@@ -286,10 +286,10 @@
 
 &uart4 {
 	pinctrl-names = "default";
-	pinctrl-0 = <&pinctrl_uart4_rs485>;
+	pinctrl-0 = <&pinctrl_uart4>;
 	uart-has-rtscts;
 	linux,rs485-enabled-at-boot-time;
-	status = "disabled";
+	status = "okay";
 };
 
 // uart on mod3
@@ -318,7 +318,7 @@
 &can2 {
 	pinctrl-names = "default";
 	pinctrl-0 = <&pinctrl_flexcan2>;
-	status = "disabled";
+	status = "okay";
 };
 
 &ecspi1 {
@@ -398,10 +398,6 @@
 		fsl,pins = <
 			MX6UL_PAD_SD1_DATA3__FLEXCAN2_RX	0x1b020
 			MX6UL_PAD_SD1_DATA2__FLEXCAN2_TX	0x1b020
-			MX6UL_PAD_UART4_TX_DATA__GPIO1_IO28	0xb0b0
-			MX6UL_PAD_UART4_RX_DATA__GPIO1_IO29	0xb0b0
-			MX6UL_PAD_LCD_ENABLE__GPIO3_IO01	0x1b0b1
-			MX6UL_PAD_LCD_HSYNC__GPIO3_IO02	0xb0b0
 		>;
 	};
 
@@ -436,23 +432,11 @@
 		>;
 	};
 
-	pinctrl_uart4_rs485: uart4rs485grp {
+	pinctrl_uart4: uart4grp {
 		fsl,pins = <
 			MX6UL_PAD_UART4_TX_DATA__UART4_DCE_TX   0x1b0b1
 			MX6UL_PAD_UART4_RX_DATA__UART4_DCE_RX   0x1b0b1
 			MX6UL_PAD_LCD_HSYNC__UART4_DCE_CTS   0x1b0b1
-			MX6UL_PAD_SD1_DATA3__GPIO2_IO21   0xb0b0
-			MX6UL_PAD_SD1_DATA2__GPIO2_IO20   0xb0b0
-		>;
-	};
-
-	pinctrl_uart4_can: uart4cangrp {
-		fsl,pins = <
-			MX6UL_PAD_UART4_TX_DATA__UART4_DCE_TX   0x1b0b1
-			MX6UL_PAD_LCD_ENABLE__UART4_DCE_RX   0x1b0b1
-			MX6UL_PAD_LCD_HSYNC__GPIO3_IO02   0x30b0 /* RTS pull-down */
-			MX6UL_PAD_SD1_DATA3__GPIO2_IO21   0xb0b0
-			MX6UL_PAD_SD1_DATA2__GPIO2_IO20   0xb0b0
 		>;
 	};
 
