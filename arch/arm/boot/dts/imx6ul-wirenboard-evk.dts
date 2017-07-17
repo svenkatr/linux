@@ -273,9 +273,6 @@
 
 // uart on mod1
 &uart3 {
-	pinctrl-names = "default";
-	pinctrl-0 = <&pinctrl_uart3>;
-	uart-has-rtscts;
 	status = "disabled";
 };
 
@@ -289,9 +286,6 @@
 
 // uart on mod3
 &uart5 {
-	pinctrl-names = "default";
-	pinctrl-0 = <&pinctrl_uart5>;
-	uart-has-rtscts;
 	status = "disabled";
 };
 
@@ -304,9 +298,6 @@
 
 // uart on mod2
 &uart7 {
-	pinctrl-names = "default";
-	pinctrl-0 = <&pinctrl_uart7>;
-	uart-has-rtscts;
 	status = "disabled";
 };
 
@@ -423,10 +414,15 @@
 		>;
 	};
 
-	pinctrl_uart3: uart3grp {
+	pinctrl_uart3_txrx: uart3txrxgrp {
 		fsl,pins = <
 			MX6UL_PAD_UART3_TX_DATA__UART3_DCE_TX	0x1b0b1
 			MX6UL_PAD_UART3_RX_DATA__UART3_DCE_RX	0x1b0b1
+		>;
+	};
+
+	pinctrl_uart3_ctsb: uart3ctsbgrp {
+		fsl,pins = <
 			MX6UL_PAD_UART3_CTS_B__UART3_DCE_CTS	0x1b0b1
 		>;
 	};
@@ -451,10 +447,15 @@
 		>;
 	};
 
-	pinctrl_uart5: uart5grp {
+	pinctrl_uart5_txrx: uart5txrxgrp {
 		fsl,pins = <
 			MX6UL_PAD_CSI_DATA00__UART5_DCE_TX   0x1b0b1
 			MX6UL_PAD_CSI_DATA01__UART5_DCE_RX   0x1b0b1
+		>;
+	};
+
+	pinctrl_uart5_ctsb: uart5ctsbgrp {
+		fsl,pins = <
 		>;
 	};
 
@@ -601,18 +602,28 @@
 		>;
 	};
 
-	pinctrl_mod1_gpio: mod1gpiogrp {
+	pinctrl_mod1_txrx_gpio: mod1txrxgpiogrp {
 		fsl,pins = <
 			MX6UL_PAD_UART3_TX_DATA__GPIO1_IO24	0x30b0
 			MX6UL_PAD_UART3_RX_DATA__GPIO1_IO25	0x30b0
+		>;
+	};
+
+	pinctrl_mod1_de_gpio: mod1degpiogrp {
+		fsl,pins = <
 			MX6UL_PAD_UART3_CTS_B__GPIO1_IO26	0x30b0
 		>;
 	};
 
-	pinctrl_mod2_gpio: mod2gpiogrp {
+	pinctrl_mod2_txrx_gpio: mod2txrxgpiogrp {
 		fsl,pins = <
 			MX6UL_PAD_LCD_DATA16__GPIO3_IO21	0x30b0
 			MX6UL_PAD_LCD_DATA17__GPIO3_IO22	0x30b0
+		>;
+	};
+
+	pinctrl_mod2_de_gpio: mod2degpiogrp {
+		fsl,pins = <
 			MX6UL_PAD_GPIO1_IO09__GPIO1_IO09	0x30b0
 		>;
 	};
