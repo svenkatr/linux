@@ -233,7 +233,8 @@
 			reg = <1>;
 			smsc,disable-energy-detect;
 		};
-	};};
+	};
+};
 
 &fec2 {
 	pinctrl-names = "default";
