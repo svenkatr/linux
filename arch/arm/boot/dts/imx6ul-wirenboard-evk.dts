@@ -71,20 +71,24 @@
 
 	};
 
-	leds-pwm {
-		compatible = "pwm-leds";
-		pinctrl-names = "default", "default";
-		pinctrl-0 = <&pinctrl_green_led_pin_pwm>;
-		pinctrl-1 = <&pinctrl_red_led_pin_pwm>;
+	leds {
+		compatible = "gpio-leds";
+		pinctrl-names = "default";
+		pinctrl-0 = <&pinctrl_leds_pin_gpio>;
 
 		green {
 			label = "green";
-			pwms = <&pwm8 0 1000000>;
-			max-brightness = <255>;
+			gpios = <&gpio1 15 0>;
 			linux,default-trigger = "default-off";
 			default-state = "on";
-			active-low;
+			open-drain;
 		};
+	};
+
+	leds-pwm {
+		compatible = "pwm-leds";
+		pinctrl-names = "default";
+		pinctrl-0 = <&pinctrl_leds_pin_pwm>;
 
 		red {
 			label = "red";
@@ -215,14 +219,6 @@
 	phy-mode = "rmii";
 	phy-handle = <&ethphy0>;
 	status = "okay";
-};
-
-&fec2 {
-	pinctrl-names = "default";
-	pinctrl-0 = <&pinctrl_enet2>;
-	phy-mode = "rmii";
-	phy-handle = <&ethphy1>;
-	status = "okay";
 
 	mdio {
 		#address-cells = <1>;
@@ -240,6 +236,15 @@
 	};
 };
 
+&fec2 {
+	pinctrl-names = "default";
+	pinctrl-0 = <&pinctrl_enet2>;
+	phy-mode = "rmii";
+	phy-handle = <&ethphy1>;
+	status = "okay";
+
+};
+
 &pwm4 {
 	pinctrl-names = "default";
 	pinctrl-0 = <&pinctrl_pwm4_m17>;
@@ -251,7 +256,7 @@
 	status = "okay";
 };
 &pwm8 {
-	status = "okay";
+	status = "disabled";
 };
 
 &snvs_poweroff {
@@ -274,25 +279,19 @@
 
 // uart on mod1
 &uart3 {
-	pinctrl-names = "default";
-	pinctrl-0 = <&pinctrl_uart3>;
-	uart-has-rtscts;
 	status = "disabled";
 };
 
 &uart4 {
 	pinctrl-names = "default";
-	pinctrl-0 = <&pinctrl_uart4_rs485>;
+	pinctrl-0 = <&pinctrl_uart4>;
 	uart-has-rtscts;
 	linux,rs485-enabled-at-boot-time;
-	status = "disabled";
+	status = "okay";
 };
 
 // uart on mod3
 &uart5 {
-	pinctrl-names = "default";
-	pinctrl-0 = <&pinctrl_uart5>;
-	uart-has-rtscts;
 	status = "disabled";
 };
 
@@ -305,16 +304,13 @@
 
 // uart on mod2
 &uart7 {
-	pinctrl-names = "default";
-	pinctrl-0 = <&pinctrl_uart7>;
-	uart-has-rtscts;
 	status = "disabled";
 };
 
 &can2 {
 	pinctrl-names = "default";
 	pinctrl-0 = <&pinctrl_flexcan2>;
-	status = "disabled";
+	status = "okay";
 };
 
 &ecspi1 {
@@ -394,10 +390,6 @@
 		fsl,pins = <
 			MX6UL_PAD_SD1_DATA3__FLEXCAN2_RX	0x1b020
 			MX6UL_PAD_SD1_DATA2__FLEXCAN2_TX	0x1b020
-			MX6UL_PAD_UART4_TX_DATA__GPIO1_IO28	0xb0b0
-			MX6UL_PAD_UART4_RX_DATA__GPIO1_IO29	0xb0b0
-			MX6UL_PAD_LCD_ENABLE__GPIO3_IO01	0x1b0b1
-			MX6UL_PAD_LCD_HSYNC__GPIO3_IO02	0xb0b0
 		>;
 	};
 
@@ -424,38 +416,36 @@
 		>;
 	};
 
-	pinctrl_uart3: uart3grp {
+	pinctrl_uart3_txrx: uart3txrxgrp {
 		fsl,pins = <
 			MX6UL_PAD_UART3_TX_DATA__UART3_DCE_TX	0x1b0b1
 			MX6UL_PAD_UART3_RX_DATA__UART3_DCE_RX	0x1b0b1
+		>;
+	};
+
+	pinctrl_uart3_ctsb: uart3ctsbgrp {
+		fsl,pins = <
 			MX6UL_PAD_UART3_CTS_B__UART3_DCE_CTS	0x1b0b1
 		>;
 	};
 
-	pinctrl_uart4_rs485: uart4rs485grp {
+	pinctrl_uart4: uart4grp {
 		fsl,pins = <
 			MX6UL_PAD_UART4_TX_DATA__UART4_DCE_TX   0x1b0b1
 			MX6UL_PAD_UART4_RX_DATA__UART4_DCE_RX   0x1b0b1
 			MX6UL_PAD_LCD_HSYNC__UART4_DCE_CTS   0x1b0b1
-			MX6UL_PAD_SD1_DATA3__GPIO2_IO21   0xb0b0
-			MX6UL_PAD_SD1_DATA2__GPIO2_IO20   0xb0b0
 		>;
 	};
 
-	pinctrl_uart4_can: uart4cangrp {
-		fsl,pins = <
-			MX6UL_PAD_UART4_TX_DATA__UART4_DCE_TX   0x1b0b1
-			MX6UL_PAD_LCD_ENABLE__UART4_DCE_RX   0x1b0b1
-			MX6UL_PAD_LCD_HSYNC__GPIO3_IO02   0x30b0 /* RTS pull-down */
-			MX6UL_PAD_SD1_DATA3__GPIO2_IO21   0xb0b0
-			MX6UL_PAD_SD1_DATA2__GPIO2_IO20   0xb0b0
-		>;
-	};
-
-	pinctrl_uart5: uart5grp {
+	pinctrl_uart5_txrx: uart5txrxgrp {
 		fsl,pins = <
 			MX6UL_PAD_CSI_DATA00__UART5_DCE_TX   0x1b0b1
 			MX6UL_PAD_CSI_DATA01__UART5_DCE_RX   0x1b0b1
+		>;
+	};
+
+	pinctrl_uart5_ctsb: uart5ctsbgrp {
+		fsl,pins = <
 		>;
 	};
 
@@ -503,18 +493,11 @@
 
 	pinctrl_leds_pin_gpio: ledsgrp {
 		fsl,pins = <
-			MX6UL_PAD_JTAG_TCK__GPIO1_IO14	0x30b0
 			MX6UL_PAD_JTAG_TRST_B__GPIO1_IO15	0x30b0
 		>;
 	};
 
-	pinctrl_green_led_pin_pwm: ledsgrp {
-		fsl,pins = <
-			MX6UL_PAD_JTAG_TRST_B__PWM8_OUT	0x30b0
-		>;
-	};
-
-	pinctrl_red_led_pin_pwm: ledsgrp {
+	pinctrl_leds_pin_pwm: ledsgrppwm {
 		fsl,pins = <
 			MX6UL_PAD_JTAG_TCK__PWM7_OUT	0x30b0
 		>;
@@ -607,18 +590,28 @@
 		>;
 	};
 
-	pinctrl_mod1_gpio: mod1gpiogrp {
+	pinctrl_mod1_txrx_gpio: mod1txrxgpiogrp {
 		fsl,pins = <
 			MX6UL_PAD_UART3_TX_DATA__GPIO1_IO24	0x30b0
 			MX6UL_PAD_UART3_RX_DATA__GPIO1_IO25	0x30b0
+		>;
+	};
+
+	pinctrl_mod1_de_gpio: mod1degpiogrp {
+		fsl,pins = <
 			MX6UL_PAD_UART3_CTS_B__GPIO1_IO26	0x30b0
 		>;
 	};
 
-	pinctrl_mod2_gpio: mod2gpiogrp {
+	pinctrl_mod2_txrx_gpio: mod2txrxgpiogrp {
 		fsl,pins = <
 			MX6UL_PAD_LCD_DATA16__GPIO3_IO21	0x30b0
 			MX6UL_PAD_LCD_DATA17__GPIO3_IO22	0x30b0
+		>;
+	};
+
+	pinctrl_mod2_de_gpio: mod2degpiogrp {
+		fsl,pins = <
 			MX6UL_PAD_GPIO1_IO09__GPIO1_IO09	0x30b0
 		>;
 	};
