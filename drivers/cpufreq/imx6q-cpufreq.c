@@ -18,6 +18,7 @@
 
 #define PU_SOC_VOLTAGE_NORMAL	1250000
 #define PU_SOC_VOLTAGE_HIGH	1275000
+#define FREQ_528_MHZ		528000000
 #define FREQ_1P2_GHZ		1200000000
 
 static struct regulator *arm_reg;
@@ -111,14 +112,20 @@ static int imx6q_set_target(struct cpufreq_policy *policy, unsigned int index)
 		 * voltage of 528MHz, so lower the CPU frequency to one
 		 * half before changing CPU frequency.
 		 */
-		clk_set_rate(arm_clk, (old_freq >> 1) * 1000);
-		clk_set_parent(pll1_sw_clk, pll1_sys_clk);
+		if ((old_freq * 1000) <= FREQ_528_MHZ) {
+			clk_set_rate(arm_clk, (old_freq >> 1) * 1000);
+			clk_set_parent(pll1_sw_clk, pll1_sys_clk);
+		}
 		if (freq_hz > clk_get_rate(pll2_pfd2_396m_clk))
 			clk_set_parent(secondary_sel_clk, pll2_bus_clk);
 		else
 			clk_set_parent(secondary_sel_clk, pll2_pfd2_396m_clk);
 		clk_set_parent(step_clk, secondary_sel_clk);
 		clk_set_parent(pll1_sw_clk, step_clk);
+		if (freq_hz > FREQ_528_MHZ) {
+			clk_set_rate(pll1_sys_clk, freq_hz);
+			clk_set_parent(pll1_sw_clk, pll1_sys_clk);
+		}
 	} else {
 		clk_set_parent(step_clk, pll2_pfd2_396m_clk);
 		clk_set_parent(pll1_sw_clk, step_clk);
