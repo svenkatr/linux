@@ -410,6 +410,11 @@
 	status = "okay";
 };
 
+&usbphy2 {
+	fsl,tx-cal-45-dn-ohms = <55>;
+	fsl,tx-cal-45-dp-ohms = <55>;
+};
+
 &usdhc2 {
 	pinctrl-names = "default";
 	pinctrl-0 = <&pinctrl_usdhc2>;
