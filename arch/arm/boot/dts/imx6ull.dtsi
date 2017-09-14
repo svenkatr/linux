@@ -41,3 +41,22 @@
 
 #include "imx6ul.dtsi"
 #include "imx6ull-pinfunc.h"
+
+&cpu0 {
+	operating-points = <
+		/* kHz  uV */
+		900000  1275000
+		792000  1225000
+		528000  1175000
+		396000  1025000
+		198000  950000
+	>;
+	fsl,soc-operating-points = <
+		/* KHz  uV */
+		900000  1175000
+		792000  1175000
+		528000  1175000
+		396000  1175000
+		198000  1175000
+	>;
+};
