@@ -9,10 +9,10 @@
 
 /dts-v1/;
 
-#include "imx6ul.dtsi"
+#include "imx6ull.dtsi"
 
 / {
-	model = "Wiren Board rev. 6.1 (i.MX6UL)";
+	model = "Wiren Board rev. 6.1 (i.MX6UL/ULL)";
 	compatible = "contactless,imx6ul-wirenboard61", "contactless,imx6ul-wirenboard60", "contactless,imx6ul-wirenboard-evk", "fsl,imx6ul-14x14-evk", "fsl,imx6ul";
 
 

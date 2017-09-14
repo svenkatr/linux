@@ -9,7 +9,7 @@
 
 /dts-v1/;
 
-#include "imx6ul.dtsi"
+#include "imx6ull.dtsi"
 
 / {
 	model = "Wiren Board rev. 6.0.1 (i.MX6UL)";
