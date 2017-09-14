@@ -339,6 +339,7 @@
 	keep-power-in-suspend;
 	wakeup-source;
 	status = "okay";
+	bus-width = <8>;
 };
 
 &wdog1 {
