@@ -748,10 +748,16 @@
 		>;
 	};
 
-	pinctrl_mod3_uart_gpio: mod3uartgpiogrp-1 {
+
+	pinctrl_mod3_txrx_gpio: mod3uartgpiogrp-1 {
 		fsl,pins = <
 			MX6UL_PAD_LCD_DATA16__GPIO3_IO21	0x30b0
 			MX6UL_PAD_LCD_DATA17__GPIO3_IO22	0x30b0
+		>;
+	};
+
+	pinctrl_mod3_de_gpio: mod3uartgpiogrp-2 {
+		fsl,pins = <
 			MX6UL_PAD_LCD_DATA06__GPIO3_IO11	0x30b0
 		>;
 	};
