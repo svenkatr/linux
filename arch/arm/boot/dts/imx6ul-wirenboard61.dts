@@ -121,7 +121,7 @@
 	};
 
 	/* Enable 1-wire network on terminal block W1 */
-	onewire_w1 {
+	onewire_w1: onewire_w1 {
 		compatible = "w1-gpio";
 		pinctrl-names = "default";
 		pinctrl-0 = <&pinctrl_w1_gpio>;
@@ -131,7 +131,7 @@
 	};
 
 	/* Enable 1-wire network on terminal block W2 */
-	onewire_w2 {
+	onewire_w2: onewire_w2 {
 		compatible = "w1-gpio";
 		pinctrl-names = "default";
 		pinctrl-0 = <&pinctrl_w2_gpio>;
