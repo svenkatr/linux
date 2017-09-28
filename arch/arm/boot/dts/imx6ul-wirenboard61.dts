@@ -394,6 +394,9 @@
 &ecspi1 {
 	pinctrl-names = "default";
 	pinctrl-0 = <&pinctrl_ecspi1>;
+
+	cs-gpios = <&gpio4 26 GPIO_ACTIVE_LOW>;
+
 	status = "disabled";
 };
 
