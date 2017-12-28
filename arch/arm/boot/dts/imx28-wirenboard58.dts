@@ -538,6 +538,13 @@
                     reg = <0>;
                     smsc,disable-energy-detect;
                 };
+
+                ethphy1: ethernet-phy@1 {
+                    compatible = "ethernet-phy-ieee802.3-c22";
+                    max-speed = <100>;
+                    reg = <1>;
+                    smsc,disable-energy-detect;
+                };
             };
         };
 
@@ -545,6 +552,7 @@
             phy-mode = "rmii";
             pinctrl-names = "default";
             pinctrl-0 = <&mac1_pins_a>;
+            phy-handle = <&ethphy1>;
             status = "disabled";
         };
     };
