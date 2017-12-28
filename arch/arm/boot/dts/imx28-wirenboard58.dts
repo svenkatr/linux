@@ -71,13 +71,7 @@
             };
 
             ssp2: ssp@80014000 {
-                compatible = "fsl,imx28-spi";
-                pinctrl-names = "default";
-                pinctrl-0 = <&spi2_pins_a_nocs
-                            &pins_mod3
-                             >;
                 status = "disabled";
-
             };
 
             ssp3: ssp@80016000 {
@@ -241,8 +235,6 @@
                         MX28_PAD_SSP1_DATA0__GPIO_2_14  /* 5V_OUT power enable */
 
                         MX28_PAD_ENET0_RX_CLK__GPIO_4_13    /* FEC reset */
-
-                        MX28_PAD_SSP3_MISO__GPIO_2_26 /* MOD3 power enable */
                     >;
                     fsl,drive-strength = <MXS_DRIVE_4mA>;
                     fsl,voltage = <MXS_VOLTAGE_HIGH>;
@@ -334,10 +326,12 @@
                     fsl,pull-up = <MXS_PULL_ENABLE>;
                 };
 
-                pins_mod3: pins_mod3@0 {
+
+                pins_rtc_wb59: pins_rtc_wb59@0 {
                     reg = <0>;
                     fsl,pinmux-ids = <
-                        MX28_PAD_SSP2_SS2__SSP2_D5
+                        MX28_PAD_SSP2_SS2__GPIO_2_21  /* 5.9: RTC SDA */
+                        MX28_PAD_SSP3_MISO__GPIO_2_26 /* 5.9: RTC SCL */
                     >;
                     fsl,drive-strength = <MXS_DRIVE_8mA>;
                     fsl,voltage = <MXS_VOLTAGE_HIGH>;
@@ -645,4 +639,29 @@
         gpio-recv = <&gpio1 5 0>;
         gpio-recv-disable-filter;
     };
+
+    i2c_rtc_wb59 {
+        pinctrl-names = "default";
+        pinctrl-0 = <&pins_rtc_wb59>;
+
+        compatible = "i2c-gpio";
+
+        #address-cells = <1>;
+        #size-cells = <0>;
+
+        gpios = <
+            &gpio2 21 0 /* sda */
+            &gpio2 26 0 /* scl */
+        >;
+
+        i2c-gpio,delay-us = <10>;        /* ~100 kHz */
+
+        status = "okay";
+
+        rtc@51 {
+            compatible = "nxp,pcf8563";
+            reg = <0x51>;
+        };
+    };
+
 };
