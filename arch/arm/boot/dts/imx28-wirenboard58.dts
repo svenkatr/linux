@@ -17,6 +17,11 @@
     model = "Wiren Board rev. 5.8 (i.MX28)";
     compatible = "contactless,imx28-wirenboard58","contactless,imx28-wirenboard55", "contactless,imx28-wirenboard52", "contactless,imx28-wirenboard50", "fsl,imx28";
 
+    aliases {
+        i2c0 = &i2c0;
+        i2c1 = &i2c_rtc_wb59;
+    };
+
     memory {
         reg = <0x40000000 0x08000000>;
     };
@@ -648,7 +653,7 @@
         gpio-recv-disable-filter;
     };
 
-    i2c_rtc_wb59 {
+    i2c_rtc_wb59: i2c_rtc_wb59@0 {
         pinctrl-names = "default";
         pinctrl-0 = <&pins_rtc_wb59>;
 
@@ -671,5 +676,4 @@
             reg = <0x51>;
         };
     };
-
 };
