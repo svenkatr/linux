@@ -186,6 +186,12 @@ enum ad5064_type {
 	ID_LTC2635_H10,
 	ID_LTC2635_L8,
 	ID_LTC2635_H8,
+	ID_LTC2637_L12,
+	ID_LTC2637_H12,
+	ID_LTC2637_L10,
+	ID_LTC2637_H10,
+	ID_LTC2637_L8,
+	ID_LTC2637_H8,
 };
 
 static int ad5064_write(struct ad5064_state *st, unsigned int cmd,
@@ -303,7 +309,6 @@ static int ad5064_get_vref(struct ad5064_state *st,
 	struct iio_chan_spec const *chan)
 {
 	unsigned int i;
-
 	if (st->use_internal_vref)
 		return st->chip_info->internal_vref;
 
@@ -773,6 +778,12 @@ static const struct ad5064_chip_info ad5064_chip_info_tbl[] = {
 	[ID_LTC2635_H10] = LTC2631_INFO(4096000, ltc2631_10_channels, 4),
 	[ID_LTC2635_L8] = LTC2631_INFO(2500000, ltc2631_8_channels, 4),
 	[ID_LTC2635_H8] = LTC2631_INFO(4096000, ltc2631_8_channels, 4),
+	[ID_LTC2637_L12] = LTC2631_INFO(2500000, ltc2631_12_channels, 8),
+	[ID_LTC2637_H12] = LTC2631_INFO(4096000, ltc2631_12_channels, 8),
+	[ID_LTC2637_L10] = LTC2631_INFO(2500000, ltc2631_10_channels, 8),
+	[ID_LTC2637_H10] = LTC2631_INFO(4096000, ltc2631_10_channels, 8),
+	[ID_LTC2637_L8] = LTC2631_INFO(2500000, ltc2631_8_channels, 8),
+	[ID_LTC2637_H8] = LTC2631_INFO(4096000, ltc2631_8_channels, 8),
 };
 
 static inline unsigned int ad5064_num_vref(struct ad5064_state *st)
@@ -1049,6 +1060,12 @@ static const struct i2c_device_id ad5064_i2c_ids[] = {
 	{"ltc2635-h10", ID_LTC2635_H10},
 	{"ltc2635-l8", ID_LTC2635_L8},
 	{"ltc2635-h8", ID_LTC2635_H8},
+	{"ltc2637-l12", ID_LTC2637_L12},
+	{"ltc2637-h12", ID_LTC2637_H12},
+	{"ltc2637-l10", ID_LTC2637_L10},
+	{"ltc2637-h10", ID_LTC2637_H10},
+	{"ltc2637-l8", ID_LTC2637_L8},
+	{"ltc2637-h8", ID_LTC2637_H8},
 	{}
 };
 MODULE_DEVICE_TABLE(i2c, ad5064_i2c_ids);
