@@ -45,6 +45,9 @@
 #define AD5064_CMD_RESET_V2			0x5
 #define AD5064_CMD_CONFIG_V2			0x7
 
+#define LTC2631_CMD_SELECT_INTERNAL_REF		0x6
+#define LTC2631_CMD_SELECT_EXTERNAL_REF		0x7
+
 #define AD5064_CONFIG_DAISY_CHAIN_ENABLE	BIT(1)
 #define AD5064_CONFIG_INT_VREF_ENABLE		BIT(0)
 
@@ -820,6 +823,51 @@ static int ad5064_set_config(struct ad5064_state *st, unsigned int val)
 	return ad5064_write(st, cmd, 0, val, 0);
 }
 
+static int ad5064_set_reference(struct ad5064_state *st, unsigned int use_internal)
+{
+	unsigned int cmd, val;
+	switch (st->chip_info->regmap_type) {
+	case AD5064_REGMAP_LTC:
+		cmd = use_internal ?
+			LTC2631_CMD_SELECT_INTERNAL_REF :
+			LTC2631_CMD_SELECT_EXTERNAL_REF;
+		return ad5064_write(st, cmd, 0, 0, 0);
+	default:
+		val = use_internal ? AD5064_CONFIG_INT_VREF_ENABLE : 0;
+		return ad5064_set_config(st, val);
+	}
+}
+
+static int devm_regulator_bulk_get_optional(struct device *dev, int num_consumers,
+			    struct regulator_bulk_data *consumers)
+{
+	int i;
+	int ret;
+
+	for (i = 0; i < num_consumers; i++)
+		consumers[i].consumer = NULL;
+
+	for (i = 0; i < num_consumers; i++) {
+		consumers[i].consumer = devm_regulator_get_optional(dev,
+							   consumers[i].supply);
+		if (IS_ERR(consumers[i].consumer)) {
+			ret = PTR_ERR(consumers[i].consumer);
+			dev_info(dev, "Failed to get supply '%s': %d\n",
+				consumers[i].supply, ret);
+			consumers[i].consumer = NULL;
+			goto err;
+		}
+	}
+
+	return 0;
+
+err:
+	for (i = 0; i < num_consumers && consumers[i].consumer; i++)
+		devm_regulator_put(consumers[i].consumer);
+
+	return ret;
+}
+
 static int ad5064_probe(struct device *dev, enum ad5064_type type,
 			const char *name, ad5064_write_func write)
 {
@@ -843,13 +891,13 @@ static int ad5064_probe(struct device *dev, enum ad5064_type type,
 	for (i = 0; i < ad5064_num_vref(st); ++i)
 		st->vref_reg[i].supply = ad5064_vref_name(st, i);
 
-	ret = devm_regulator_bulk_get(dev, ad5064_num_vref(st),
+	ret = devm_regulator_bulk_get_optional(dev, ad5064_num_vref(st),
 		st->vref_reg);
 	if (ret) {
 		if (!st->chip_info->internal_vref)
 			return ret;
 		st->use_internal_vref = true;
-		ret = ad5064_set_config(st, AD5064_CONFIG_INT_VREF_ENABLE);
+		ret = ad5064_set_reference(st, 1);
 		if (ret) {
 			dev_err(dev, "Failed to enable internal vref: %d\n",
 				ret);
@@ -859,6 +907,17 @@ static int ad5064_probe(struct device *dev, enum ad5064_type type,
 		ret = regulator_bulk_enable(ad5064_num_vref(st), st->vref_reg);
 		if (ret)
 			return ret;
+
+		if (st->chip_info->internal_vref) {
+			/* Internal reference should be disabled */
+			dev_info(dev, "Using external reference");
+			ret = ad5064_set_reference(st, 0);
+			if (ret) {
+				dev_err(dev, "Failed to disable internal vref: %d\n",
+					ret);
+				return ret;
+			}
+		}
 	}
 
 	indio_dev->dev.parent = dev;
