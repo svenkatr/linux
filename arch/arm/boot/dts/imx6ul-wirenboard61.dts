@@ -307,6 +307,7 @@
                     reg = <3>;
                     clocks = <&clks IMX6UL_CLK_ENET_REF>;
                     clock-names = "rmii-ref";
+                    micrel,led-mode = <0>;
 		};
 	};
 };
