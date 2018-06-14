@@ -51,7 +51,7 @@ drop:
 	return -EINVAL;
 }
 
-static struct nla_policy ila_nl_policy[ILA_ATTR_MAX + 1] = {
+static const struct nla_policy ila_nl_policy[ILA_ATTR_MAX + 1] = {
 	[ILA_ATTR_LOCATOR] = { .type = NLA_U64, },
 	[ILA_ATTR_CSUM_MODE] = { .type = NLA_U8, },
 };
@@ -164,6 +164,7 @@ static const struct lwtunnel_encap_ops ila_encap_ops = {
 	.fill_encap = ila_fill_encap_info,
 	.get_encap_size = ila_encap_nlsize,
 	.cmp_encap = ila_encap_cmp,
+	.owner = THIS_MODULE,
 };
 
 int ila_lwt_init(void)

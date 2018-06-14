@@ -96,7 +96,6 @@ struct r5l_log {
 	spinlock_t no_space_stripes_lock;
 
 	bool need_cache_flush;
-	bool in_teardown;
 };
 
 /*
@@ -704,31 +703,22 @@ static void r5l_write_super_and_discard_space(struct r5l_log *log,
 
 	mddev = log->rdev->mddev;
 	/*
-	 * This is to avoid a deadlock. r5l_quiesce holds reconfig_mutex and
-	 * wait for this thread to finish. This thread waits for
-	 * MD_CHANGE_PENDING clear, which is supposed to be done in
-	 * md_check_recovery(). md_check_recovery() tries to get
-	 * reconfig_mutex. Since r5l_quiesce already holds the mutex,
-	 * md_check_recovery() fails, so the PENDING never get cleared. The
-	 * in_teardown check workaround this issue.
+	 * Discard could zero data, so before discard we must make sure
+	 * superblock is updated to new log tail. Updating superblock (either
+	 * directly call md_update_sb() or depend on md thread) must hold
+	 * reconfig mutex. On the other hand, raid5_quiesce is called with
+	 * reconfig_mutex hold. The first step of raid5_quiesce() is waitting
+	 * for all IO finish, hence waitting for reclaim thread, while reclaim
+	 * thread is calling this function and waitting for reconfig mutex. So
+	 * there is a deadlock. We workaround this issue with a trylock.
+	 * FIXME: we could miss discard if we can't take reconfig mutex
 	 */
-	if (!log->in_teardown) {
-		set_mask_bits(&mddev->flags, 0,
-			      BIT(MD_CHANGE_DEVS) | BIT(MD_CHANGE_PENDING));
-		md_wakeup_thread(mddev->thread);
-		wait_event(mddev->sb_wait,
-			!test_bit(MD_CHANGE_PENDING, &mddev->flags) ||
-			log->in_teardown);
-		/*
-		 * r5l_quiesce could run after in_teardown check and hold
-		 * mutex first. Superblock might get updated twice.
-		 */
-		if (log->in_teardown)
-			md_update_sb(mddev, 1);
-	} else {
-		WARN_ON(!mddev_is_locked(mddev));
-		md_update_sb(mddev, 1);
-	}
+	set_mask_bits(&mddev->flags, 0,
+		BIT(MD_CHANGE_DEVS) | BIT(MD_CHANGE_PENDING));
+	if (!mddev_trylock(mddev))
+		return;
+	md_update_sb(mddev, 1);
+	mddev_unlock(mddev);
 
 	/* discard IO error really doesn't matter, ignore it */
 	if (log->last_checkpoint < end) {
@@ -827,7 +817,6 @@ void r5l_quiesce(struct r5l_log *log, int state)
 	if (!log || state == 2)
 		return;
 	if (state == 0) {
-		log->in_teardown = 0;
 		/*
 		 * This is a special case for hotadd. In suspend, the array has
 		 * no journal. In resume, journal is initialized as well as the
@@ -838,11 +827,6 @@ void r5l_quiesce(struct r5l_log *log, int state)
 		log->reclaim_thread = md_register_thread(r5l_reclaim_thread,
 					log->rdev->mddev, "reclaim");
 	} else if (state == 1) {
-		/*
-		 * at this point all stripes are finished, so io_unit is at
-		 * least in STRIPE_END state
-		 */
-		log->in_teardown = 1;
 		/* make sure r5l_write_super_and_discard_space exits */
 		mddev = log->rdev->mddev;
 		wake_up(&mddev->sb_wait);
@@ -1103,7 +1087,7 @@ static int r5l_recovery_log(struct r5l_log *log)
 	 * 1's seq + 10 and let superblock points to meta2. The same recovery will
 	 * not think meta 3 is a valid meta, because its seq doesn't match
 	 */
-	if (ctx.seq > log->last_cp_seq + 1) {
+	if (ctx.seq > log->last_cp_seq) {
 		int ret;
 
 		ret = r5l_log_write_empty_meta_block(log, ctx.pos, ctx.seq + 10);
@@ -1112,6 +1096,8 @@ static int r5l_recovery_log(struct r5l_log *log)
 		log->seq = ctx.seq + 11;
 		log->log_start = r5l_ring_add(log, ctx.pos, BLOCK_SECTORS);
 		r5l_write_super(log, ctx.pos);
+		log->last_checkpoint = ctx.pos;
+		log->next_checkpoint = ctx.pos;
 	} else {
 		log->log_start = ctx.pos;
 		log->seq = ctx.seq;
@@ -1170,6 +1156,7 @@ create:
 	if (create_super) {
 		log->last_cp_seq = prandom_u32();
 		cp = 0;
+		r5l_log_write_empty_meta_block(log, cp, log->last_cp_seq);
 		/*
 		 * Make sure super points to correct address. Log might have
 		 * data very soon. If super hasn't correct log tail address,
@@ -1184,6 +1171,7 @@ create:
 	if (log->max_free_space > RECLAIM_MAX_FREE_SPACE)
 		log->max_free_space = RECLAIM_MAX_FREE_SPACE;
 	log->last_checkpoint = cp;
+	log->next_checkpoint = cp;
 
 	__free_page(page);
 

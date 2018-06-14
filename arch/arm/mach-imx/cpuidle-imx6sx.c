@@ -9,14 +9,25 @@
 #include <linux/cpuidle.h>
 #include <linux/cpu_pm.h>
 #include <linux/module.h>
+#include <asm/cacheflush.h>
 #include <asm/cpuidle.h>
 #include <asm/suspend.h>
 
 #include "common.h"
 #include "cpuidle.h"
+#include "hardware.h"
 
 static int imx6sx_idle_finish(unsigned long val)
 {
+	/*
+	 * for Cortex-A7 which has an internal L2
+	 * cache, need to flush it before powering
+	 * down ARM platform, since flushing L1 cache
+	 * here again has very small overhead, compared
+	 * to adding conditional code for L2 cache type,
+	 * just call flush_cache_all() is fine.
+	 */
+	flush_cache_all();
 	cpu_do_idle();
 
 	return 0;
@@ -32,6 +43,11 @@ static int imx6sx_enter_wait(struct cpuidle_device *dev,
 		cpu_do_idle();
 		break;
 	case 2:
+		if (cpu_is_imx6ull()) {
+			cpu_do_idle();
+			break;
+		}
+
 		imx6_enable_rbc(true);
 		imx_gpc_set_arm_power_in_lpm(true);
 		imx_set_cpu_jump(0, v7_cpu_resume);
@@ -84,12 +100,13 @@ static struct cpuidle_driver imx6sx_cpuidle_driver = {
 			.desc = "ARM power off",
 		},
 	},
-	.state_count = 3,
+	.state_count = 2,
 	.safe_state_index = 0,
 };
 
 int __init imx6sx_cpuidle_init(void)
 {
+	imx6_set_int_mem_clk_lpm(true);
 	imx6_enable_rbc(false);
 	/*
 	 * set ARM power up/down timing to the fastest,

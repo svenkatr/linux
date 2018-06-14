@@ -55,11 +55,11 @@ static int check_fb_gem_memory_type(struct drm_device *drm_dev,
 	flags = exynos_gem->flags;
 
 	/*
-	 * without iommu support, not support physically non-continuous memory
-	 * for framebuffer.
+	 * Physically non-contiguous memory type for framebuffer is not
+	 * supported without IOMMU.
 	 */
 	if (IS_NONCONTIG_BUFFER(flags)) {
-		DRM_ERROR("cannot use this gem memory type for fb.\n");
+		DRM_ERROR("Non-contiguous GEM memory is not supported.\n");
 		return -EINVAL;
 	}
 
@@ -190,7 +190,7 @@ dma_addr_t exynos_drm_fb_dma_addr(struct drm_framebuffer *fb, int index)
 static const struct drm_mode_config_funcs exynos_drm_mode_config_funcs = {
 	.fb_create = exynos_user_fb_create,
 	.output_poll_changed = exynos_drm_output_poll_changed,
-	.atomic_check = drm_atomic_helper_check,
+	.atomic_check = exynos_atomic_check,
 	.atomic_commit = exynos_atomic_commit,
 };
 

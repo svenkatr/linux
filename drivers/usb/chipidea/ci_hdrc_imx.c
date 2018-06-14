@@ -39,7 +39,6 @@ static const struct ci_hdrc_imx_platform_flag imx27_usb_data = {
 
 static const struct ci_hdrc_imx_platform_flag imx28_usb_data = {
 	.flags = CI_HDRC_IMX28_WRITE_FIX |
-		CI_HDRC_TURN_VBUS_EARLY_ON |
 		CI_HDRC_DISABLE_STREAMING,
 };
 
@@ -139,6 +138,9 @@ static struct imx_usbmisc_data *usbmisc_get_init_data(struct device *dev)
 
 	if (of_find_property(np, "disable-over-current", NULL))
 		data->disable_oc = 1;
+
+	if (of_find_property(np, "over-current-active-high", NULL))
+		data->oc_polarity = 1;
 
 	if (of_find_property(np, "external-vbus-divider", NULL))
 		data->evdo = 1;

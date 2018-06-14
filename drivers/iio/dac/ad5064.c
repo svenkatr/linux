@@ -2,8 +2,8 @@
  * AD5024, AD5025, AD5044, AD5045, AD5064, AD5064-1, AD5065, AD5625, AD5625R,
  * AD5627, AD5627R, AD5628, AD5629R, AD5645R, AD5647R, AD5648, AD5665, AD5665R,
  * AD5666, AD5667, AD5667R, AD5668, AD5669R, LTC2606, LTC2607, LTC2609, LTC2616,
- * LTC2617, LTC2619, LTC2626, LTC2627, LTC2629 Digital to analog converters
- * driver
+ * LTC2617, LTC2619, LTC2626, LTC2627, LTC2629, LTC2631, LTC2633, LTC2635
+ * Digital to analog converters driver
  *
  * Copyright 2011 Analog Devices Inc.
  *
@@ -44,6 +44,9 @@
 
 #define AD5064_CMD_RESET_V2			0x5
 #define AD5064_CMD_CONFIG_V2			0x7
+
+#define LTC2631_CMD_SELECT_INTERNAL_REF		0x6
+#define LTC2631_CMD_SELECT_EXTERNAL_REF		0x7
 
 #define AD5064_CONFIG_DAISY_CHAIN_ENABLE	BIT(1)
 #define AD5064_CONFIG_INT_VREF_ENABLE		BIT(0)
@@ -168,6 +171,30 @@ enum ad5064_type {
 	ID_LTC2626,
 	ID_LTC2627,
 	ID_LTC2629,
+	ID_LTC2631_L12,
+	ID_LTC2631_H12,
+	ID_LTC2631_L10,
+	ID_LTC2631_H10,
+	ID_LTC2631_L8,
+	ID_LTC2631_H8,
+	ID_LTC2633_L12,
+	ID_LTC2633_H12,
+	ID_LTC2633_L10,
+	ID_LTC2633_H10,
+	ID_LTC2633_L8,
+	ID_LTC2633_H8,
+	ID_LTC2635_L12,
+	ID_LTC2635_H12,
+	ID_LTC2635_L10,
+	ID_LTC2635_H10,
+	ID_LTC2635_L8,
+	ID_LTC2635_H8,
+	ID_LTC2637_L12,
+	ID_LTC2637_H12,
+	ID_LTC2637_L10,
+	ID_LTC2637_H10,
+	ID_LTC2637_L8,
+	ID_LTC2637_H8,
 };
 
 static int ad5064_write(struct ad5064_state *st, unsigned int cmd,
@@ -285,7 +312,6 @@ static int ad5064_get_vref(struct ad5064_state *st,
 	struct iio_chan_spec const *chan)
 {
 	unsigned int i;
-
 	if (st->use_internal_vref)
 		return st->chip_info->internal_vref;
 
@@ -425,6 +451,19 @@ static DECLARE_AD5064_CHANNELS(ad5669_channels, 16, 0, ad5064_ext_info);
 static DECLARE_AD5064_CHANNELS(ltc2607_channels, 16, 0, ltc2617_ext_info);
 static DECLARE_AD5064_CHANNELS(ltc2617_channels, 14, 2, ltc2617_ext_info);
 static DECLARE_AD5064_CHANNELS(ltc2627_channels, 12, 4, ltc2617_ext_info);
+#define ltc2631_12_channels ltc2627_channels
+static DECLARE_AD5064_CHANNELS(ltc2631_10_channels, 10, 6, ltc2617_ext_info);
+static DECLARE_AD5064_CHANNELS(ltc2631_8_channels, 8, 8, ltc2617_ext_info);
+
+#define LTC2631_INFO(vref, pchannels, nchannels)	\
+	{						\
+		.shared_vref = true,			\
+		.internal_vref = vref,			\
+		.channels = pchannels,			\
+		.num_channels = nchannels,		\
+		.regmap_type = AD5064_REGMAP_LTC,	\
+	}
+
 
 static const struct ad5064_chip_info ad5064_chip_info_tbl[] = {
 	[ID_AD5024] = {
@@ -724,6 +763,30 @@ static const struct ad5064_chip_info ad5064_chip_info_tbl[] = {
 		.num_channels = 4,
 		.regmap_type = AD5064_REGMAP_LTC,
 	},
+	[ID_LTC2631_L12] = LTC2631_INFO(2500000, ltc2631_12_channels, 1),
+	[ID_LTC2631_H12] = LTC2631_INFO(4096000, ltc2631_12_channels, 1),
+	[ID_LTC2631_L10] = LTC2631_INFO(2500000, ltc2631_10_channels, 1),
+	[ID_LTC2631_H10] = LTC2631_INFO(4096000, ltc2631_10_channels, 1),
+	[ID_LTC2631_L8] = LTC2631_INFO(2500000, ltc2631_8_channels, 1),
+	[ID_LTC2631_H8] = LTC2631_INFO(4096000, ltc2631_8_channels, 1),
+	[ID_LTC2633_L12] = LTC2631_INFO(2500000, ltc2631_12_channels, 2),
+	[ID_LTC2633_H12] = LTC2631_INFO(4096000, ltc2631_12_channels, 2),
+	[ID_LTC2633_L10] = LTC2631_INFO(2500000, ltc2631_10_channels, 2),
+	[ID_LTC2633_H10] = LTC2631_INFO(4096000, ltc2631_10_channels, 2),
+	[ID_LTC2633_L8] = LTC2631_INFO(2500000, ltc2631_8_channels, 2),
+	[ID_LTC2633_H8] = LTC2631_INFO(4096000, ltc2631_8_channels, 2),
+	[ID_LTC2635_L12] = LTC2631_INFO(2500000, ltc2631_12_channels, 4),
+	[ID_LTC2635_H12] = LTC2631_INFO(4096000, ltc2631_12_channels, 4),
+	[ID_LTC2635_L10] = LTC2631_INFO(2500000, ltc2631_10_channels, 4),
+	[ID_LTC2635_H10] = LTC2631_INFO(4096000, ltc2631_10_channels, 4),
+	[ID_LTC2635_L8] = LTC2631_INFO(2500000, ltc2631_8_channels, 4),
+	[ID_LTC2635_H8] = LTC2631_INFO(4096000, ltc2631_8_channels, 4),
+	[ID_LTC2637_L12] = LTC2631_INFO(2500000, ltc2631_12_channels, 8),
+	[ID_LTC2637_H12] = LTC2631_INFO(4096000, ltc2631_12_channels, 8),
+	[ID_LTC2637_L10] = LTC2631_INFO(2500000, ltc2631_10_channels, 8),
+	[ID_LTC2637_H10] = LTC2631_INFO(4096000, ltc2631_10_channels, 8),
+	[ID_LTC2637_L8] = LTC2631_INFO(2500000, ltc2631_8_channels, 8),
+	[ID_LTC2637_H8] = LTC2631_INFO(4096000, ltc2631_8_channels, 8),
 };
 
 static inline unsigned int ad5064_num_vref(struct ad5064_state *st)
@@ -760,6 +823,51 @@ static int ad5064_set_config(struct ad5064_state *st, unsigned int val)
 	return ad5064_write(st, cmd, 0, val, 0);
 }
 
+static int ad5064_set_reference(struct ad5064_state *st, unsigned int use_internal)
+{
+	unsigned int cmd, val;
+	switch (st->chip_info->regmap_type) {
+	case AD5064_REGMAP_LTC:
+		cmd = use_internal ?
+			LTC2631_CMD_SELECT_INTERNAL_REF :
+			LTC2631_CMD_SELECT_EXTERNAL_REF;
+		return ad5064_write(st, cmd, 0, 0, 0);
+	default:
+		val = use_internal ? AD5064_CONFIG_INT_VREF_ENABLE : 0;
+		return ad5064_set_config(st, val);
+	}
+}
+
+static int devm_regulator_bulk_get_optional(struct device *dev, int num_consumers,
+			    struct regulator_bulk_data *consumers)
+{
+	int i;
+	int ret;
+
+	for (i = 0; i < num_consumers; i++)
+		consumers[i].consumer = NULL;
+
+	for (i = 0; i < num_consumers; i++) {
+		consumers[i].consumer = devm_regulator_get_optional(dev,
+							   consumers[i].supply);
+		if (IS_ERR(consumers[i].consumer)) {
+			ret = PTR_ERR(consumers[i].consumer);
+			dev_info(dev, "Failed to get supply '%s': %d\n",
+				consumers[i].supply, ret);
+			consumers[i].consumer = NULL;
+			goto err;
+		}
+	}
+
+	return 0;
+
+err:
+	for (i = 0; i < num_consumers && consumers[i].consumer; i++)
+		devm_regulator_put(consumers[i].consumer);
+
+	return ret;
+}
+
 static int ad5064_probe(struct device *dev, enum ad5064_type type,
 			const char *name, ad5064_write_func write)
 {
@@ -783,13 +891,13 @@ static int ad5064_probe(struct device *dev, enum ad5064_type type,
 	for (i = 0; i < ad5064_num_vref(st); ++i)
 		st->vref_reg[i].supply = ad5064_vref_name(st, i);
 
-	ret = devm_regulator_bulk_get(dev, ad5064_num_vref(st),
+	ret = devm_regulator_bulk_get_optional(dev, ad5064_num_vref(st),
 		st->vref_reg);
 	if (ret) {
 		if (!st->chip_info->internal_vref)
 			return ret;
 		st->use_internal_vref = true;
-		ret = ad5064_set_config(st, AD5064_CONFIG_INT_VREF_ENABLE);
+		ret = ad5064_set_reference(st, 1);
 		if (ret) {
 			dev_err(dev, "Failed to enable internal vref: %d\n",
 				ret);
@@ -799,6 +907,17 @@ static int ad5064_probe(struct device *dev, enum ad5064_type type,
 		ret = regulator_bulk_enable(ad5064_num_vref(st), st->vref_reg);
 		if (ret)
 			return ret;
+
+		if (st->chip_info->internal_vref) {
+			/* Internal reference should be disabled */
+			dev_info(dev, "Using external reference");
+			ret = ad5064_set_reference(st, 0);
+			if (ret) {
+				dev_err(dev, "Failed to disable internal vref: %d\n",
+					ret);
+				return ret;
+			}
+		}
 	}
 
 	indio_dev->dev.parent = dev;
@@ -982,6 +1101,30 @@ static const struct i2c_device_id ad5064_i2c_ids[] = {
 	{"ltc2626", ID_LTC2626},
 	{"ltc2627", ID_LTC2627},
 	{"ltc2629", ID_LTC2629},
+	{"ltc2631-l12", ID_LTC2631_L12},
+	{"ltc2631-h12", ID_LTC2631_H12},
+	{"ltc2631-l10", ID_LTC2631_L10},
+	{"ltc2631-h10", ID_LTC2631_H10},
+	{"ltc2631-l8", ID_LTC2631_L8},
+	{"ltc2631-h8", ID_LTC2631_H8},
+	{"ltc2633-l12", ID_LTC2633_L12},
+	{"ltc2633-h12", ID_LTC2633_H12},
+	{"ltc2633-l10", ID_LTC2633_L10},
+	{"ltc2633-h10", ID_LTC2633_H10},
+	{"ltc2633-l8", ID_LTC2633_L8},
+	{"ltc2633-h8", ID_LTC2633_H8},
+	{"ltc2635-l12", ID_LTC2635_L12},
+	{"ltc2635-h12", ID_LTC2635_H12},
+	{"ltc2635-l10", ID_LTC2635_L10},
+	{"ltc2635-h10", ID_LTC2635_H10},
+	{"ltc2635-l8", ID_LTC2635_L8},
+	{"ltc2635-h8", ID_LTC2635_H8},
+	{"ltc2637-l12", ID_LTC2637_L12},
+	{"ltc2637-h12", ID_LTC2637_H12},
+	{"ltc2637-l10", ID_LTC2637_L10},
+	{"ltc2637-h10", ID_LTC2637_H10},
+	{"ltc2637-l8", ID_LTC2637_L8},
+	{"ltc2637-h8", ID_LTC2637_H8},
 	{}
 };
 MODULE_DEVICE_TABLE(i2c, ad5064_i2c_ids);

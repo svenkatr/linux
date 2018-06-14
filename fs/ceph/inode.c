@@ -94,10 +94,7 @@ const struct inode_operations ceph_file_iops = {
 	.permission = ceph_permission,
 	.setattr = ceph_setattr,
 	.getattr = ceph_getattr,
-	.setxattr = generic_setxattr,
-	.getxattr = generic_getxattr,
 	.listxattr = ceph_listxattr,
-	.removexattr = generic_removexattr,
 	.get_acl = ceph_get_acl,
 	.set_acl = ceph_set_acl,
 };
@@ -308,7 +305,8 @@ static int frag_tree_split_cmp(const void *l, const void *r)
 {
 	struct ceph_frag_tree_split *ls = (struct ceph_frag_tree_split*)l;
 	struct ceph_frag_tree_split *rs = (struct ceph_frag_tree_split*)r;
-	return ceph_frag_compare(ls->frag, rs->frag);
+	return ceph_frag_compare(le32_to_cpu(ls->frag),
+				 le32_to_cpu(rs->frag));
 }
 
 static bool is_frag_child(u32 f, struct ceph_inode_frag *frag)
@@ -1514,7 +1512,8 @@ int ceph_readdir_prepopulate(struct ceph_mds_request *req,
 			ceph_fill_dirfrag(d_inode(parent), rinfo->dir_dir);
 	}
 
-	if (ceph_frag_is_leftmost(frag) && req->r_readdir_offset == 2) {
+	if (ceph_frag_is_leftmost(frag) && req->r_readdir_offset == 2 &&
+	    !(rinfo->hash_order && req->r_path2)) {
 		/* note dir version at start of readdir so we can tell
 		 * if any dentries get dropped */
 		req->r_dir_release_cnt = atomic64_read(&ci->i_release_count);
@@ -1885,10 +1884,7 @@ static const struct inode_operations ceph_symlink_iops = {
 	.get_link = simple_get_link,
 	.setattr = ceph_setattr,
 	.getattr = ceph_getattr,
-	.setxattr = generic_setxattr,
-	.getxattr = generic_getxattr,
 	.listxattr = ceph_listxattr,
-	.removexattr = generic_removexattr,
 };
 
 int __ceph_setattr(struct inode *inode, struct iattr *attr)
@@ -1904,13 +1900,6 @@ int __ceph_setattr(struct inode *inode, struct iattr *attr)
 	int err = 0;
 	int inode_dirty_flags = 0;
 	bool lock_snap_rwsem = false;
-
-	if (ceph_snap(inode) != CEPH_NOSNAP)
-		return -EROFS;
-
-	err = inode_change_ok(inode, attr);
-	if (err != 0)
-		return err;
 
 	prealloc_cf = ceph_alloc_cap_flush();
 	if (!prealloc_cf)
@@ -2080,7 +2069,7 @@ int __ceph_setattr(struct inode *inode, struct iattr *attr)
 	if (dirtied) {
 		inode_dirty_flags = __ceph_mark_dirty_caps(ci, dirtied,
 							   &prealloc_cf);
-		inode->i_ctime = current_fs_time(inode->i_sb);
+		inode->i_ctime = current_time(inode);
 	}
 
 	release &= issued;
@@ -2124,7 +2113,17 @@ out_put:
  */
 int ceph_setattr(struct dentry *dentry, struct iattr *attr)
 {
-	return __ceph_setattr(d_inode(dentry), attr);
+	struct inode *inode = d_inode(dentry);
+	int err;
+
+	if (ceph_snap(inode) != CEPH_NOSNAP)
+		return -EROFS;
+
+	err = setattr_prepare(dentry, attr);
+	if (err != 0)
+		return err;
+
+	return __ceph_setattr(inode, attr);
 }
 
 /*

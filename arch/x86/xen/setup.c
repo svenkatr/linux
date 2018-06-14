@@ -713,10 +713,9 @@ static void __init xen_reserve_xen_mfnlist(void)
 		size = PFN_PHYS(xen_start_info->nr_p2m_frames);
 	}
 
-	if (!xen_is_e820_reserved(start, size)) {
-		memblock_reserve(start, size);
+	memblock_reserve(start, size);
+	if (!xen_is_e820_reserved(start, size))
 		return;
-	}
 
 #ifdef CONFIG_X86_32
 	/*
@@ -727,6 +726,7 @@ static void __init xen_reserve_xen_mfnlist(void)
 	BUG();
 #else
 	xen_relocate_p2m();
+	memblock_free(start, size);
 #endif
 }
 
@@ -861,7 +861,7 @@ char * __init xen_memory_setup(void)
 	e820_add_region(ISA_START_ADDRESS, ISA_END_ADDRESS - ISA_START_ADDRESS,
 			E820_RESERVED);
 
-	sanitize_e820_map(e820.map, ARRAY_SIZE(e820.map), &e820.nr_map);
+	sanitize_e820_map(e820->map, ARRAY_SIZE(e820->map), &e820->nr_map);
 
 	/*
 	 * Check whether the kernel itself conflicts with the target E820 map.

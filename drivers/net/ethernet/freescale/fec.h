@@ -534,6 +534,7 @@ struct fec_enet_private {
 	int	pause_flag;
 	int	wol_flag;
 	u32	quirks;
+	int	phy_reset_gpio;
 
 	struct	napi_struct napi;
 	int	csum_flags;
@@ -574,6 +575,8 @@ struct fec_enet_private {
 	unsigned int reload_period;
 	int pps_enable;
 	unsigned int next_counter;
+
+	u64 ethtool_stats[0];
 };
 
 void fec_ptp_init(struct platform_device *pdev);

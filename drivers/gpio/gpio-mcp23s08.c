@@ -552,6 +552,7 @@ static int mcp23s08_probe_one(struct mcp23s08 *mcp, struct device *dev,
 {
 	int status;
 	bool mirror = false;
+	bool irq_open_drain = false;
 
 	mutex_init(&mcp->lock);
 
@@ -564,7 +565,7 @@ static int mcp23s08_probe_one(struct mcp23s08 *mcp, struct device *dev,
 	mcp->chip.direction_output = mcp23s08_direction_output;
 	mcp->chip.set = mcp23s08_set;
 	mcp->chip.dbg_show = mcp23s08_dbg_show;
-#ifdef CONFIG_OF
+#ifdef CONFIG_OF_GPIO
 	mcp->chip.of_gpio_n_cells = 2;
 	mcp->chip.of_node = dev->of_node;
 #endif
@@ -624,15 +625,25 @@ static int mcp23s08_probe_one(struct mcp23s08 *mcp, struct device *dev,
 
 	mcp->irq_controller = pdata->irq_controller;
 	if (mcp->irq && mcp->irq_controller) {
+		irq_open_drain =
+			of_property_read_bool(mcp->chip.parent->of_node,
+					      "microchip,irq-open-drain");
+
 		mcp->irq_active_high =
 			of_property_read_bool(mcp->chip.parent->of_node,
 					      "microchip,irq-active-high");
+
+		if (irq_open_drain && mcp->irq_active_high) {
+			dev_warn(dev, "interrupt can't be both open-drain and \
+				active-high, set to open-drain\n");
+			mcp->irq_active_high = false;
+		}
 
 		mirror = pdata->mirror;
 	}
 
 	if ((status & IOCON_SEQOP) || !(status & IOCON_HAEN) || mirror ||
-	     mcp->irq_active_high) {
+	     mcp->irq_active_high || irq_open_drain) {
 		/* mcp23s17 has IOCON twice, make sure they are in sync */
 		status &= ~(IOCON_SEQOP | (IOCON_SEQOP << 8));
 		status |= IOCON_HAEN | (IOCON_HAEN << 8);
@@ -640,6 +651,11 @@ static int mcp23s08_probe_one(struct mcp23s08 *mcp, struct device *dev,
 			status |= IOCON_INTPOL | (IOCON_INTPOL << 8);
 		else
 			status &= ~(IOCON_INTPOL | (IOCON_INTPOL << 8));
+
+		if (irq_open_drain)
+			status |= IOCON_ODR | (IOCON_ODR << 8);
+		else
+			status &= ~(IOCON_ODR | (IOCON_ODR << 8));
 
 		if (mirror)
 			status |= IOCON_MIRROR | (IOCON_MIRROR << 8);
@@ -759,6 +775,7 @@ static int mcp230xx_probe(struct i2c_client *client,
 	struct mcp23s08_platform_data *pdata, local_pdata;
 	struct mcp23s08 *mcp;
 	int status;
+	int val;
 	const struct of_device_id *match;
 
 	match = of_match_device(of_match_ptr(mcp23s08_i2c_of_match),
@@ -773,6 +790,12 @@ static int mcp230xx_probe(struct i2c_client *client,
 		pdata->mirror = of_property_read_bool(client->dev.of_node,
 						      "microchip,irq-mirror");
 		client->irq = irq_of_parse_and_map(client->dev.of_node, 0);
+
+		status = of_property_read_u32(client->dev.of_node,
+			    "linux,gpio-base", &val);
+		if (!status) {
+			pdata->base = val;
+		}
 	} else {
 		pdata = dev_get_platdata(&client->dev);
 		if (!pdata) {

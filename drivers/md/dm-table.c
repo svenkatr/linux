@@ -695,37 +695,32 @@ int dm_table_add_target(struct dm_table *t, const char *type,
 
 	tgt->type = dm_get_target_type(type);
 	if (!tgt->type) {
-		DMERR("%s: %s: unknown target type", dm_device_name(t->md),
-		      type);
+		DMERR("%s: %s: unknown target type", dm_device_name(t->md), type);
 		return -EINVAL;
 	}
 
 	if (dm_target_needs_singleton(tgt->type)) {
 		if (t->num_targets) {
-			DMERR("%s: target type %s must appear alone in table",
-			      dm_device_name(t->md), type);
-			return -EINVAL;
+			tgt->error = "singleton target type must appear alone in table";
+			goto bad;
 		}
 		t->singleton = true;
 	}
 
 	if (dm_target_always_writeable(tgt->type) && !(t->mode & FMODE_WRITE)) {
-		DMERR("%s: target type %s may not be included in read-only tables",
-		      dm_device_name(t->md), type);
-		return -EINVAL;
+		tgt->error = "target type may not be included in a read-only table";
+		goto bad;
 	}
 
 	if (t->immutable_target_type) {
 		if (t->immutable_target_type != tgt->type) {
-			DMERR("%s: immutable target type %s cannot be mixed with other target types",
-			      dm_device_name(t->md), t->immutable_target_type->name);
-			return -EINVAL;
+			tgt->error = "immutable target type cannot be mixed with other target types";
+			goto bad;
 		}
 	} else if (dm_target_is_immutable(tgt->type)) {
 		if (t->num_targets) {
-			DMERR("%s: immutable target type %s cannot be mixed with other target types",
-			      dm_device_name(t->md), tgt->type->name);
-			return -EINVAL;
+			tgt->error = "immutable target type cannot be mixed with other target types";
+			goto bad;
 		}
 		t->immutable_target_type = tgt->type;
 	}
@@ -740,7 +735,6 @@ int dm_table_add_target(struct dm_table *t, const char *type,
 	 */
 	if (!adjoin(t, tgt)) {
 		tgt->error = "Gap in table";
-		r = -EINVAL;
 		goto bad;
 	}
 
@@ -930,12 +924,6 @@ static int dm_table_determine_type(struct dm_table *t)
 
 	BUG_ON(!request_based); /* No targets in this table */
 
-	if (list_empty(devices) && __table_type_request_based(live_md_type)) {
-		/* inherit live MD type */
-		t->type = live_md_type;
-		return 0;
-	}
-
 	/*
 	 * The only way to establish DM_TYPE_MQ_REQUEST_BASED is by
 	 * having a compatible target use dm_table_set_type.
@@ -952,6 +940,19 @@ verify_rq_based:
 	if (t->num_targets > 1) {
 		DMWARN("Request-based dm doesn't support multiple targets yet");
 		return -EINVAL;
+	}
+
+	if (list_empty(devices)) {
+		int srcu_idx;
+		struct dm_table *live_table = dm_get_live_table(t->md, &srcu_idx);
+
+		/* inherit live table's type and all_blk_mq */
+		if (live_table) {
+			t->type = live_table->type;
+			t->all_blk_mq = live_table->all_blk_mq;
+		}
+		dm_put_live_table(t->md, srcu_idx);
+		return 0;
 	}
 
 	/* Non-request-stackable devices can't be used for request-based dm */
@@ -978,6 +979,11 @@ verify_rq_based:
 			}
 
 		t->all_blk_mq = true;
+	}
+
+	if (t->type == DM_TYPE_MQ_REQUEST_BASED && !t->all_blk_mq) {
+		DMERR("table load rejected: all devices are not blk-mq request-stackable");
+		return -EINVAL;
 	}
 
 	return 0;

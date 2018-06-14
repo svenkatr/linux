@@ -934,6 +934,16 @@
 					fsl,pull-up = <MXS_PULL_ENABLE>;
 				};
 
+				spdif_pins: spdif@0 {
+					reg = <0>;
+					fsl,pinmux-ids = <
+						MX28_PAD_SPDIF__SPDIF_TX
+					>;
+					fsl,drive-strength = <MXS_DRIVE_12mA>;
+					fsl,voltage = <MXS_VOLTAGE_HIGH>;
+					fsl,pull-up = <MXS_PULL_ENABLE>;
+				};
+
 			};
 
 			digctl: digctl@8001c000 {
@@ -1104,10 +1114,14 @@
 			};
 
 			spdif: spdif@80054000 {
+				compatible = "fsl,imx28-spdif";
 				reg = <0x80054000 0x2000>;
 				interrupts = <45>;
+				interrupt-names = "spdif-error";
 				dmas = <&dma_apbx 2>;
 				dma-names = "tx";
+				clocks = <&clks 51>;
+				clock-names = "spdif";
 				status = "disabled";
 			};
 

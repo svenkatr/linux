@@ -858,6 +858,14 @@ static int mxs_lradc_read_single(struct iio_dev *iio_dev, int chan, int *val)
 				    1 << LRADC_CTRL2_DIVIDE_BY_TWO_OFFSET,
 				    LRADC_CTRL2);
 
+	/* Enable / disable the divider per requirement */
+	if (test_bit(chan, &lradc->is_divided))
+		mxs_lradc_reg_set(lradc, 1 << LRADC_CTRL2_DIVIDE_BY_TWO_OFFSET,
+			LRADC_CTRL2);
+	else
+		mxs_lradc_reg_clear(lradc,
+			1 << LRADC_CTRL2_DIVIDE_BY_TWO_OFFSET, LRADC_CTRL2);
+
 	/* Clean the slot's previous content, then set new one. */
 	mxs_lradc_reg_clear(lradc, LRADC_CTRL4_LRADCSELECT_MASK(0),
 			    LRADC_CTRL4);

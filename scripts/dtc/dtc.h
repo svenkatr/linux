@@ -53,7 +53,12 @@ extern int quiet;		/* Level of quietness */
 extern int reservenum;		/* Number of memory reservation slots */
 extern int minsize;		/* Minimum blob size */
 extern int padsize;		/* Additional padding to blob */
+extern int alignsize;		/* Additional padding to blob accroding to the alignsize */
 extern int phandle_format;	/* Use linux,phandle or phandle properties */
+extern int generate_symbols;	/* generate symbols for nodes with labels */
+extern int generate_fixups;	/* generate fixups */
+extern int auto_label_aliases;	/* auto generate labels -> aliases */
+extern int no_dtbo_magic;	/* use old FDT magic values for objects */
 
 #define PHANDLE_LEGACY	0x1
 #define PHANDLE_EPAPR	0x2
@@ -194,6 +199,7 @@ struct node *build_node_delete(void);
 struct node *name_node(struct node *node, char *name);
 struct node *chain_node(struct node *first, struct node *list);
 struct node *merge_nodes(struct node *old_node, struct node *new_node);
+void add_orphan_node(struct node *old_node, struct node *new_node, char *ref);
 
 void add_property(struct node *node, struct property *prop);
 void delete_property_by_name(struct node *node, char *name);
@@ -201,6 +207,8 @@ void delete_property(struct property *prop);
 void add_child(struct node *parent, struct node *child);
 void delete_node_by_name(struct node *parent, char *name);
 void delete_node(struct node *node);
+void append_to_property(struct node *node,
+			char *name, const void *data, int len);
 
 const char *get_unitname(struct node *node);
 struct property *get_property(struct node *node, const char *propname);
@@ -236,14 +244,23 @@ struct reserve_info *add_reserve_entry(struct reserve_info *list,
 
 
 struct boot_info {
+	unsigned int dtsversionflags;
 	struct reserve_info *reservelist;
 	struct node *dt;		/* the device tree */
 	uint32_t boot_cpuid_phys;
 };
 
-struct boot_info *build_boot_info(struct reserve_info *reservelist,
+/* DTS version flags definitions */
+#define DTSVF_V1	0x0001	/* /dts-v1/ */
+#define DTSVF_PLUGIN	0x0002	/* /plugin/ */
+
+struct boot_info *build_boot_info(unsigned int dtsversionflags,
+				  struct reserve_info *reservelist,
 				  struct node *tree, uint32_t boot_cpuid_phys);
 void sort_tree(struct boot_info *bi);
+void generate_label_tree(struct boot_info *bi, char *name, bool allocph);
+void generate_fixups_tree(struct boot_info *bi, char *name);
+void generate_local_fixups_tree(struct boot_info *bi, char *name);
 
 /* Checks */
 
@@ -252,8 +269,8 @@ void process_checks(bool force, struct boot_info *bi);
 
 /* Flattened trees */
 
-void dt_to_blob(FILE *f, struct boot_info *bi, int version);
-void dt_to_asm(FILE *f, struct boot_info *bi, int version);
+void dt_to_blob(FILE *f, struct boot_info *bi, fdt32_t magic, int version);
+void dt_to_asm(FILE *f, struct boot_info *bi, fdt32_t magic, int version);
 
 struct boot_info *dt_from_blob(const char *fname);
 

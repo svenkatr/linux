@@ -11,6 +11,8 @@
 # Copyright (C) 1995-2002 Russell King
 #
 
+OBJCOPYFLAGS	:=-O binary -R .comment -S
+
 ifneq ($(MACHINE),)
 include $(MACHINE)/Makefile.boot
 endif
@@ -26,6 +28,10 @@ INITRD_PHYS := $(initrd_phys-y)
 export ZRELADDR INITRD_PHYS PARAMS_PHYS
 
 targets := Image zImage xipImage bootpImage uImage
+
+ifeq ($(CONFIG_OF_OVERLAY),y)
+DTC_FLAGS += -@
+endif
 
 ifeq ($(CONFIG_XIP_KERNEL),y)
 

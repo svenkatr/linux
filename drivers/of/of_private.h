@@ -79,9 +79,9 @@ extern void __of_update_property_sysfs(struct device_node *np,
 		struct property *newprop, struct property *oldprop);
 
 extern void __of_attach_node(struct device_node *np);
-extern int __of_attach_node_sysfs(struct device_node *np);
+extern int __of_attach_node_post(struct device_node *np);
 extern void __of_detach_node(struct device_node *np);
-extern void __of_detach_node_sysfs(struct device_node *np);
+extern void __of_detach_node_post(struct device_node *np);
 
 extern void __of_sysfs_remove_bin_file(struct device_node *np,
 				       struct property *prop);
@@ -94,5 +94,47 @@ extern void __of_sysfs_remove_bin_file(struct device_node *np,
 /* reverse iterator */
 #define for_each_transaction_entry_reverse(_oft, _te) \
 	list_for_each_entry_reverse(_te, &(_oft)->te_list, node)
+
+#if defined(CONFIG_OF_OVERLAY)
+extern int of_overlay_init(void);
+#else
+static inline int of_overlay_init(void)
+{
+	return 0;
+}
+#endif
+
+extern const struct rhashtable_params of_phandle_ht_params;
+extern struct rhashtable *of_phandle_ht;
+
+/* for unittest use */
+extern bool of_phandle_ht_is_disabled;
+
+static inline bool of_phandle_ht_available(void)
+{
+	return of_phandle_ht != NULL;
+}
+
+static inline int of_phandle_ht_insert(struct device_node *np)
+{
+	if (!np || !np->phandle)
+		return 0;
+	return rhashtable_insert_fast(of_phandle_ht,
+		&np->ht_node, of_phandle_ht_params);
+}
+
+static inline int of_phandle_ht_remove(struct device_node *np)
+{
+	if (!np || !np->phandle)
+		return 0;
+	return rhashtable_remove_fast(of_phandle_ht,
+		&np->ht_node, of_phandle_ht_params);
+}
+
+static inline struct device_node *of_phandle_ht_lookup(phandle handle)
+{
+	return rhashtable_lookup_fast(of_phandle_ht,
+			&handle, of_phandle_ht_params);
+}
 
 #endif /* _LINUX_OF_PRIVATE_H */

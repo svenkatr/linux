@@ -154,8 +154,8 @@
 #define ST_ACCEL_4_FS_MASK			0x80
 #define ST_ACCEL_4_FS_AVL_2_VAL			0X00
 #define ST_ACCEL_4_FS_AVL_6_VAL			0X01
-#define ST_ACCEL_4_FS_AVL_2_GAIN		IIO_G_TO_M_S_2(1024)
-#define ST_ACCEL_4_FS_AVL_6_GAIN		IIO_G_TO_M_S_2(340)
+#define ST_ACCEL_4_FS_AVL_2_GAIN		IIO_G_TO_M_S_2(1000)
+#define ST_ACCEL_4_FS_AVL_6_GAIN		IIO_G_TO_M_S_2(3000)
 #define ST_ACCEL_4_BDU_ADDR			0x21
 #define ST_ACCEL_4_BDU_MASK			0x40
 #define ST_ACCEL_4_DRDY_IRQ_ADDR		0x21
@@ -345,6 +345,14 @@ static const struct st_sensor_settings st_accel_sensors_settings[] = {
 		.bdu = {
 			.addr = ST_ACCEL_1_BDU_ADDR,
 			.mask = ST_ACCEL_1_BDU_MASK,
+		},
+		/*
+		 * Data Alignment Setting - needs to be set to get
+		 * left-justified data like all other sensors.
+		 */
+		.das = {
+			.addr = 0x21,
+			.mask = 0x01,
 		},
 		.drdy_irq = {
 			.addr = ST_ACCEL_1_DRDY_IRQ_ADDR,
@@ -743,8 +751,8 @@ static int st_accel_read_raw(struct iio_dev *indio_dev,
 
 		return IIO_VAL_INT;
 	case IIO_CHAN_INFO_SCALE:
-		*val = 0;
-		*val2 = adata->current_fullscale->gain;
+		*val = adata->current_fullscale->gain / 1000000;
+		*val2 = adata->current_fullscale->gain % 1000000;
 		return IIO_VAL_INT_PLUS_MICRO;
 	case IIO_CHAN_INFO_SAMP_FREQ:
 		*val = adata->odr;
@@ -763,9 +771,13 @@ static int st_accel_write_raw(struct iio_dev *indio_dev,
 	int err;
 
 	switch (mask) {
-	case IIO_CHAN_INFO_SCALE:
-		err = st_sensors_set_fullscale_by_gain(indio_dev, val2);
+	case IIO_CHAN_INFO_SCALE: {
+		int gain;
+
+		gain = val * 1000000 + val2;
+		err = st_sensors_set_fullscale_by_gain(indio_dev, gain);
 		break;
+	}
 	case IIO_CHAN_INFO_SAMP_FREQ:
 		if (val2)
 			return -EINVAL;

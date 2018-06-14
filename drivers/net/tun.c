@@ -731,14 +731,9 @@ static int update_filter(struct tap_filter *filter, void __user *arg)
 	}
 
 	alen = ETH_ALEN * uf.count;
-	addr = kmalloc(alen, GFP_KERNEL);
-	if (!addr)
-		return -ENOMEM;
-
-	if (copy_from_user(addr, arg + sizeof(uf), alen)) {
-		err = -EFAULT;
-		goto done;
-	}
+	addr = memdup_user(arg + sizeof(uf), alen);
+	if (IS_ERR(addr))
+		return PTR_ERR(addr);
 
 	/* The filter is updated without holding any locks. Which is
 	 * perfectly safe. We disable it first and in the worst
@@ -758,7 +753,7 @@ static int update_filter(struct tap_filter *filter, void __user *arg)
 	for (; n < uf.count; n++) {
 		if (!is_multicast_ether_addr(addr[n].u)) {
 			err = 0; /* no filter */
-			goto done;
+			goto free_addr;
 		}
 		addr_hash_set(filter->mask, addr[n].u);
 	}
@@ -774,8 +769,7 @@ static int update_filter(struct tap_filter *filter, void __user *arg)
 
 	/* Return the number of exact filters */
 	err = nexact;
-
-done:
+free_addr:
 	kfree(addr);
 	return err;
 }
@@ -825,7 +819,18 @@ static void tun_net_uninit(struct net_device *dev)
 /* Net device open. */
 static int tun_net_open(struct net_device *dev)
 {
+	struct tun_struct *tun = netdev_priv(dev);
+	int i;
+
 	netif_tx_start_all_queues(dev);
+
+	for (i = 0; i < tun->numqueues; i++) {
+		struct tun_file *tfile;
+
+		tfile = rtnl_dereference(tun->tfiles[i]);
+		tfile->socket.sk->sk_write_space(tfile->socket.sk);
+	}
+
 	return 0;
 }
 
@@ -1122,9 +1127,10 @@ static unsigned int tun_chr_poll(struct file *file, poll_table *wait)
 	if (!skb_array_empty(&tfile->tx_array))
 		mask |= POLLIN | POLLRDNORM;
 
-	if (sock_writeable(sk) ||
-	    (!test_and_set_bit(SOCKWQ_ASYNC_NOSPACE, &sk->sk_socket->flags) &&
-	     sock_writeable(sk)))
+	if (tun->dev->flags & IFF_UP &&
+	    (sock_writeable(sk) ||
+	     (!test_and_set_bit(SOCKWQ_ASYNC_NOSPACE, &sk->sk_socket->flags) &&
+	      sock_writeable(sk))))
 		mask |= POLLOUT | POLLWRNORM;
 
 	if (tun->dev->reg_state != NETREG_REGISTERED)
@@ -1193,9 +1199,11 @@ static ssize_t tun_get_user(struct tun_struct *tun, struct tun_file *tfile,
 	}
 
 	if (tun->flags & IFF_VNET_HDR) {
-		if (len < tun->vnet_hdr_sz)
+		int vnet_hdr_sz = READ_ONCE(tun->vnet_hdr_sz);
+
+		if (len < vnet_hdr_sz)
 			return -EINVAL;
-		len -= tun->vnet_hdr_sz;
+		len -= vnet_hdr_sz;
 
 		n = copy_from_iter(&gso, sizeof(gso), from);
 		if (n != sizeof(gso))
@@ -1207,7 +1215,7 @@ static ssize_t tun_get_user(struct tun_struct *tun, struct tun_file *tfile,
 
 		if (tun16_to_cpu(tun, gso.hdr_len) > len)
 			return -EINVAL;
-		iov_iter_advance(from, tun->vnet_hdr_sz - sizeof(gso));
+		iov_iter_advance(from, vnet_hdr_sz - sizeof(gso));
 	}
 
 	if ((tun->flags & TUN_TYPE_MASK) == IFF_TAP) {
@@ -1252,13 +1260,8 @@ static ssize_t tun_get_user(struct tun_struct *tun, struct tun_file *tfile,
 
 	if (zerocopy)
 		err = zerocopy_sg_from_iter(skb, from);
-	else {
+	else
 		err = skb_copy_datagram_from_iter(skb, 0, from, len);
-		if (!err && msg_control) {
-			struct ubuf_info *uarg = msg_control;
-			uarg->callback(uarg, false);
-		}
-	}
 
 	if (err) {
 		this_cpu_inc(tun->pcpu_stats->rx_dropped);
@@ -1304,6 +1307,9 @@ static ssize_t tun_get_user(struct tun_struct *tun, struct tun_file *tfile,
 		skb_shinfo(skb)->destructor_arg = msg_control;
 		skb_shinfo(skb)->tx_flags |= SKBTX_DEV_ZEROCOPY;
 		skb_shinfo(skb)->tx_flags |= SKBTX_SHARED_FRAG;
+	} else if (msg_control) {
+		struct ubuf_info *uarg = msg_control;
+		uarg->callback(uarg, false);
 	}
 
 	skb_reset_network_header(skb);
@@ -1356,7 +1362,7 @@ static ssize_t tun_put_user(struct tun_struct *tun,
 		vlan_hlen = VLAN_HLEN;
 
 	if (tun->flags & IFF_VNET_HDR)
-		vnet_hdr_sz = tun->vnet_hdr_sz;
+		vnet_hdr_sz = READ_ONCE(tun->vnet_hdr_sz);
 
 	total = skb->len + vlan_hlen + vnet_hdr_sz;
 
@@ -1382,7 +1388,7 @@ static ssize_t tun_put_user(struct tun_struct *tun,
 			return -EINVAL;
 
 		ret = virtio_net_hdr_from_skb(skb, &gso,
-					      tun_is_little_endian(tun));
+					      tun_is_little_endian(tun), true);
 		if (ret) {
 			struct skb_shared_info *sinfo = skb_shinfo(skb);
 			pr_err("unexpected GSO type: "

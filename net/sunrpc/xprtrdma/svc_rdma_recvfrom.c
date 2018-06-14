@@ -159,7 +159,7 @@ int rdma_read_chunk_lcl(struct svcxprt_rdma *xprt,
 					   ctxt->sge[pno].addr);
 		if (ret)
 			goto err;
-		atomic_inc(&xprt->sc_dma_used);
+		svc_rdma_count_mappings(xprt, ctxt);
 
 		ctxt->sge[pno].lkey = xprt->sc_pd->local_dma_lkey;
 		ctxt->sge[pno].length = len;
@@ -348,8 +348,6 @@ int rdma_read_chunk_frmr(struct svcxprt_rdma *xprt,
 	atomic_inc(&rdma_stat_read);
 	return ret;
  err:
-	ib_dma_unmap_sg(xprt->sc_cm_id->device,
-			frmr->sg, frmr->sg_nents, frmr->direction);
 	svc_rdma_put_context(ctxt, 0);
 	svc_rdma_put_frmr(xprt, frmr);
 	return ret;

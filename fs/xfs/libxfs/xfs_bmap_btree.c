@@ -454,6 +454,7 @@ xfs_bmbt_alloc_block(
 	if (args.fsbno == NULLFSBLOCK) {
 		args.fsbno = be64_to_cpu(start->l);
 		args.type = XFS_ALLOCTYPE_START_BNO;
+try_another_ag:
 		/*
 		 * Make sure there is sufficient room left in the AG to
 		 * complete a full tree split for an extent insert.  If
@@ -482,21 +483,36 @@ xfs_bmbt_alloc_block(
 	if (error)
 		goto error0;
 
+	/*
+	 * During a CoW operation, the allocation and bmbt updates occur in
+	 * different transactions.  The mapping code tries to put new bmbt
+	 * blocks near extents being mapped, but the only way to guarantee this
+	 * is if the alloc and the mapping happen in a single transaction that
+	 * has a block reservation.  That isn't the case here, so if we run out
+	 * of space we'll try again with another AG.
+	 */
+	if (xfs_sb_version_hasreflink(&cur->bc_mp->m_sb) &&
+	    args.fsbno == NULLFSBLOCK &&
+	    args.type == XFS_ALLOCTYPE_NEAR_BNO) {
+		args.fsbno = cur->bc_private.b.firstblock;
+		args.type = XFS_ALLOCTYPE_FIRST_AG;
+		goto try_another_ag;
+	}
+
 	if (args.fsbno == NULLFSBLOCK && args.minleft) {
 		/*
 		 * Could not find an AG with enough free space to satisfy
-		 * a full btree split.  Try again without minleft and if
+		 * a full btree split.  Try again and if
 		 * successful activate the lowspace algorithm.
 		 */
 		args.fsbno = 0;
 		args.type = XFS_ALLOCTYPE_FIRST_AG;
-		args.minleft = 0;
 		error = xfs_alloc_vextent(&args);
 		if (error)
 			goto error0;
 		cur->bc_private.b.dfops->dop_low = true;
 	}
-	if (args.fsbno == NULLFSBLOCK) {
+	if (WARN_ON_ONCE(args.fsbno == NULLFSBLOCK)) {
 		XFS_BTREE_TRACE_CURSOR(cur, XBT_EXIT);
 		*stat = 0;
 		return 0;
@@ -777,8 +793,9 @@ xfs_bmbt_init_cursor(
 {
 	struct xfs_ifork	*ifp = XFS_IFORK_PTR(ip, whichfork);
 	struct xfs_btree_cur	*cur;
+	ASSERT(whichfork != XFS_COW_FORK);
 
-	cur = kmem_zone_zalloc(xfs_btree_cur_zone, KM_SLEEP);
+	cur = kmem_zone_zalloc(xfs_btree_cur_zone, KM_NOFS);
 
 	cur->bc_tp = tp;
 	cur->bc_mp = mp;

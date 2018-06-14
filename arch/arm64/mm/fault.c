@@ -18,7 +18,7 @@
  * along with this program.  If not, see <http://www.gnu.org/licenses/>.
  */
 
-#include <linux/module.h>
+#include <linux/extable.h>
 #include <linux/signal.h>
 #include <linux/mm.h>
 #include <linux/hardirq.h>
@@ -29,7 +29,9 @@
 #include <linux/sched.h>
 #include <linux/highmem.h>
 #include <linux/perf_event.h>
+#include <linux/preempt.h>
 
+#include <asm/bug.h>
 #include <asm/cpufeature.h>
 #include <asm/exception.h>
 #include <asm/debug-monitors.h>
@@ -39,7 +41,20 @@
 #include <asm/pgtable.h>
 #include <asm/tlbflush.h>
 
-static const char *fault_name(unsigned int esr);
+struct fault_info {
+	int	(*fn)(unsigned long addr, unsigned int esr,
+		      struct pt_regs *regs);
+	int	sig;
+	int	code;
+	const char *name;
+};
+
+static const struct fault_info fault_info[];
+
+static inline const struct fault_info *esr_to_fault_info(unsigned int esr)
+{
+	return fault_info + (esr & 63);
+}
 
 #ifdef CONFIG_KPROBES
 static inline int notify_page_fault(struct pt_regs *regs, unsigned int esr)
@@ -194,10 +209,12 @@ static void __do_user_fault(struct task_struct *tsk, unsigned long addr,
 			    struct pt_regs *regs)
 {
 	struct siginfo si;
+	const struct fault_info *inf;
 
 	if (unhandled_signal(tsk, sig) && show_unhandled_signals_ratelimited()) {
+		inf = esr_to_fault_info(esr);
 		pr_info("%s[%d]: unhandled %s (%d) at 0x%08lx, esr 0x%03x\n",
-			tsk->comm, task_pid_nr(tsk), fault_name(esr), sig,
+			tsk->comm, task_pid_nr(tsk), inf->name, sig,
 			addr, esr);
 		show_pte(tsk->mm, addr);
 		show_regs(regs);
@@ -216,14 +233,16 @@ static void do_bad_area(unsigned long addr, unsigned int esr, struct pt_regs *re
 {
 	struct task_struct *tsk = current;
 	struct mm_struct *mm = tsk->active_mm;
+	const struct fault_info *inf;
 
 	/*
 	 * If we are in kernel mode at this point, we have no context to
 	 * handle this fault with.
 	 */
-	if (user_mode(regs))
-		__do_user_fault(tsk, addr, esr, SIGSEGV, SEGV_MAPERR, regs);
-	else
+	if (user_mode(regs)) {
+		inf = esr_to_fault_info(esr);
+		__do_user_fault(tsk, addr, esr, inf->sig, inf->code, regs);
+	} else
 		__do_kernel_fault(mm, addr, esr, regs);
 }
 
@@ -251,8 +270,7 @@ static int __do_page_fault(struct mm_struct *mm, unsigned long addr,
 good_area:
 	/*
 	 * Check that the permissions on the VMA allow for the fault which
-	 * occurred. If we encountered a write or exec fault, we must have
-	 * appropriate permissions, otherwise we allow any permission.
+	 * occurred.
 	 */
 	if (!(vma->vm_flags & vm_flags)) {
 		fault = VM_FAULT_BADACCESS;
@@ -288,7 +306,7 @@ static int __kprobes do_page_fault(unsigned long addr, unsigned int esr,
 	struct task_struct *tsk;
 	struct mm_struct *mm;
 	int fault, sig, code;
-	unsigned long vm_flags = VM_READ | VM_WRITE | VM_EXEC;
+	unsigned long vm_flags = VM_READ | VM_WRITE;
 	unsigned int mm_flags = FAULT_FLAG_ALLOW_RETRY | FAULT_FLAG_KILLABLE;
 
 	if (notify_page_fault(regs, esr))
@@ -480,12 +498,7 @@ static int do_bad(unsigned long addr, unsigned int esr, struct pt_regs *regs)
 	return 1;
 }
 
-static const struct fault_info {
-	int	(*fn)(unsigned long addr, unsigned int esr, struct pt_regs *regs);
-	int	sig;
-	int	code;
-	const char *name;
-} fault_info[] = {
+static const struct fault_info fault_info[] = {
 	{ do_bad,		SIGBUS,  0,		"ttbr address size fault"	},
 	{ do_bad,		SIGBUS,  0,		"level 1 address size fault"	},
 	{ do_bad,		SIGBUS,  0,		"level 2 address size fault"	},
@@ -552,19 +565,13 @@ static const struct fault_info {
 	{ do_bad,		SIGBUS,  0,		"unknown 63"			},
 };
 
-static const char *fault_name(unsigned int esr)
-{
-	const struct fault_info *inf = fault_info + (esr & 63);
-	return inf->name;
-}
-
 /*
  * Dispatch a data abort to the relevant handler.
  */
 asmlinkage void __exception do_mem_abort(unsigned long addr, unsigned int esr,
 					 struct pt_regs *regs)
 {
-	const struct fault_info *inf = fault_info + (esr & 63);
+	const struct fault_info *inf = esr_to_fault_info(esr);
 	struct siginfo info;
 
 	if (!inf->fn(addr, esr, regs))
@@ -671,9 +678,17 @@ asmlinkage int __exception do_debug_exception(unsigned long addr,
 NOKPROBE_SYMBOL(do_debug_exception);
 
 #ifdef CONFIG_ARM64_PAN
-void cpu_enable_pan(void *__unused)
+int cpu_enable_pan(void *__unused)
 {
+	/*
+	 * We modify PSTATE. This won't work from irq context as the PSTATE
+	 * is discarded once we return from the exception.
+	 */
+	WARN_ON_ONCE(in_interrupt());
+
 	config_sctlr_el1(SCTLR_EL1_SPAN, 0);
+	asm(SET_PSTATE_PAN(1));
+	return 0;
 }
 #endif /* CONFIG_ARM64_PAN */
 
@@ -684,8 +699,9 @@ void cpu_enable_pan(void *__unused)
  * We need to enable the feature at runtime (instead of adding it to
  * PSR_MODE_EL1h) as the feature may not be implemented by the cpu.
  */
-void cpu_enable_uao(void *__unused)
+int cpu_enable_uao(void *__unused)
 {
 	asm(SET_PSTATE_UAO(1));
+	return 0;
 }
 #endif /* CONFIG_ARM64_UAO */

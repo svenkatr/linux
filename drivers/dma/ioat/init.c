@@ -691,7 +691,7 @@ static int ioat_alloc_chan_resources(struct dma_chan *c)
 	/* doing 2 32bit writes to mmio since 1 64b write doesn't work */
 	ioat_chan->completion =
 		dma_pool_zalloc(ioat_chan->ioat_dma->completion_pool,
-				GFP_KERNEL, &ioat_chan->completion_dma);
+				GFP_NOWAIT, &ioat_chan->completion_dma);
 	if (!ioat_chan->completion)
 		return -ENOMEM;
 
@@ -701,7 +701,7 @@ static int ioat_alloc_chan_resources(struct dma_chan *c)
 	       ioat_chan->reg_base + IOAT_CHANCMP_OFFSET_HIGH);
 
 	order = IOAT_MAX_ORDER;
-	ring = ioat_alloc_ring(c, order, GFP_KERNEL);
+	ring = ioat_alloc_ring(c, order, GFP_NOWAIT);
 	if (!ring)
 		return -ENOMEM;
 
@@ -828,7 +828,7 @@ static int ioat_xor_val_self_test(struct ioatdma_device *ioat_dma)
 
 	dest_dma = dma_map_page(dev, dest, 0, PAGE_SIZE, DMA_FROM_DEVICE);
 	if (dma_mapping_error(dev, dest_dma))
-		goto dma_unmap;
+		goto free_resources;
 
 	for (i = 0; i < IOAT_NUM_SRC_TEST; i++)
 		dma_srcs[i] = DMA_ERROR_CODE;

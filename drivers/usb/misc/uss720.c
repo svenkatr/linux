@@ -150,10 +150,8 @@ static struct uss720_async_request *submit_async_request(struct parport_uss720_p
 	if (!usbdev)
 		return NULL;
 	rq = kzalloc(sizeof(struct uss720_async_request), mem_flags);
-	if (!rq) {
-		dev_err(&usbdev->dev, "submit_async_request out of memory\n");
+	if (!rq)
 		return NULL;
-	}
 	kref_init(&rq->ref_count);
 	INIT_LIST_HEAD(&rq->asynclist);
 	init_completion(&rq->compl);
@@ -162,7 +160,6 @@ static struct uss720_async_request *submit_async_request(struct parport_uss720_p
 	rq->urb = usb_alloc_urb(0, mem_flags);
 	if (!rq->urb) {
 		kref_put(&rq->ref_count, destroy_async);
-		dev_err(&usbdev->dev, "submit_async_request out of memory\n");
 		return NULL;
 	}
 	rq->dr = kmalloc(sizeof(*rq->dr), mem_flags);
@@ -710,6 +707,11 @@ static int uss720_probe(struct usb_interface *intf,
 	dev_dbg(&intf->dev, "set interface result %d\n", i);
 
 	interface = intf->cur_altsetting;
+
+	if (interface->desc.bNumEndpoints < 3) {
+		usb_put_dev(usbdev);
+		return -ENODEV;
+	}
 
 	/*
 	 * Allocate parport interface 

@@ -51,7 +51,7 @@ set_debarch() {
 		debarch=hppa ;;
 	mips*)
 		debarch=mips$(grep -q CPU_LITTLE_ENDIAN=y $KCONFIG_CONFIG && echo el || true) ;;
-	arm64)
+	aarch64|arm64)
 		debarch=arm64 ;;
 	arm*)
 		if grep -q CONFIG_AEABI=y $KCONFIG_CONFIG; then
@@ -184,6 +184,8 @@ if grep -q '^CONFIG_MODULES=y' $KCONFIG_CONFIG ; then
 		fi
 	fi
 fi
+
+$MAKE KBUILD_SRC= INSTALL_FW_PATH="$tmpdir/lib/firmware" firmware_install
 
 if [ "$ARCH" != "um" ]; then
 	$MAKE headers_check KBUILD_SRC=
@@ -367,7 +369,7 @@ Description: Linux kernel firmware, version $version
  This package contains firmware from the Linux kernel, version $version.
 EOF
 
-	create_package "$fwpackagename" "$fwdir"
+	( forcearch= create_package "$fwpackagename" "$fwdir" )
 fi
 
 cat <<EOF >> debian/control

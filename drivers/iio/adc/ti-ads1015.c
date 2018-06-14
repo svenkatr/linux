@@ -259,8 +259,10 @@ int ads1015_get_adc_result(struct ads1015_data *data, int chan, int *val)
 		return ret;
 
 	if (change) {
+		/* Wait for 2 conversions to complete: one with old settings,
+		another one with new ones */
 		conv_time = DIV_ROUND_UP(USEC_PER_SEC, data->data_rate[dr]);
-		usleep_range(conv_time, conv_time + 1);
+		usleep_range(2 * conv_time, 2 * conv_time + 1);
 	}
 
 	return regmap_read(data->regmap, ADS1015_CONV_REG, val);
@@ -522,6 +524,7 @@ static int ads1015_get_channels_config_of(struct i2c_client *client)
 			if (pga > 6) {
 				dev_err(&client->dev, "invalid gain on %s\n",
 					node->full_name);
+				of_node_put(node);
 				return -EINVAL;
 			}
 		}
@@ -532,6 +535,7 @@ static int ads1015_get_channels_config_of(struct i2c_client *client)
 				dev_err(&client->dev,
 					"invalid data_rate on %s\n",
 					node->full_name);
+				of_node_put(node);
 				return -EINVAL;
 			}
 		}

@@ -16,6 +16,7 @@
 #include <linux/platform_device.h>
 #include <linux/pm_runtime.h>
 #include "drm_fb_cma_helper.h"
+#include <drm/drm_fb_helper.h>
 
 #include "uapi/drm/vc4_drm.h"
 #include "vc4_drv.h"
@@ -60,21 +61,24 @@ static int vc4_get_param_ioctl(struct drm_device *dev, void *data,
 		if (ret < 0)
 			return ret;
 		args->value = V3D_READ(V3D_IDENT0);
-		pm_runtime_put(&vc4->v3d->pdev->dev);
+		pm_runtime_mark_last_busy(&vc4->v3d->pdev->dev);
+		pm_runtime_put_autosuspend(&vc4->v3d->pdev->dev);
 		break;
 	case DRM_VC4_PARAM_V3D_IDENT1:
 		ret = pm_runtime_get_sync(&vc4->v3d->pdev->dev);
 		if (ret < 0)
 			return ret;
 		args->value = V3D_READ(V3D_IDENT1);
-		pm_runtime_put(&vc4->v3d->pdev->dev);
+		pm_runtime_mark_last_busy(&vc4->v3d->pdev->dev);
+		pm_runtime_put_autosuspend(&vc4->v3d->pdev->dev);
 		break;
 	case DRM_VC4_PARAM_V3D_IDENT2:
 		ret = pm_runtime_get_sync(&vc4->v3d->pdev->dev);
 		if (ret < 0)
 			return ret;
 		args->value = V3D_READ(V3D_IDENT2);
-		pm_runtime_put(&vc4->v3d->pdev->dev);
+		pm_runtime_mark_last_busy(&vc4->v3d->pdev->dev);
+		pm_runtime_put_autosuspend(&vc4->v3d->pdev->dev);
 		break;
 	case DRM_VC4_PARAM_SUPPORTS_BRANCHES:
 		args->value = true;
@@ -214,7 +218,7 @@ static void vc4_kick_out_firmware_fb(void)
 	ap->ranges[0].base = 0;
 	ap->ranges[0].size = ~0;
 
-	remove_conflicting_framebuffers(ap, "vc4drmfb", false);
+	drm_fb_helper_remove_conflicting_framebuffers(ap, "vc4drmfb", false);
 	kfree(ap);
 }
 
@@ -232,8 +236,8 @@ static int vc4_drm_bind(struct device *dev)
 		return -ENOMEM;
 
 	drm = drm_dev_alloc(&vc4_drm_driver, dev);
-	if (!drm)
-		return -ENOMEM;
+	if (IS_ERR(drm))
+		return PTR_ERR(drm);
 	platform_set_drvdata(pdev, drm);
 	vc4->dev = drm;
 	drm->dev_private = vc4;

@@ -129,6 +129,7 @@ void drm_kms_helper_poll_enable_locked(struct drm_device *dev)
 {
 	bool poll = false;
 	struct drm_connector *connector;
+	unsigned long delay = DRM_OUTPUT_POLL_PERIOD;
 
 	WARN_ON(!mutex_is_locked(&dev->mode_config.mutex));
 
@@ -141,8 +142,23 @@ void drm_kms_helper_poll_enable_locked(struct drm_device *dev)
 			poll = true;
 	}
 
+	if (dev->mode_config.delayed_event) {
+		/*
+		 * FIXME:
+		 *
+		 * Use short (1s) delay to handle the initial delayed event.
+		 * This delay should not be needed, but Optimus/nouveau will
+		 * fail in a mysterious way if the delayed event is handled as
+		 * soon as possible like it is done in
+		 * drm_helper_probe_single_connector_modes() in case the poll
+		 * was enabled before.
+		 */
+		poll = true;
+		delay = HZ;
+	}
+
 	if (poll)
-		schedule_delayed_work(&dev->mode_config.output_poll_work, DRM_OUTPUT_POLL_PERIOD);
+		schedule_delayed_work(&dev->mode_config.output_poll_work, delay);
 }
 EXPORT_SYMBOL(drm_kms_helper_poll_enable_locked);
 

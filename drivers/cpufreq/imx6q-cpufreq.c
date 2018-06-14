@@ -18,6 +18,7 @@
 
 #define PU_SOC_VOLTAGE_NORMAL	1250000
 #define PU_SOC_VOLTAGE_HIGH	1275000
+#define FREQ_528_MHZ		528000000
 #define FREQ_1P2_GHZ		1200000000
 
 static struct regulator *arm_reg;
@@ -41,6 +42,7 @@ static unsigned int transition_latency;
 
 static u32 *imx6_soc_volt;
 static u32 soc_opp_count;
+static bool soc_is_imx6ul;
 
 static int imx6q_set_target(struct cpufreq_policy *policy, unsigned int index)
 {
@@ -102,7 +104,7 @@ static int imx6q_set_target(struct cpufreq_policy *policy, unsigned int index)
 	 *  - Reprogram pll1_sys_clk and reparent pll1_sw_clk back to it
 	 *  - Disable pll2_pfd2_396m_clk
 	 */
-	if (of_machine_is_compatible("fsl,imx6ul")) {
+	if (soc_is_imx6ul) {
 		/*
 		 * When changing pll1_sw_clk's parent to pll1_sys_clk,
 		 * CPU may run at higher than 528MHz, this will lead to
@@ -110,14 +112,20 @@ static int imx6q_set_target(struct cpufreq_policy *policy, unsigned int index)
 		 * voltage of 528MHz, so lower the CPU frequency to one
 		 * half before changing CPU frequency.
 		 */
-		clk_set_rate(arm_clk, (old_freq >> 1) * 1000);
-		clk_set_parent(pll1_sw_clk, pll1_sys_clk);
+		if ((old_freq * 1000) <= FREQ_528_MHZ) {
+			clk_set_rate(arm_clk, (old_freq >> 1) * 1000);
+			clk_set_parent(pll1_sw_clk, pll1_sys_clk);
+		}
 		if (freq_hz > clk_get_rate(pll2_pfd2_396m_clk))
 			clk_set_parent(secondary_sel_clk, pll2_bus_clk);
 		else
 			clk_set_parent(secondary_sel_clk, pll2_pfd2_396m_clk);
 		clk_set_parent(step_clk, secondary_sel_clk);
 		clk_set_parent(pll1_sw_clk, step_clk);
+		if (freq_hz > FREQ_528_MHZ) {
+			clk_set_rate(pll1_sys_clk, freq_hz);
+			clk_set_parent(pll1_sw_clk, pll1_sys_clk);
+		}
 	} else {
 		clk_set_parent(step_clk, pll2_pfd2_396m_clk);
 		clk_set_parent(pll1_sw_clk, step_clk);
@@ -210,7 +218,8 @@ static int imx6q_cpufreq_probe(struct platform_device *pdev)
 		goto put_clk;
 	}
 
-	if (of_machine_is_compatible("fsl,imx6ul")) {
+	if (of_machine_is_compatible("fsl,imx6ul") ||
+			of_machine_is_compatible("fsl,imx6ull")) {
 		pll2_bus_clk = clk_get(cpu_dev, "pll2_bus");
 		secondary_sel_clk = clk_get(cpu_dev, "secondary_sel");
 		if (IS_ERR(pll2_bus_clk) || IS_ERR(secondary_sel_clk)) {
@@ -218,6 +227,7 @@ static int imx6q_cpufreq_probe(struct platform_device *pdev)
 			ret = -ENOENT;
 			goto put_clk;
 		}
+		soc_is_imx6ul = true;
 	}
 
 	arm_reg = regulator_get(cpu_dev, "arm");

@@ -90,10 +90,6 @@ config OF_PCI_IRQ
 	help
 	  OpenFirmware PCI IRQ routing helpers
 
-config OF_MTD
-	depends on MTD
-	def_bool y
-
 config OF_RESERVED_MEM
 	depends on OF_EARLY_FLATTREE
 	bool
@@ -115,5 +111,12 @@ config OF_OVERLAY
 
 config OF_NUMA
 	bool
+
+config OF_CONFIGFS
+	bool "Device Tree Overlay ConfigFS interface"
+	select CONFIGFS_FS
+	depends on OF_OVERLAY
+	help
+	  Enable a simple user-space driven DT overlay interface.
 
 endif # OF

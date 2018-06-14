@@ -130,12 +130,16 @@ static void devfreq_set_freq_table(struct devfreq *devfreq)
  * @devfreq:	the devfreq instance
  * @freq:	the update target frequency
  */
-static int devfreq_update_status(struct devfreq *devfreq, unsigned long freq)
+int devfreq_update_status(struct devfreq *devfreq, unsigned long freq)
 {
 	int lev, prev_lev, ret = 0;
 	unsigned long cur_time;
 
 	cur_time = jiffies;
+
+	/* Immediately exit if previous_freq is not initialized yet. */
+	if (!devfreq->previous_freq)
+		goto out;
 
 	prev_lev = devfreq_get_freq_level(devfreq, devfreq->previous_freq);
 	if (prev_lev < 0) {
@@ -162,6 +166,7 @@ out:
 	devfreq->last_stat_updated = cur_time;
 	return ret;
 }
+EXPORT_SYMBOL(devfreq_update_status);
 
 /**
  * find_devfreq_governor() - find devfreq governor from name
@@ -589,22 +594,29 @@ struct devfreq *devfreq_add_device(struct device *dev,
 	list_add(&devfreq->node, &devfreq_list);
 
 	governor = find_devfreq_governor(devfreq->governor_name);
-	if (!IS_ERR(governor))
-		devfreq->governor = governor;
-	if (devfreq->governor)
-		err = devfreq->governor->event_handler(devfreq,
-					DEVFREQ_GOV_START, NULL);
-	mutex_unlock(&devfreq_list_lock);
+	if (IS_ERR(governor)) {
+		dev_err(dev, "%s: Unable to find governor for the device\n",
+			__func__);
+		err = PTR_ERR(governor);
+		goto err_init;
+	}
+
+	devfreq->governor = governor;
+	err = devfreq->governor->event_handler(devfreq, DEVFREQ_GOV_START,
+						NULL);
 	if (err) {
 		dev_err(dev, "%s: Unable to start governor for the device\n",
 			__func__);
 		goto err_init;
 	}
+	mutex_unlock(&devfreq_list_lock);
 
 	return devfreq;
 
 err_init:
 	list_del(&devfreq->node);
+	mutex_unlock(&devfreq_list_lock);
+
 	device_unregister(&devfreq->dev);
 err_out:
 	return ERR_PTR(err);
@@ -928,6 +940,9 @@ static ssize_t governor_store(struct device *dev, struct device_attribute *attr,
 	if (df->governor == governor) {
 		ret = 0;
 		goto out;
+	} else if (df->governor->immutable || governor->immutable) {
+		ret = -EINVAL;
+		goto out;
 	}
 
 	if (df->governor) {
@@ -957,13 +972,33 @@ static ssize_t available_governors_show(struct device *d,
 					struct device_attribute *attr,
 					char *buf)
 {
-	struct devfreq_governor *tmp_governor;
+	struct devfreq *df = to_devfreq(d);
 	ssize_t count = 0;
 
 	mutex_lock(&devfreq_list_lock);
-	list_for_each_entry(tmp_governor, &devfreq_governor_list, node)
-		count += scnprintf(&buf[count], (PAGE_SIZE - count - 2),
-				   "%s ", tmp_governor->name);
+
+	/*
+	 * The devfreq with immutable governor (e.g., passive) shows
+	 * only own governor.
+	 */
+	if (df->governor->immutable) {
+		count = scnprintf(&buf[count], DEVFREQ_NAME_LEN,
+				   "%s ", df->governor_name);
+	/*
+	 * The devfreq device shows the registered governor except for
+	 * immutable governors such as passive governor .
+	 */
+	} else {
+		struct devfreq_governor *governor;
+
+		list_for_each_entry(governor, &devfreq_governor_list, node) {
+			if (governor->immutable)
+				continue;
+			count += scnprintf(&buf[count], (PAGE_SIZE - count - 2),
+					   "%s ", governor->name);
+		}
+	}
+
 	mutex_unlock(&devfreq_list_lock);
 
 	/* Truncate the trailing space */

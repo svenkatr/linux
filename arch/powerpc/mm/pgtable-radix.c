@@ -65,7 +65,7 @@ int radix__map_kernel_page(unsigned long ea, unsigned long pa,
 		if (!pmdp)
 			return -ENOMEM;
 		if (map_page_size == PMD_SIZE) {
-			ptep = (pte_t *)pudp;
+			ptep = pmdp_ptep(pmdp);
 			goto set_the_pte;
 		}
 		ptep = pte_alloc_kernel(pmdp, ea);
@@ -90,7 +90,7 @@ int radix__map_kernel_page(unsigned long ea, unsigned long pa,
 		}
 		pmdp = pmd_offset(pudp, ea);
 		if (map_page_size == PMD_SIZE) {
-			ptep = (pte_t *)pudp;
+			ptep = pmdp_ptep(pmdp);
 			goto set_the_pte;
 		}
 		if (!pmd_present(*pmdp)) {
@@ -159,7 +159,7 @@ redo:
 	 * Allocate Partition table and process table for the
 	 * host.
 	 */
-	BUILD_BUG_ON_MSG((PRTB_SIZE_SHIFT > 23), "Process table size too large.");
+	BUILD_BUG_ON_MSG((PRTB_SIZE_SHIFT > 36), "Process table size too large.");
 	process_tb = early_alloc_pgtable(1UL << PRTB_SIZE_SHIFT);
 	/*
 	 * Fill in the process table.
@@ -181,7 +181,7 @@ static void __init radix_init_partition_table(void)
 
 	rts_field = radix__get_tree_size();
 
-	BUILD_BUG_ON_MSG((PATB_SIZE_SHIFT > 24), "Partition table size too large.");
+	BUILD_BUG_ON_MSG((PATB_SIZE_SHIFT > 36), "Partition table size too large.");
 	partition_tb = early_alloc_pgtable(1UL << PATB_SIZE_SHIFT);
 	partition_tb->patb0 = cpu_to_be64(rts_field | __pa(init_mm.pgd) |
 					  RADIX_PGD_INDEX_SIZE | PATB_HR);
@@ -294,6 +294,32 @@ found:
 	return;
 }
 
+static void update_hid_for_radix(void)
+{
+	unsigned long hid0;
+	unsigned long rb = 3UL << PPC_BITLSHIFT(53); /* IS = 3 */
+
+	asm volatile("ptesync": : :"memory");
+	/* prs = 0, ric = 2, rs = 0, r = 1 is = 3 */
+	asm volatile(PPC_TLBIE_5(%0, %4, %3, %2, %1)
+		     : : "r"(rb), "i"(1), "i"(0), "i"(2), "r"(0) : "memory");
+	/* prs = 1, ric = 2, rs = 0, r = 1 is = 3 */
+	asm volatile(PPC_TLBIE_5(%0, %4, %3, %2, %1)
+		     : : "r"(rb), "i"(1), "i"(1), "i"(2), "r"(0) : "memory");
+	asm volatile("eieio; tlbsync; ptesync; isync; slbia": : :"memory");
+	/*
+	 * now switch the HID
+	 */
+	hid0  = mfspr(SPRN_HID0);
+	hid0 |= HID0_POWER9_RADIX;
+	mtspr(SPRN_HID0, hid0);
+	asm volatile("isync": : :"memory");
+
+	/* Wait for it to happen */
+	while (!(mfspr(SPRN_HID0) & HID0_POWER9_RADIX))
+		cpu_relax();
+}
+
 void __init radix__early_init_mmu(void)
 {
 	unsigned long lpcr;
@@ -345,6 +371,8 @@ void __init radix__early_init_mmu(void)
 
 	if (!firmware_has_feature(FW_FEATURE_LPAR)) {
 		radix_init_native();
+		if (cpu_has_feature(CPU_FTR_POWER9_DD1))
+			update_hid_for_radix();
 		lpcr = mfspr(SPRN_LPCR);
 		mtspr(SPRN_LPCR, lpcr | LPCR_UPRT | LPCR_HR);
 		radix_init_partition_table();
@@ -360,11 +388,27 @@ void radix__early_init_mmu_secondary(void)
 	 * update partition table control register and UPRT
 	 */
 	if (!firmware_has_feature(FW_FEATURE_LPAR)) {
+
+		if (cpu_has_feature(CPU_FTR_POWER9_DD1))
+			update_hid_for_radix();
+
 		lpcr = mfspr(SPRN_LPCR);
 		mtspr(SPRN_LPCR, lpcr | LPCR_UPRT | LPCR_HR);
 
 		mtspr(SPRN_PTCR,
 		      __pa(partition_tb) | (PATB_SIZE_SHIFT - 12));
+	}
+}
+
+void radix__mmu_cleanup_all(void)
+{
+	unsigned long lpcr;
+
+	if (!firmware_has_feature(FW_FEATURE_LPAR)) {
+		lpcr = mfspr(SPRN_LPCR);
+		mtspr(SPRN_LPCR, lpcr & ~LPCR_UPRT);
+		mtspr(SPRN_PTCR, 0);
+		radix__flush_tlb_all();
 	}
 }
 

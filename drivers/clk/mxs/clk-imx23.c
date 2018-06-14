@@ -89,7 +89,7 @@ enum imx23_clk {
 	cpu_xtal, hbus, xbus, lcdif_div, ssp_div, gpmi_div, emi_pll,
 	emi_xtal, etm_div, saif_div, clk32k_div, rtc, adc, spdif_div,
 	clk32k, dri, pwm, filt, uart, ssp, gpmi, spdif, emi, saif,
-	lcdif, etm, usb, usb_phy,
+	lcdif, etm, usb, usb_phy, us_div,
 	clk_max
 };
 
@@ -157,6 +157,7 @@ static void __init mx23_clocks_init(struct device_node *np)
 	clks[etm] = mxs_clk_gate("etm", "etm_div", ETM, 31);
 	clks[usb] = mxs_clk_gate("usb", "usb_phy", DIGCTRL, 2);
 	clks[usb_phy] = clk_register_gate(NULL, "usb_phy", "pll", 0, PLLCTRL0, 18, 0, &mxs_lock);
+	clks[us_div] = mxs_clk_fixed_factor("us_div", "ref_xtal", 1, 24);
 
 	for (i = 0; i < ARRAY_SIZE(clks); i++)
 		if (IS_ERR(clks[i])) {

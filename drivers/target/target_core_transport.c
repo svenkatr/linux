@@ -457,8 +457,20 @@ static void target_complete_nacl(struct kref *kref)
 {
 	struct se_node_acl *nacl = container_of(kref,
 				struct se_node_acl, acl_kref);
+	struct se_portal_group *se_tpg = nacl->se_tpg;
 
-	complete(&nacl->acl_free_comp);
+	if (!nacl->dynamic_stop) {
+		complete(&nacl->acl_free_comp);
+		return;
+	}
+
+	mutex_lock(&se_tpg->acl_node_mutex);
+	list_del(&nacl->acl_list);
+	mutex_unlock(&se_tpg->acl_node_mutex);
+
+	core_tpg_wait_for_nacl_pr_ref(nacl);
+	core_free_device_list_for_node(nacl, se_tpg);
+	kfree(nacl);
 }
 
 void target_put_nacl(struct se_node_acl *nacl)
@@ -499,12 +511,39 @@ EXPORT_SYMBOL(transport_deregister_session_configfs);
 void transport_free_session(struct se_session *se_sess)
 {
 	struct se_node_acl *se_nacl = se_sess->se_node_acl;
+
 	/*
 	 * Drop the se_node_acl->nacl_kref obtained from within
 	 * core_tpg_get_initiator_node_acl().
 	 */
 	if (se_nacl) {
+		struct se_portal_group *se_tpg = se_nacl->se_tpg;
+		const struct target_core_fabric_ops *se_tfo = se_tpg->se_tpg_tfo;
+		unsigned long flags;
+
 		se_sess->se_node_acl = NULL;
+
+		/*
+		 * Also determine if we need to drop the extra ->cmd_kref if
+		 * it had been previously dynamically generated, and
+		 * the endpoint is not caching dynamic ACLs.
+		 */
+		mutex_lock(&se_tpg->acl_node_mutex);
+		if (se_nacl->dynamic_node_acl &&
+		    !se_tfo->tpg_check_demo_mode_cache(se_tpg)) {
+			spin_lock_irqsave(&se_nacl->nacl_sess_lock, flags);
+			if (list_empty(&se_nacl->acl_sess_list))
+				se_nacl->dynamic_stop = true;
+			spin_unlock_irqrestore(&se_nacl->nacl_sess_lock, flags);
+
+			if (se_nacl->dynamic_stop)
+				list_del(&se_nacl->acl_list);
+		}
+		mutex_unlock(&se_tpg->acl_node_mutex);
+
+		if (se_nacl->dynamic_stop)
+			target_put_nacl(se_nacl);
+
 		target_put_nacl(se_nacl);
 	}
 	if (se_sess->sess_cmd_map) {
@@ -518,16 +557,12 @@ EXPORT_SYMBOL(transport_free_session);
 void transport_deregister_session(struct se_session *se_sess)
 {
 	struct se_portal_group *se_tpg = se_sess->se_tpg;
-	const struct target_core_fabric_ops *se_tfo;
-	struct se_node_acl *se_nacl;
 	unsigned long flags;
-	bool drop_nacl = false;
 
 	if (!se_tpg) {
 		transport_free_session(se_sess);
 		return;
 	}
-	se_tfo = se_tpg->se_tpg_tfo;
 
 	spin_lock_irqsave(&se_tpg->session_lock, flags);
 	list_del(&se_sess->sess_list);
@@ -535,33 +570,15 @@ void transport_deregister_session(struct se_session *se_sess)
 	se_sess->fabric_sess_ptr = NULL;
 	spin_unlock_irqrestore(&se_tpg->session_lock, flags);
 
-	/*
-	 * Determine if we need to do extra work for this initiator node's
-	 * struct se_node_acl if it had been previously dynamically generated.
-	 */
-	se_nacl = se_sess->se_node_acl;
-
-	mutex_lock(&se_tpg->acl_node_mutex);
-	if (se_nacl && se_nacl->dynamic_node_acl) {
-		if (!se_tfo->tpg_check_demo_mode_cache(se_tpg)) {
-			list_del(&se_nacl->acl_list);
-			drop_nacl = true;
-		}
-	}
-	mutex_unlock(&se_tpg->acl_node_mutex);
-
-	if (drop_nacl) {
-		core_tpg_wait_for_nacl_pr_ref(se_nacl);
-		core_free_device_list_for_node(se_nacl, se_tpg);
-		se_sess->se_node_acl = NULL;
-		kfree(se_nacl);
-	}
 	pr_debug("TARGET_CORE[%s]: Deregistered fabric_sess\n",
 		se_tpg->se_tpg_tfo->get_fabric_name());
 	/*
 	 * If last kref is dropping now for an explicit NodeACL, awake sleeping
 	 * ->acl_free_comp caller to wakeup configfs se_node_acl->acl_group
 	 * removal context from within transport_free_session() code.
+	 *
+	 * For dynamic ACL, target_put_nacl() uses target_complete_nacl()
+	 * to release all remaining generate_node_acl=1 created ACL resources.
 	 */
 
 	transport_free_session(se_sess);
@@ -754,15 +771,7 @@ EXPORT_SYMBOL(target_complete_cmd);
 
 void target_complete_cmd_with_length(struct se_cmd *cmd, u8 scsi_status, int length)
 {
-	if (scsi_status != SAM_STAT_GOOD) {
-		return;
-	}
-
-	/*
-	 * Calculate new residual count based upon length of SCSI data
-	 * transferred.
-	 */
-	if (length < cmd->data_length) {
+	if (scsi_status == SAM_STAT_GOOD && length < cmd->data_length) {
 		if (cmd->se_cmd_flags & SCF_UNDERFLOW_BIT) {
 			cmd->residual_count += cmd->data_length - length;
 		} else {
@@ -771,12 +780,6 @@ void target_complete_cmd_with_length(struct se_cmd *cmd, u8 scsi_status, int len
 		}
 
 		cmd->data_length = length;
-	} else if (length > cmd->data_length) {
-		cmd->se_cmd_flags |= SCF_OVERFLOW_BIT;
-		cmd->residual_count = length - cmd->data_length;
-	} else {
-		cmd->se_cmd_flags &= ~(SCF_OVERFLOW_BIT | SCF_UNDERFLOW_BIT);
-		cmd->residual_count = 0;
 	}
 
 	target_complete_cmd(cmd, scsi_status);
@@ -1706,6 +1709,7 @@ void transport_generic_request_failure(struct se_cmd *cmd,
 	case TCM_LOGICAL_BLOCK_GUARD_CHECK_FAILED:
 	case TCM_LOGICAL_BLOCK_APP_TAG_CHECK_FAILED:
 	case TCM_LOGICAL_BLOCK_REF_TAG_CHECK_FAILED:
+	case TCM_COPY_TARGET_DEVICE_NOT_REACHABLE:
 		break;
 	case TCM_OUT_OF_RESOURCES:
 		sense_reason = TCM_LOGICAL_UNIT_COMMUNICATION_FAILURE;
@@ -2547,8 +2551,12 @@ int target_get_sess_cmd(struct se_cmd *se_cmd, bool ack_kref)
 	 * fabric acknowledgement that requires two target_put_sess_cmd()
 	 * invocations before se_cmd descriptor release.
 	 */
-	if (ack_kref)
-		kref_get(&se_cmd->cmd_kref);
+	if (ack_kref) {
+		if (!kref_get_unless_zero(&se_cmd->cmd_kref))
+			return -EINVAL;
+
+		se_cmd->se_cmd_flags |= SCF_ACK_KREF;
+	}
 
 	spin_lock_irqsave(&se_sess->sess_cmd_lock, flags);
 	if (se_sess->sess_tearing_down) {
@@ -2627,7 +2635,7 @@ EXPORT_SYMBOL(target_put_sess_cmd);
  */
 void target_sess_cmd_list_set_waiting(struct se_session *se_sess)
 {
-	struct se_cmd *se_cmd;
+	struct se_cmd *se_cmd, *tmp_cmd;
 	unsigned long flags;
 	int rc;
 
@@ -2639,14 +2647,16 @@ void target_sess_cmd_list_set_waiting(struct se_session *se_sess)
 	se_sess->sess_tearing_down = 1;
 	list_splice_init(&se_sess->sess_cmd_list, &se_sess->sess_wait_list);
 
-	list_for_each_entry(se_cmd, &se_sess->sess_wait_list, se_cmd_list) {
+	list_for_each_entry_safe(se_cmd, tmp_cmd,
+				 &se_sess->sess_wait_list, se_cmd_list) {
 		rc = kref_get_unless_zero(&se_cmd->cmd_kref);
 		if (rc) {
 			se_cmd->cmd_wait_set = 1;
 			spin_lock(&se_cmd->t_state_lock);
 			se_cmd->transport_state |= CMD_T_FABRIC_STOP;
 			spin_unlock(&se_cmd->t_state_lock);
-		}
+		} else
+			list_del_init(&se_cmd->se_cmd_list);
 	}
 
 	spin_unlock_irqrestore(&se_sess->sess_cmd_lock, flags);
@@ -2692,10 +2702,39 @@ void target_wait_for_sess_cmds(struct se_session *se_sess)
 }
 EXPORT_SYMBOL(target_wait_for_sess_cmds);
 
+static void target_lun_confirm(struct percpu_ref *ref)
+{
+	struct se_lun *lun = container_of(ref, struct se_lun, lun_ref);
+
+	complete(&lun->lun_ref_comp);
+}
+
 void transport_clear_lun_ref(struct se_lun *lun)
 {
-	percpu_ref_kill(&lun->lun_ref);
+	/*
+	 * Mark the percpu-ref as DEAD, switch to atomic_t mode, drop
+	 * the initial reference and schedule confirm kill to be
+	 * executed after one full RCU grace period has completed.
+	 */
+	percpu_ref_kill_and_confirm(&lun->lun_ref, target_lun_confirm);
+	/*
+	 * The first completion waits for percpu_ref_switch_to_atomic_rcu()
+	 * to call target_lun_confirm after lun->lun_ref has been marked
+	 * as __PERCPU_REF_DEAD on all CPUs, and switches to atomic_t
+	 * mode so that percpu_ref_tryget_live() lookup of lun->lun_ref
+	 * fails for all new incoming I/O.
+	 */
 	wait_for_completion(&lun->lun_ref_comp);
+	/*
+	 * The second completion waits for percpu_ref_put_many() to
+	 * invoke ->release() after lun->lun_ref has switched to
+	 * atomic_t mode, and lun->lun_ref.count has reached zero.
+	 *
+	 * At this point all target-core lun->lun_ref references have
+	 * been dropped via transport_lun_remove_cmd(), and it's safe
+	 * to proceed with the remaining LUN shutdown.
+	 */
+	wait_for_completion(&lun->lun_shutdown_comp);
 }
 
 static bool
@@ -2870,6 +2909,12 @@ static const struct sense_info sense_info_table[] = {
 		.asc = 0x10,
 		.ascq = 0x03, /* LOGICAL BLOCK REFERENCE TAG CHECK FAILED */
 		.add_sector_info = true,
+	},
+	[TCM_COPY_TARGET_DEVICE_NOT_REACHABLE] = {
+		.key = COPY_ABORTED,
+		.asc = 0x0d,
+		.ascq = 0x02, /* COPY TARGET DEVICE NOT REACHABLE */
+
 	},
 	[TCM_LOGICAL_UNIT_COMMUNICATION_FAILURE] = {
 		/*
@@ -3087,7 +3132,6 @@ static void target_tmr_work(struct work_struct *work)
 		spin_unlock_irqrestore(&cmd->t_state_lock, flags);
 		goto check_stop;
 	}
-	cmd->t_state = TRANSPORT_ISTATE_PROCESSING;
 	spin_unlock_irqrestore(&cmd->t_state_lock, flags);
 
 	cmd->se_tfo->queue_tm_rsp(cmd);
@@ -3100,10 +3144,24 @@ int transport_generic_handle_tmr(
 	struct se_cmd *cmd)
 {
 	unsigned long flags;
+	bool aborted = false;
 
 	spin_lock_irqsave(&cmd->t_state_lock, flags);
-	cmd->transport_state |= CMD_T_ACTIVE;
+	if (cmd->transport_state & CMD_T_ABORTED) {
+		aborted = true;
+	} else {
+		cmd->t_state = TRANSPORT_ISTATE_PROCESSING;
+		cmd->transport_state |= CMD_T_ACTIVE;
+	}
 	spin_unlock_irqrestore(&cmd->t_state_lock, flags);
+
+	if (aborted) {
+		pr_warn_ratelimited("handle_tmr caught CMD_T_ABORTED TMR %d"
+			"ref_tag: %llu tag: %llu\n", cmd->se_tmr_req->function,
+			cmd->se_tmr_req->ref_task_tag, cmd->tag);
+		transport_cmd_check_stop_to_fabric(cmd);
+		return 0;
+	}
 
 	INIT_WORK(&cmd->work, target_tmr_work);
 	queue_work(cmd->se_dev->tmr_wq, &cmd->work);

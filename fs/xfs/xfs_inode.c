@@ -49,6 +49,7 @@
 #include "xfs_trans_priv.h"
 #include "xfs_log.h"
 #include "xfs_bmap_btree.h"
+#include "xfs_reflink.h"
 
 kmem_zone_t *xfs_inode_zone;
 
@@ -74,6 +75,29 @@ xfs_get_extsz_hint(
 	if (XFS_IS_REALTIME_INODE(ip))
 		return ip->i_mount->m_sb.sb_rextsize;
 	return 0;
+}
+
+/*
+ * Helper function to extract CoW extent size hint from inode.
+ * Between the extent size hint and the CoW extent size hint, we
+ * return the greater of the two.  If the value is zero (automatic),
+ * use the default size.
+ */
+xfs_extlen_t
+xfs_get_cowextsz_hint(
+	struct xfs_inode	*ip)
+{
+	xfs_extlen_t		a, b;
+
+	a = 0;
+	if (ip->i_d.di_flags2 & XFS_DIFLAG2_COWEXTSIZE)
+		a = ip->i_d.di_cowextsize;
+	b = xfs_get_extsz_hint(ip);
+
+	a = max(a, b);
+	if (a == 0)
+		return XFS_DEFAULT_COWEXTSZ_HINT;
+	return a;
 }
 
 /*
@@ -651,6 +675,8 @@ _xfs_dic2xflags(
 	if (di_flags2 & XFS_DIFLAG2_ANY) {
 		if (di_flags2 & XFS_DIFLAG2_DAX)
 			flags |= FS_XFLAG_DAX;
+		if (di_flags2 & XFS_DIFLAG2_COWEXTSIZE)
+			flags |= FS_XFLAG_COWEXTSIZE;
 	}
 
 	if (has_attr)
@@ -821,7 +847,7 @@ xfs_ialloc(
 	ip->i_d.di_nextents = 0;
 	ASSERT(ip->i_d.di_nblocks == 0);
 
-	tv = current_fs_time(mp->m_super);
+	tv = current_time(inode);
 	inode->i_mtime = tv;
 	inode->i_atime = tv;
 	inode->i_ctime = tv;
@@ -834,6 +860,7 @@ xfs_ialloc(
 	if (ip->i_d.di_version == 3) {
 		inode->i_version = 1;
 		ip->i_d.di_flags2 = 0;
+		ip->i_d.di_cowextsize = 0;
 		ip->i_d.di_crtime.t_sec = (__int32_t)tv.tv_sec;
 		ip->i_d.di_crtime.t_nsec = (__int32_t)tv.tv_nsec;
 	}
@@ -895,6 +922,15 @@ xfs_ialloc(
 
 			ip->i_d.di_flags |= di_flags;
 			ip->i_d.di_flags2 |= di_flags2;
+		}
+		if (pip &&
+		    (pip->i_d.di_flags2 & XFS_DIFLAG2_ANY) &&
+		    pip->i_d.di_version == 3 &&
+		    ip->i_d.di_version == 3) {
+			if (pip->i_d.di_flags2 & XFS_DIFLAG2_COWEXTSIZE) {
+				ip->i_d.di_flags2 |= XFS_DIFLAG2_COWEXTSIZE;
+				ip->i_d.di_cowextsize = pip->i_d.di_cowextsize;
+			}
 		}
 		/* FALLTHROUGH */
 	case S_IFLNK:
@@ -1586,6 +1622,20 @@ xfs_itruncate_extents(
 			goto out;
 	}
 
+	/* Remove all pending CoW reservations. */
+	error = xfs_reflink_cancel_cow_blocks(ip, &tp, first_unmap_block,
+			last_block, true);
+	if (error)
+		goto out;
+
+	/*
+	 * Clear the reflink flag if we truncated everything.
+	 */
+	if (ip->i_d.di_nblocks == 0 && xfs_is_reflink_inode(ip)) {
+		ip->i_d.di_flags2 &= ~XFS_DIFLAG2_REFLINK;
+		xfs_inode_clear_cowblocks_tag(ip);
+	}
+
 	/*
 	 * Always re-log the inode so that our permanent transaction can keep
 	 * on rolling it forward in the log.
@@ -1651,32 +1701,34 @@ xfs_release(
 	if (xfs_can_free_eofblocks(ip, false)) {
 
 		/*
-		 * If we can't get the iolock just skip truncating the blocks
-		 * past EOF because we could deadlock with the mmap_sem
-		 * otherwise.  We'll get another chance to drop them once the
-		 * last reference to the inode is dropped, so we'll never leak
-		 * blocks permanently.
+		 * Check if the inode is being opened, written and closed
+		 * frequently and we have delayed allocation blocks outstanding
+		 * (e.g. streaming writes from the NFS server), truncating the
+		 * blocks past EOF will cause fragmentation to occur.
 		 *
-		 * Further, check if the inode is being opened, written and
-		 * closed frequently and we have delayed allocation blocks
-		 * outstanding (e.g. streaming writes from the NFS server),
-		 * truncating the blocks past EOF will cause fragmentation to
-		 * occur.
-		 *
-		 * In this case don't do the truncation, either, but we have to
-		 * be careful how we detect this case. Blocks beyond EOF show
-		 * up as i_delayed_blks even when the inode is clean, so we
-		 * need to truncate them away first before checking for a dirty
-		 * release. Hence on the first dirty close we will still remove
-		 * the speculative allocation, but after that we will leave it
-		 * in place.
+		 * In this case don't do the truncation, but we have to be
+		 * careful how we detect this case. Blocks beyond EOF show up as
+		 * i_delayed_blks even when the inode is clean, so we need to
+		 * truncate them away first before checking for a dirty release.
+		 * Hence on the first dirty close we will still remove the
+		 * speculative allocation, but after that we will leave it in
+		 * place.
 		 */
 		if (xfs_iflags_test(ip, XFS_IDIRTY_RELEASE))
 			return 0;
-
-		error = xfs_free_eofblocks(mp, ip, true);
-		if (error && error != -EAGAIN)
-			return error;
+		/*
+		 * If we can't get the iolock just skip truncating the blocks
+		 * past EOF because we could deadlock with the mmap_sem
+		 * otherwise. We'll get another chance to drop them once the
+		 * last reference to the inode is dropped, so we'll never leak
+		 * blocks permanently.
+		 */
+		if (xfs_ilock_nowait(ip, XFS_IOLOCK_EXCL)) {
+			error = xfs_free_eofblocks(ip);
+			xfs_iunlock(ip, XFS_IOLOCK_EXCL);
+			if (error)
+				return error;
+		}
 
 		/* delalloc blocks after truncation means it really is dirty */
 		if (ip->i_delayed_blks)
@@ -1710,7 +1762,7 @@ xfs_inactive_truncate(
 	/*
 	 * Log the inode size first to prevent stale data exposure in the event
 	 * of a system crash before the truncate completes. See the related
-	 * comment in xfs_setattr_size() for details.
+	 * comment in xfs_vn_setattr_size() for details.
 	 */
 	ip->i_d.di_size = 0;
 	xfs_trans_log_inode(tp, ip, XFS_ILOG_CORE);
@@ -1751,22 +1803,23 @@ xfs_inactive_ifree(
 	int			error;
 
 	/*
-	 * The ifree transaction might need to allocate blocks for record
-	 * insertion to the finobt. We don't want to fail here at ENOSPC, so
-	 * allow ifree to dip into the reserved block pool if necessary.
-	 *
-	 * Freeing large sets of inodes generally means freeing inode chunks,
-	 * directory and file data blocks, so this should be relatively safe.
-	 * Only under severe circumstances should it be possible to free enough
-	 * inodes to exhaust the reserve block pool via finobt expansion while
-	 * at the same time not creating free space in the filesystem.
+	 * We try to use a per-AG reservation for any block needed by the finobt
+	 * tree, but as the finobt feature predates the per-AG reservation
+	 * support a degraded file system might not have enough space for the
+	 * reservation at mount time.  In that case try to dip into the reserved
+	 * pool and pray.
 	 *
 	 * Send a warning if the reservation does happen to fail, as the inode
 	 * now remains allocated and sits on the unlinked list until the fs is
 	 * repaired.
 	 */
-	error = xfs_trans_alloc(mp, &M_RES(mp)->tr_ifree,
-			XFS_IFREE_SPACE_RES(mp), 0, XFS_TRANS_RESERVE, &tp);
+	if (unlikely(mp->m_inotbt_nores)) {
+		error = xfs_trans_alloc(mp, &M_RES(mp)->tr_ifree,
+				XFS_IFREE_SPACE_RES(mp), 0, XFS_TRANS_RESERVE,
+				&tp);
+	} else {
+		error = xfs_trans_alloc(mp, &M_RES(mp)->tr_ifree, 0, 0, 0, &tp);
+	}
 	if (error) {
 		if (error == -ENOSPC) {
 			xfs_warn_ratelimited(mp,
@@ -1850,6 +1903,7 @@ xfs_inactive(
 	}
 
 	mp = ip->i_mount;
+	ASSERT(!xfs_iflags_test(ip, XFS_IRECOVERY));
 
 	/* If this is a read-only mount, don't do this (would generate I/O) */
 	if (mp->m_flags & XFS_MOUNT_RDONLY)
@@ -1861,8 +1915,11 @@ xfs_inactive(
 		 * cache. Post-eof blocks must be freed, lest we end up with
 		 * broken free space accounting.
 		 */
-		if (xfs_can_free_eofblocks(ip, true))
-			xfs_free_eofblocks(mp, ip, false);
+		if (xfs_can_free_eofblocks(ip, true)) {
+			xfs_ilock(ip, XFS_IOLOCK_EXCL);
+			xfs_free_eofblocks(ip);
+			xfs_iunlock(ip, XFS_IOLOCK_EXCL);
+		}
 
 		return;
 	}
@@ -1990,7 +2047,6 @@ xfs_iunlink(
 	agi->agi_unlinked[bucket_index] = cpu_to_be32(agino);
 	offset = offsetof(xfs_agi_t, agi_unlinked) +
 		(sizeof(xfs_agino_t) * bucket_index);
-	xfs_trans_buf_set_type(tp, agibp, XFS_BLFT_AGI_BUF);
 	xfs_trans_log_buf(tp, agibp, offset,
 			  (offset + sizeof(xfs_agino_t) - 1));
 	return 0;
@@ -2082,7 +2138,6 @@ xfs_iunlink_remove(
 		agi->agi_unlinked[bucket_index] = cpu_to_be32(next_agino);
 		offset = offsetof(xfs_agi_t, agi_unlinked) +
 			(sizeof(xfs_agino_t) * bucket_index);
-		xfs_trans_buf_set_type(tp, agibp, XFS_BLFT_AGI_BUF);
 		xfs_trans_log_buf(tp, agibp, offset,
 				  (offset + sizeof(xfs_agino_t) - 1));
 	} else {

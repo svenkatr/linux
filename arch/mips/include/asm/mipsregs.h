@@ -215,6 +215,12 @@
 #endif
 
 /*
+ * Wired register bits
+ */
+#define MIPSR6_WIRED_LIMIT	(_ULCAST_(0xffff) << 16)
+#define MIPSR6_WIRED_WIRED	(_ULCAST_(0xffff) << 0)
+
+/*
  * Values used for computation of new tlb entries
  */
 #define PL_4K		12
@@ -660,8 +666,6 @@
 
 #define MIPS_CONF7_IAR		(_ULCAST_(1) << 10)
 #define MIPS_CONF7_AR		(_ULCAST_(1) << 16)
-/* FTLB probability bits for R6 */
-#define MIPS_CONF7_FTLBP_SHIFT	(18)
 
 /* WatchLo* register definitions */
 #define MIPS_WATCHLO_IRW	(_ULCAST_(0x7) << 0)

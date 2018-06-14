@@ -521,10 +521,15 @@
 				#io-channel-cells = <1>;
 			};
 
-			spdif@80054000 {
-				reg = <0x80054000 2000>;
+			spdif: spdif@80054000 {
+				compatible = "fsl,imx28-spdif";
+				reg = <0x80054000 0x2000>;
+				interrupts = <45>;
+				interrupt-names = "spdif-error";
 				dmas = <&dma_apbx 2>;
 				dma-names = "tx";
+				clocks = <&clks 35>;
+				clock-names = "spdif";
 				status = "disabled";
 			};
 
@@ -559,7 +564,8 @@
 				compatible = "fsl,imx23-timrot", "fsl,timrot";
 				reg = <0x80068000 0x2000>;
 				interrupts = <28 29 30 31>;
-				clocks = <&clks 28>;
+				clocks = <&clks 28
+					  &clks 42>;
 			};
 
 			auart0: serial@8006c000 {

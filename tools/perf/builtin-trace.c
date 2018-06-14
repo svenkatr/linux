@@ -45,6 +45,7 @@
 #include <linux/audit.h>
 #include <linux/random.h>
 #include <linux/stringify.h>
+#include <linux/time64.h>
 
 #ifndef O_CLOEXEC
 # define O_CLOEXEC		02000000
@@ -741,6 +742,8 @@ static struct syscall_fmt {
 	  .arg_scnprintf = { [1] = SCA_SIGNUM, /* sig */ }, },
 	{ .name	    = "rt_tgsigqueueinfo", .errmsg = true,
 	  .arg_scnprintf = { [2] = SCA_SIGNUM, /* sig */ }, },
+	{ .name	    = "sched_getattr",	      .errmsg = true, },
+	{ .name	    = "sched_setattr",	      .errmsg = true, },
 	{ .name	    = "sched_setscheduler",   .errmsg = true,
 	  .arg_scnprintf = { [1] = SCA_SCHED_POLICY, /* policy */ }, },
 	{ .name	    = "seccomp", .errmsg = true,
@@ -1449,7 +1452,7 @@ static int trace__printf_interrupted_entry(struct trace *trace, struct perf_samp
 
 	duration = sample->time - ttrace->entry_time;
 
-	printed  = trace__fprintf_entry_head(trace, trace->current, duration, sample->time, trace->output);
+	printed  = trace__fprintf_entry_head(trace, trace->current, duration, ttrace->entry_time, trace->output);
 	printed += fprintf(trace->output, "%-70s) ...\n", ttrace->entry_str);
 	ttrace->entry_pending = false;
 
@@ -1496,7 +1499,7 @@ static int trace__sys_enter(struct trace *trace, struct perf_evsel *evsel,
 
 	if (sc->is_exit) {
 		if (!(trace->duration_filter || trace->summary_only || trace->min_stack)) {
-			trace__fprintf_entry_head(trace, thread, 1, sample->time, trace->output);
+			trace__fprintf_entry_head(trace, thread, 1, ttrace->entry_time, trace->output);
 			fprintf(trace->output, "%-70s)\n", ttrace->entry_str);
 		}
 	} else {
@@ -1589,7 +1592,7 @@ static int trace__sys_exit(struct trace *trace, struct perf_evsel *evsel,
 	if (trace->summary_only)
 		goto out;
 
-	trace__fprintf_entry_head(trace, thread, duration, sample->time, trace->output);
+	trace__fprintf_entry_head(trace, thread, duration, ttrace->entry_time, trace->output);
 
 	if (ttrace->entry_pending) {
 		fprintf(trace->output, "%-70s", ttrace->entry_str);
@@ -2140,6 +2143,7 @@ out_delete_sys_enter:
 static int trace__set_ev_qualifier_filter(struct trace *trace)
 {
 	int err = -1;
+	struct perf_evsel *sys_exit;
 	char *filter = asprintf_expr_inout_ints("id", !trace->not_ev_qualifier,
 						trace->ev_qualifier_ids.nr,
 						trace->ev_qualifier_ids.entries);
@@ -2147,8 +2151,11 @@ static int trace__set_ev_qualifier_filter(struct trace *trace)
 	if (filter == NULL)
 		goto out_enomem;
 
-	if (!perf_evsel__append_filter(trace->syscalls.events.sys_enter, "&&", filter))
-		err = perf_evsel__append_filter(trace->syscalls.events.sys_exit, "&&", filter);
+	if (!perf_evsel__append_tp_filter(trace->syscalls.events.sys_enter,
+					  filter)) {
+		sys_exit = trace->syscalls.events.sys_exit;
+		err = perf_evsel__append_tp_filter(sys_exit, filter);
+	}
 
 	free(filter);
 out:

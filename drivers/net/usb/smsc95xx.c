@@ -30,10 +30,11 @@
 #include <linux/usb/usbnet.h>
 #include <linux/slab.h>
 #include <linux/of_net.h>
+#include <linux/gpio.h>
 #include "smsc95xx.h"
 
 #define SMSC_CHIPNAME			"smsc95xx"
-#define SMSC_DRIVER_VERSION		"1.0.4"
+#define SMSC_DRIVER_VERSION		"1.0.5"
 #define HS_USB_PKT_SIZE			(512)
 #define FS_USB_PKT_SIZE			(64)
 #define DEFAULT_HS_BURST_CAP_SIZE	(16 * 1024 + 5 * HS_USB_PKT_SIZE)
@@ -64,6 +65,7 @@
 #define CARRIER_CHECK_DELAY (2 * HZ)
 
 struct smsc95xx_priv {
+	u32 chip_id;
 	u32 mac_cr;
 	u32 hash_hi;
 	u32 hash_lo;
@@ -71,9 +73,17 @@ struct smsc95xx_priv {
 	spinlock_t mac_cr_lock;
 	u8 features;
 	u8 suspend_flags;
+	u8 mdix_ctrl;
 	bool link_ok;
 	struct delayed_work carrier_check;
 	struct usbnet *dev;
+#ifdef CONFIG_GPIOLIB
+	struct gpio_chip gpio;
+	struct mutex gpio_lock;	/* lock for GPIO functions */
+#endif
+
+	u32 reg_gpio_cfg;
+	u32 reg_led_gpio_cfg;
 };
 
 static bool turbo_mode = true;
@@ -782,14 +792,113 @@ static int smsc95xx_ethtool_set_wol(struct net_device *net,
 	return ret;
 }
 
+static int get_mdix_status(struct net_device *net)
+{
+	struct usbnet *dev = netdev_priv(net);
+	u32 val;
+	int buf;
+
+	buf = smsc95xx_mdio_read(dev->net, dev->mii.phy_id, SPECIAL_CTRL_STS);
+	if (buf & SPECIAL_CTRL_STS_OVRRD_AMDIX_) {
+		if (buf & SPECIAL_CTRL_STS_AMDIX_ENABLE_)
+			return ETH_TP_MDI_AUTO;
+		else if (buf & SPECIAL_CTRL_STS_AMDIX_STATE_)
+			return ETH_TP_MDI_X;
+	} else {
+		buf = smsc95xx_read_reg(dev, STRAP_STATUS, &val);
+		if (val & STRAP_STATUS_AMDIX_EN_)
+			return ETH_TP_MDI_AUTO;
+	}
+
+	return ETH_TP_MDI;
+}
+
+static void set_mdix_status(struct net_device *net, __u8 mdix_ctrl)
+{
+	struct usbnet *dev = netdev_priv(net);
+	struct smsc95xx_priv *pdata = (struct smsc95xx_priv *)(dev->data[0]);
+	int buf;
+
+	if ((pdata->chip_id == ID_REV_CHIP_ID_9500A_) ||
+	    (pdata->chip_id == ID_REV_CHIP_ID_9530_) ||
+	    (pdata->chip_id == ID_REV_CHIP_ID_89530_) ||
+	    (pdata->chip_id == ID_REV_CHIP_ID_9730_)) {
+		/* Extend Manual AutoMDIX timer for 9500A/9500Ai */
+		buf = smsc95xx_mdio_read(dev->net, dev->mii.phy_id,
+					 PHY_EDPD_CONFIG);
+		buf |= PHY_EDPD_CONFIG_EXT_CROSSOVER_;
+		smsc95xx_mdio_write(dev->net, dev->mii.phy_id,
+				    PHY_EDPD_CONFIG, buf);
+	}
+
+	if (mdix_ctrl == ETH_TP_MDI) {
+		buf = smsc95xx_mdio_read(dev->net, dev->mii.phy_id,
+					 SPECIAL_CTRL_STS);
+		buf |= SPECIAL_CTRL_STS_OVRRD_AMDIX_;
+		buf &= ~(SPECIAL_CTRL_STS_AMDIX_ENABLE_ |
+			 SPECIAL_CTRL_STS_AMDIX_STATE_);
+		smsc95xx_mdio_write(dev->net, dev->mii.phy_id,
+				    SPECIAL_CTRL_STS, buf);
+	} else if (mdix_ctrl == ETH_TP_MDI_X) {
+		buf = smsc95xx_mdio_read(dev->net, dev->mii.phy_id,
+					 SPECIAL_CTRL_STS);
+		buf |= SPECIAL_CTRL_STS_OVRRD_AMDIX_;
+		buf &= ~(SPECIAL_CTRL_STS_AMDIX_ENABLE_ |
+			 SPECIAL_CTRL_STS_AMDIX_STATE_);
+		buf |= SPECIAL_CTRL_STS_AMDIX_STATE_;
+		smsc95xx_mdio_write(dev->net, dev->mii.phy_id,
+				    SPECIAL_CTRL_STS, buf);
+	} else if (mdix_ctrl == ETH_TP_MDI_AUTO) {
+		buf = smsc95xx_mdio_read(dev->net, dev->mii.phy_id,
+					 SPECIAL_CTRL_STS);
+		buf &= ~SPECIAL_CTRL_STS_OVRRD_AMDIX_;
+		buf &= ~(SPECIAL_CTRL_STS_AMDIX_ENABLE_ |
+			 SPECIAL_CTRL_STS_AMDIX_STATE_);
+		buf |= SPECIAL_CTRL_STS_AMDIX_ENABLE_;
+		smsc95xx_mdio_write(dev->net, dev->mii.phy_id,
+				    SPECIAL_CTRL_STS, buf);
+	}
+	pdata->mdix_ctrl = mdix_ctrl;
+}
+
+static int smsc95xx_get_settings(struct net_device *net,
+				 struct ethtool_cmd *cmd)
+{
+	struct usbnet *dev = netdev_priv(net);
+	struct smsc95xx_priv *pdata = (struct smsc95xx_priv *)(dev->data[0]);
+	int retval;
+
+	retval = usbnet_get_settings(net, cmd);
+
+	cmd->eth_tp_mdix = pdata->mdix_ctrl;
+	cmd->eth_tp_mdix_ctrl = pdata->mdix_ctrl;
+
+	return retval;
+}
+
+static int smsc95xx_set_settings(struct net_device *net,
+				 struct ethtool_cmd *cmd)
+{
+	struct usbnet *dev = netdev_priv(net);
+	struct smsc95xx_priv *pdata = (struct smsc95xx_priv *)(dev->data[0]);
+	int retval;
+
+	if (pdata->mdix_ctrl != cmd->eth_tp_mdix_ctrl)
+		set_mdix_status(net, cmd->eth_tp_mdix_ctrl);
+
+	retval = usbnet_set_settings(net, cmd);
+
+	return retval;
+}
+
 static const struct ethtool_ops smsc95xx_ethtool_ops = {
 	.get_link	= usbnet_get_link,
 	.nway_reset	= usbnet_nway_reset,
 	.get_drvinfo	= usbnet_get_drvinfo,
 	.get_msglevel	= usbnet_get_msglevel,
 	.set_msglevel	= usbnet_set_msglevel,
-	.get_settings	= usbnet_get_settings,
-	.set_settings	= usbnet_set_settings,
+	.get_settings	= smsc95xx_get_settings,
+	.set_settings	= smsc95xx_set_settings,
 	.get_eeprom_len	= smsc95xx_ethtool_get_eeprom_len,
 	.get_eeprom	= smsc95xx_ethtool_get_eeprom,
 	.set_eeprom	= smsc95xx_ethtool_set_eeprom,
@@ -930,12 +1039,30 @@ static int smsc95xx_phy_initialize(struct usbnet *dev)
 static int smsc95xx_reset(struct usbnet *dev)
 {
 	struct smsc95xx_priv *pdata = (struct smsc95xx_priv *)(dev->data[0]);
-	u32 read_buf, write_buf, burst_cap;
+	u32 read_buf, burst_cap;
 	int ret = 0, timeout;
 
 	netif_dbg(dev, ifup, dev->net, "entering smsc95xx_reset\n");
 
 	ret = smsc95xx_write_reg(dev, HW_CFG, HW_CFG_LRST_);
+	if (ret < 0)
+		return ret;
+
+	/* restore and re-read GPIO registers immediately after requesting Lite Reset */
+
+	ret = smsc95xx_write_reg(dev, GPIO_CFG, pdata->reg_gpio_cfg);
+	if (ret < 0)
+		return ret;
+
+	ret = smsc95xx_write_reg(dev, LED_GPIO_CFG, pdata->reg_led_gpio_cfg);
+	if (ret < 0)
+		return ret;
+
+	ret = smsc95xx_read_reg(dev, GPIO_CFG, &pdata->reg_gpio_cfg);
+	if (ret < 0)
+		return ret;
+
+	ret = smsc95xx_read_reg(dev, LED_GPIO_CFG, &pdata->reg_led_gpio_cfg);
 	if (ret < 0)
 		return ret;
 
@@ -1072,13 +1199,6 @@ static int smsc95xx_reset(struct usbnet *dev)
 		return ret;
 	netif_dbg(dev, ifup, dev->net, "ID_REV = 0x%08x\n", read_buf);
 
-	/* Configure GPIO pins as LED outputs */
-	write_buf = LED_GPIO_CFG_SPD_LED | LED_GPIO_CFG_LNK_LED |
-		LED_GPIO_CFG_FDX_LED;
-	ret = smsc95xx_write_reg(dev, LED_GPIO_CFG, write_buf);
-	if (ret < 0)
-		return ret;
-
 	/* Init Tx */
 	ret = smsc95xx_write_reg(dev, FLOW, 0);
 	if (ret < 0)
@@ -1154,6 +1274,231 @@ static const struct net_device_ops smsc95xx_netdev_ops = {
 	.ndo_set_features	= smsc95xx_set_features,
 };
 
+/* ******************************** GPIO ********************************* */
+/* Note: the numbering scheme according to datasheets differs a bit
+ * between LAN9500 and LAN951x.
+ *
+ * For LAN951x:
+ * 	GPIOs with offsets 0-7 are named "GPIO3" - "GPIO7", offsets 8-10 are
+ *  for "GPIO0" - "GPIO2" (these three are multiplexed with nFDX_LED,
+ *  nLNKA_LED, nSPD_LED).
+ *
+ * For LAN9500:
+ *  the datasheet name is the same as the corresponding offset, i.e.
+ *  offsets 0-10 are for "GPIO0"-"GPIO10".
+*/
+
+#ifdef CONFIG_GPIOLIB
+
+static inline u32 smsc95xx_gpio_get_register(unsigned gpio) {
+	if (gpio < 8)
+		return GPIO_CFG;
+	else
+		return LED_GPIO_CFG;
+}
+
+static inline u8 smsc95xx_gpio_get_enable_offset(unsigned gpio) {
+	return (gpio < 8) ? (24 + gpio) : (gpio * 4 - 16);
+}
+
+static inline u8 smsc95xx_gpio_get_type_offset(unsigned gpio) {
+	return (gpio < 8) ? (16 + gpio) : gpio;
+}
+
+static inline u8 smsc95xx_gpio_get_dir_offset(unsigned gpio) {
+	return (gpio < 8) ? (8 + gpio) : (gpio - 4);
+}
+
+static inline u8 smsc95xx_gpio_get_val_offset(unsigned gpio) {
+	return (gpio < 8) ? (gpio) : (gpio - 8);
+}
+
+static inline u32* smsc95xx_gpio_get_reg_cache_ptr(struct smsc95xx_priv *pdata, unsigned gpio)
+{
+	return (gpio < 8) ? (&pdata->reg_gpio_cfg) : (&pdata->reg_led_gpio_cfg);
+}
+
+static int smsc95xx_gpio_request(struct gpio_chip *gpio, unsigned offset)
+{
+	int ret = -1;
+	u32 reg;
+	int type_shift;
+	struct smsc95xx_priv *pdata =
+			container_of(gpio, struct smsc95xx_priv, gpio);
+	u32 *reg_cache_ptr = smsc95xx_gpio_get_reg_cache_ptr(pdata, offset);
+
+	reg = smsc95xx_gpio_get_register(offset);
+	type_shift = smsc95xx_gpio_get_type_offset(offset);
+
+	mutex_lock(&pdata->gpio_lock);
+
+	*reg_cache_ptr &= ~BIT(smsc95xx_gpio_get_enable_offset(offset));
+	*reg_cache_ptr |= BIT(type_shift);
+	*reg_cache_ptr &= ~BIT(smsc95xx_gpio_get_dir_offset(offset));
+
+	ret = smsc95xx_write_reg(pdata->dev, reg, *reg_cache_ptr);
+
+	mutex_unlock(&pdata->gpio_lock);
+
+	return (ret < 0) ? ret : 0;
+}
+
+static void smsc95xx_gpio_free(struct gpio_chip *gpio, unsigned offset)
+{
+	int ret = -1;
+	u32 reg;
+	int type_shift;
+	struct smsc95xx_priv *pdata =
+			container_of(gpio, struct smsc95xx_priv, gpio);
+	u32 *reg_cache_ptr = smsc95xx_gpio_get_reg_cache_ptr(pdata, offset);
+
+	reg = smsc95xx_gpio_get_register(offset);
+	type_shift = smsc95xx_gpio_get_type_offset(offset);
+
+	mutex_lock(&pdata->gpio_lock);
+
+	*reg_cache_ptr |= BIT(smsc95xx_gpio_get_enable_offset(offset));
+
+	if (offset >= 8) {
+		/* Let the chip control LED GPIOs */
+		*reg_cache_ptr &= ~BIT(type_shift);
+		*reg_cache_ptr |= BIT(smsc95xx_gpio_get_dir_offset(offset));
+	}
+
+	ret = smsc95xx_write_reg(pdata->dev, reg, *reg_cache_ptr);
+
+	mutex_unlock(&pdata->gpio_lock);
+
+	if (ret < 0)
+		netif_err(pdata->dev, ifdown, pdata->dev->net,
+			"error freeing gpio %d\n", offset);
+}
+
+static int smsc95xx_gpio_direction_input(struct gpio_chip *gpio, unsigned offset)
+{
+	int ret = -1;
+	u32 reg;
+	struct smsc95xx_priv *pdata =
+			container_of(gpio, struct smsc95xx_priv, gpio);
+	u32 *reg_cache_ptr = smsc95xx_gpio_get_reg_cache_ptr(pdata, offset);
+
+	reg = smsc95xx_gpio_get_register(offset);
+
+	mutex_lock(&pdata->gpio_lock);
+
+	*reg_cache_ptr &= ~BIT(smsc95xx_gpio_get_dir_offset(offset));
+	ret = smsc95xx_write_reg(pdata->dev, reg, *reg_cache_ptr);
+
+	mutex_unlock(&pdata->gpio_lock);
+
+	return (ret < 0) ? ret : 0;
+}
+
+static int smsc95xx_gpio_direction_output(struct gpio_chip *gpio, unsigned offset,
+				    int value)
+{
+
+
+	int ret = -1;
+	u32 reg;
+	struct smsc95xx_priv *pdata =
+			container_of(gpio, struct smsc95xx_priv, gpio);
+	u32 *reg_cache_ptr = smsc95xx_gpio_get_reg_cache_ptr(pdata, offset);
+
+	reg = smsc95xx_gpio_get_register(offset);
+
+	mutex_lock(&pdata->gpio_lock);
+
+	*reg_cache_ptr |= BIT(smsc95xx_gpio_get_dir_offset(offset));
+
+	if (value)
+		*reg_cache_ptr |= BIT(smsc95xx_gpio_get_val_offset(offset));
+	else
+		*reg_cache_ptr &= ~BIT(smsc95xx_gpio_get_val_offset(offset));
+
+	ret = smsc95xx_write_reg(pdata->dev, reg, *reg_cache_ptr);
+
+	mutex_unlock(&pdata->gpio_lock);
+
+	return (ret < 0) ? ret : 0;
+}
+
+static int smsc95xx_gpio_get(struct gpio_chip *gpio, unsigned offset)
+{
+	int ret = -1;
+	u32 reg;
+	struct smsc95xx_priv *pdata =
+			container_of(gpio, struct smsc95xx_priv, gpio);
+	u32 *reg_cache_ptr = smsc95xx_gpio_get_reg_cache_ptr(pdata, offset);
+
+	reg = smsc95xx_gpio_get_register(offset);
+
+	ret = smsc95xx_read_reg(pdata->dev, reg, reg_cache_ptr);
+
+	if (ret < 0) {
+		netif_err(pdata->dev, ifdown, pdata->dev->net, "error reading gpio %d\n", offset);
+		return -EINVAL;
+	}
+
+	return (*reg_cache_ptr >> smsc95xx_gpio_get_val_offset(offset)) & 0x01;
+}
+
+static void smsc95xx_gpio_set(struct gpio_chip *gpio, unsigned offset, int value)
+{
+	int ret = -1;
+	u32 reg;
+	struct smsc95xx_priv *pdata =
+			container_of(gpio, struct smsc95xx_priv, gpio);
+	u32 *reg_cache_ptr = smsc95xx_gpio_get_reg_cache_ptr(pdata, offset);
+
+	reg = smsc95xx_gpio_get_register(offset);
+
+	mutex_lock(&pdata->gpio_lock);
+
+	if (value)
+		*reg_cache_ptr |= BIT(smsc95xx_gpio_get_val_offset(offset));
+	else
+		*reg_cache_ptr &= ~BIT(smsc95xx_gpio_get_val_offset(offset));
+
+	ret = smsc95xx_write_reg(pdata->dev, reg, *reg_cache_ptr);
+
+	mutex_unlock(&pdata->gpio_lock);
+
+	if (ret < 0) {
+		netif_err(pdata->dev, ifdown, pdata->dev->net,
+			"error writing gpio %d=%d\n", offset, value);
+	}
+}
+
+#endif /* CONFIG_GPIOLIB */
+
+static int smsc95xx_register_gpio(struct usbnet *dev)
+{
+#ifdef CONFIG_GPIOLIB
+	struct smsc95xx_priv *pdata = (struct smsc95xx_priv *)(dev->data[0]);
+
+	pdata->gpio.label = SMSC_CHIPNAME;
+	pdata->gpio.request	= smsc95xx_gpio_request;
+	pdata->gpio.free		= smsc95xx_gpio_free;
+	pdata->gpio.get		= smsc95xx_gpio_get;
+	pdata->gpio.set		= smsc95xx_gpio_set;
+	pdata->gpio.direction_input = smsc95xx_gpio_direction_input;
+	pdata->gpio.direction_output = smsc95xx_gpio_direction_output;
+
+	pdata->gpio.base = -1;
+	pdata->gpio.ngpio = 11;
+	pdata->gpio.can_sleep = 1;
+	pdata->gpio.parent = &dev->udev->dev;
+	pdata->gpio.owner = THIS_MODULE;
+
+	mutex_init(&pdata->gpio_lock);
+
+	return gpiochip_add(&pdata->gpio);
+#else
+	return 0;
+#endif
+}
+
 static int smsc95xx_bind(struct usbnet *dev, struct usb_interface *intf)
 {
 	struct smsc95xx_priv *pdata = NULL;
@@ -1175,6 +1520,8 @@ static int smsc95xx_bind(struct usbnet *dev, struct usb_interface *intf)
 	if (!pdata)
 		return -ENOMEM;
 
+	pdata->dev = dev;
+
 	spin_lock_init(&pdata->mac_cr_lock);
 
 	if (DEFAULT_TX_CSUM_ENABLE)
@@ -1192,8 +1539,10 @@ static int smsc95xx_bind(struct usbnet *dev, struct usb_interface *intf)
 	/* detect device revision as different features may be available */
 	ret = smsc95xx_read_reg(dev, ID_REV, &val);
 	if (ret < 0)
-		return ret;
+		goto free;
 	val >>= 16;
+	pdata->chip_id = val;
+	pdata->mdix_ctrl = get_mdix_status(dev->net);
 
 	if ((val == ID_REV_CHIP_ID_9500A_) || (val == ID_REV_CHIP_ID_9530_) ||
 	    (val == ID_REV_CHIP_ID_89530_) || (val == ID_REV_CHIP_ID_9730_))
@@ -1213,7 +1562,20 @@ static int smsc95xx_bind(struct usbnet *dev, struct usb_interface *intf)
 	INIT_DELAYED_WORK(&pdata->carrier_check, check_carrier);
 	schedule_delayed_work(&pdata->carrier_check, CARRIER_CHECK_DELAY);
 
+	/* initialize GPIO register cache */
+	pdata->reg_gpio_cfg = GPIO_CFG_DEFAULT;
+	pdata->reg_led_gpio_cfg = LED_GPIO_CFG_SPD_LED | LED_GPIO_CFG_LNK_LED |
+								 LED_GPIO_CFG_FDX_LED;
+
+	ret = smsc95xx_register_gpio(dev);
+	if (ret < 0)
+		goto free;
+
 	return 0;
+
+free:
+	kfree(pdata);
+	return ret;
 }
 
 static void smsc95xx_unbind(struct usbnet *dev, struct usb_interface *intf)
@@ -1222,6 +1584,11 @@ static void smsc95xx_unbind(struct usbnet *dev, struct usb_interface *intf)
 
 	if (pdata) {
 		cancel_delayed_work(&pdata->carrier_check);
+
+#ifdef CONFIG_GPIOLIB
+		gpiochip_remove(&pdata->gpio);
+#endif
+
 		netif_dbg(dev, ifdown, dev->net, "free pdata\n");
 		kfree(pdata);
 		pdata = NULL;

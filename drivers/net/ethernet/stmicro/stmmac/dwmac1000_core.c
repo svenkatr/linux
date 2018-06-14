@@ -145,7 +145,7 @@ static void dwmac1000_set_mchash(void __iomem *ioaddr, u32 *mcfilterbits,
 		numhashregs = 8;
 		break;
 	default:
-		pr_debug("STMMAC: err in setting mulitcast filter\n");
+		pr_debug("STMMAC: err in setting multicast filter\n");
 		return;
 		break;
 	}
@@ -261,7 +261,7 @@ static void dwmac1000_pmt(struct mac_device_info *hw, unsigned long mode)
 	}
 	if (mode & WAKE_UCAST) {
 		pr_debug("GMAC: WOL on global unicast\n");
-		pmt |= global_unicast;
+		pmt |= power_down | global_unicast | wake_up_frame_en;
 	}
 
 	writel(pmt, ioaddr + GMAC_PMT);
@@ -305,7 +305,11 @@ static int dwmac1000_irq_status(struct mac_device_info *hw,
 {
 	void __iomem *ioaddr = hw->pcsr;
 	u32 intr_status = readl(ioaddr + GMAC_INT_STATUS);
+	u32 intr_mask = readl(ioaddr + GMAC_INT_MASK);
 	int ret = 0;
+
+	/* Discard masked bits */
+	intr_status &= ~intr_mask;
 
 	/* Not used events (e.g. MMC interrupts) are not handled. */
 	if ((intr_status & GMAC_INT_STATUS_MMCTIS))

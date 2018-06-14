@@ -31,6 +31,7 @@
 #include <sound/pcm.h>
 #include <sound/pcm_params.h>
 #include <sound/soc.h>
+#include <sound/dmaengine_pcm.h>
 
 #include "mxs-saif.h"
 
@@ -658,6 +659,26 @@ static const struct snd_soc_component_driver mxs_saif_component = {
 	.name		= "mxs-saif",
 };
 
+static const struct snd_pcm_hardware mxs_saif_hardware = {
+	.info			= SNDRV_PCM_INFO_MMAP |
+				  SNDRV_PCM_INFO_MMAP_VALID |
+				  SNDRV_PCM_INFO_PAUSE |
+				  SNDRV_PCM_INFO_RESUME |
+				  SNDRV_PCM_INFO_INTERLEAVED |
+				  SNDRV_PCM_INFO_HALF_DUPLEX,
+	.period_bytes_min	= 32,
+	.period_bytes_max	= 8192,
+	.periods_min		= 1,
+	.periods_max		= 52,
+	.buffer_bytes_max	= 64 * 1024,
+	.fifo_size		= 32,
+};
+
+static const struct snd_dmaengine_pcm_config mxs_saif_dmaengine_pcm_config = {
+	.pcm_hardware = &mxs_saif_hardware,
+	.prealloc_buffer_size = 64 * 1024,
+};
+
 static irqreturn_t mxs_saif_irq(int irq, void *dev_id)
 {
 	struct mxs_saif *saif = dev_id;
@@ -804,7 +825,8 @@ static int mxs_saif_probe(struct platform_device *pdev)
 		return ret;
 	}
 
-	ret = mxs_pcm_platform_register(&pdev->dev);
+	ret = devm_snd_dmaengine_pcm_register(&pdev->dev, &mxs_saif_dmaengine_pcm_config,
+		SND_DMAENGINE_PCM_FLAG_HALF_DUPLEX);
 	if (ret) {
 		dev_err(&pdev->dev, "register PCM failed: %d\n", ret);
 		return ret;

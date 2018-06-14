@@ -1,0 +1,70 @@
+/*
+ * Copyright 2012 Freescale Semiconductor, Inc.
+ *
+ * Author: Fabio Estevam <fabio.estevam@freescale.com>
+ *
+ * The code contained herein is licensed under the GNU General Public
+ * License. You may obtain a copy of the GNU General Public License
+ * Version 2 or later at the following locations:
+ *
+ * http://www.opensource.org/licenses/gpl-license.html
+ * http://www.gnu.org/copyleft/gpl.html
+ */
+
+#include "imx23-wirenboard41.dts"
+
+/ {
+
+	model = "Wiren Board rev. 4.1 (Pobeda) (i.MX23)";
+
+	compatible = "contactless,imx23-wirenboard41-pobeda", "contactless,imx23-wirenboard41", "contactless,imx23-wirenboard32", "olimex,imx23-olinuxino", "fsl,imx23";
+
+
+	apb@80000000 {
+		apbh@80000000 {
+			ssp1: ssp@80034000 {
+				cs-gpios = <&gpio0 3 0 /* cs0 fixme: use hardware cs directly*/
+							&gpio0 4 0 /* rfm69 */
+							>;
+			};
+		};
+
+		apbx@80040000 {
+			i2c0: i2c@80058000 {
+				pinctrl-names = "default";
+				pinctrl-0 = <&i2c0_pins_a>;
+				/*status = "okay";*/
+				status = "disabled";
+				clock-frequency = <20000>;
+
+				eeprom@57 {
+						compatible = "at,24c02";
+						reg = <0x57>;
+				};
+			};
+		};
+
+	};
+
+
+	i2c2@0 {
+			compatible = "i2c-gpio";
+			gpios = <&gpio1 23 0 /* sda */
+					 &gpio1 24 0 /* scl */
+					>;
+			i2c-gpio,delay-us = <50>;        /* ~20 kHz */
+			i2c-gpio,scl-output-only = <0>;
+			i2c-gpio,sda-open-drain = <1>;
+
+			pinctrl-names = "default";
+			pinctrl-0 = <&i2c0_pins_a_gpio>;
+
+			status = "okay";
+
+
+
+	};
+
+
+
+};

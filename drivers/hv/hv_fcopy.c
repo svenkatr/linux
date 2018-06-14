@@ -61,6 +61,7 @@ static DECLARE_WORK(fcopy_send_work, fcopy_send_data);
 static const char fcopy_devname[] = "vmbus/hv_fcopy";
 static u8 *recv_buffer;
 static struct hvutil_transport *hvt;
+static struct completion release_event;
 /*
  * This state maintains the version number registered by the daemon.
  */
@@ -83,6 +84,12 @@ static void fcopy_timeout_func(struct work_struct *dummy)
 	hv_poll_channel(fcopy_transaction.recv_channel, fcopy_poll_wrapper);
 }
 
+static void fcopy_register_done(void)
+{
+	pr_debug("FCP: userspace daemon registered\n");
+	hv_poll_channel(fcopy_transaction.recv_channel, fcopy_poll_wrapper);
+}
+
 static int fcopy_handle_handshake(u32 version)
 {
 	u32 our_ver = FCOPY_CURRENT_VERSION;
@@ -94,7 +101,8 @@ static int fcopy_handle_handshake(u32 version)
 		break;
 	case FCOPY_VERSION_1:
 		/* Daemon expects us to reply with our own version */
-		if (hvutil_transport_send(hvt, &our_ver, sizeof(our_ver)))
+		if (hvutil_transport_send(hvt, &our_ver, sizeof(our_ver),
+		    fcopy_register_done))
 			return -EFAULT;
 		dm_reg_value = version;
 		break;
@@ -107,8 +115,7 @@ static int fcopy_handle_handshake(u32 version)
 		 */
 		return -EINVAL;
 	}
-	pr_debug("FCP: userspace daemon ver. %d registered\n", version);
-	hv_poll_channel(fcopy_transaction.recv_channel, fcopy_poll_wrapper);
+	pr_debug("FCP: userspace daemon ver. %d connected\n", version);
 	return 0;
 }
 
@@ -161,7 +168,7 @@ static void fcopy_send_data(struct work_struct *dummy)
 	}
 
 	fcopy_transaction.state = HVUTIL_USERSPACE_REQ;
-	rc = hvutil_transport_send(hvt, out_src, out_len);
+	rc = hvutil_transport_send(hvt, out_src, out_len, NULL);
 	if (rc) {
 		pr_debug("FCP: failed to communicate to the daemon: %d\n", rc);
 		if (cancel_delayed_work_sync(&fcopy_timeout_work)) {
@@ -311,6 +318,7 @@ static void fcopy_on_reset(void)
 
 	if (cancel_delayed_work_sync(&fcopy_timeout_work))
 		fcopy_respond_to_host(HV_E_FAIL);
+	complete(&release_event);
 }
 
 int hv_fcopy_init(struct hv_util_service *srv)
@@ -318,6 +326,7 @@ int hv_fcopy_init(struct hv_util_service *srv)
 	recv_buffer = srv->recv_buffer;
 	fcopy_transaction.recv_channel = srv->channel;
 
+	init_completion(&release_event);
 	/*
 	 * When this driver loads, the user level daemon that
 	 * processes the host requests may not yet be running.
@@ -339,4 +348,5 @@ void hv_fcopy_deinit(void)
 	fcopy_transaction.state = HVUTIL_DEVICE_DYING;
 	cancel_delayed_work_sync(&fcopy_timeout_work);
 	hvutil_transport_destroy(hvt);
+	wait_for_completion(&release_event);
 }

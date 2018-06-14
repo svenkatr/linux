@@ -113,6 +113,7 @@
 #define LED_GPIO_CFG_FDX_LED		(0x00010000)
 
 #define GPIO_CFG			(0x28)
+#define GPIO_CFG_DEFAULT    (0x1f000000) /* gpios disabled */
 
 #define AFC_CFG				(0x2C)
 
@@ -143,6 +144,14 @@
 #define E2P_DATA_MASK_			(0x000000FF)
 
 #define BURST_CAP			(0x38)
+
+#define	STRAP_STATUS			(0x3C)
+#define	STRAP_STATUS_PWR_SEL_		(0x00000020)
+#define	STRAP_STATUS_AMDIX_EN_		(0x00000010)
+#define	STRAP_STATUS_PORT_SWAP_		(0x00000008)
+#define	STRAP_STATUS_EEP_SIZE_		(0x00000004)
+#define	STRAP_STATUS_RMT_WKP_		(0x00000002)
+#define	STRAP_STATUS_EEP_DISABLE_	(0x00000001)
 
 #define GPIO_WAKE			(0x64)
 

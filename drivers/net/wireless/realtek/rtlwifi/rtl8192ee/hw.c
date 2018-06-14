@@ -338,9 +338,11 @@ void rtl92ee_get_hw_reg(struct ieee80211_hw *hw, u8 variable, u8 *val)
 		*((u64 *)(val)) = tsf;
 		}
 		break;
+	case HAL_DEF_WOWLAN:
+		break;
 	default:
 		RT_TRACE(rtlpriv, COMP_ERR, DBG_DMESG,
-			 "switch case not process %x\n", variable);
+			 "switch case %#x not processed\n", variable);
 		break;
 	}
 }
@@ -566,7 +568,8 @@ void rtl92ee_set_hw_reg(struct ieee80211_hw *hw, u8 variable, u8 *val)
 				break;
 			default:
 				RT_TRACE(rtlpriv, COMP_ERR, DBG_DMESG,
-					 "switch case not process\n");
+					 "switch case %#x not processed\n",
+					 e_aci);
 				break;
 			}
 		}
@@ -685,7 +688,7 @@ void rtl92ee_set_hw_reg(struct ieee80211_hw *hw, u8 variable, u8 *val)
 		break;
 	default:
 		RT_TRACE(rtlpriv, COMP_ERR, DBG_DMESG,
-			 "switch case not process %x\n", variable);
+			 "switch case %#x not processed\n", variable);
 		break;
 	}
 }
@@ -1003,7 +1006,7 @@ static void _rtl92ee_hw_configure(struct ieee80211_hw *hw)
 	rtl_write_word(rtlpriv, REG_SIFS_TRX, 0x100a);
 
 	/* Note Data sheet don't define */
-	rtl_write_word(rtlpriv, 0x4C7, 0x80);
+	rtl_write_byte(rtlpriv, 0x4C7, 0x80);
 
 	rtl_write_byte(rtlpriv, REG_RX_PKT_LIMIT, 0x20);
 
@@ -2463,7 +2466,7 @@ void rtl92ee_set_key(struct ieee80211_hw *hw, u32 key_index,
 			break;
 		default:
 			RT_TRACE(rtlpriv, COMP_ERR, DBG_DMESG,
-				 "switch case not process\n");
+				 "switch case %#x not processed\n", enc_algo);
 			enc_algo = CAM_TKIP;
 			break;
 		}

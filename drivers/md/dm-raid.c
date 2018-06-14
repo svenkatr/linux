@@ -266,7 +266,7 @@ static struct raid_type {
 	{"raid10_offset", "raid10 offset (striped mirrors)",	    0, 2, 10, ALGORITHM_RAID10_OFFSET},
 	{"raid10_near",	  "raid10 near (striped mirrors)",	    0, 2, 10, ALGORITHM_RAID10_NEAR},
 	{"raid10",	  "raid10 (striped mirrors)",		    0, 2, 10, ALGORITHM_RAID10_DEFAULT},
-	{"raid4",	  "raid4 (dedicated last parity disk)",	    1, 2, 4,  ALGORITHM_PARITY_N}, /* raid4 layout = raid5_n */
+	{"raid4",	  "raid4 (dedicated first parity disk)",    1, 2, 5,  ALGORITHM_PARITY_0}, /* raid4 layout = raid5_0 */
 	{"raid5_n",	  "raid5 (dedicated last parity disk)",	    1, 2, 5,  ALGORITHM_PARITY_N},
 	{"raid5_ls",	  "raid5 (left symmetric)",		    1, 2, 5,  ALGORITHM_LEFT_SYMMETRIC},
 	{"raid5_rs",	  "raid5 (right symmetric)",		    1, 2, 5,  ALGORITHM_RIGHT_SYMMETRIC},
@@ -2087,11 +2087,11 @@ static int super_init_validation(struct raid_set *rs, struct md_rdev *rdev)
 		/*
 		 * No takeover/reshaping, because we don't have the extended v1.9.0 metadata
 		 */
-		if (le32_to_cpu(sb->level) != mddev->level) {
+		if (le32_to_cpu(sb->level) != mddev->new_level) {
 			DMERR("Reshaping/takeover raid sets not yet supported. (raid level/stripes/size change)");
 			return -EINVAL;
 		}
-		if (le32_to_cpu(sb->layout) != mddev->layout) {
+		if (le32_to_cpu(sb->layout) != mddev->new_layout) {
 			DMERR("Reshaping raid sets not yet supported. (raid layout change)");
 			DMERR("	 0x%X vs 0x%X", le32_to_cpu(sb->layout), mddev->layout);
 			DMERR("	 Old layout: %s w/ %d copies",
@@ -2102,7 +2102,7 @@ static int super_init_validation(struct raid_set *rs, struct md_rdev *rdev)
 			      raid10_md_layout_to_copies(mddev->layout));
 			return -EINVAL;
 		}
-		if (le32_to_cpu(sb->stripe_sectors) != mddev->chunk_sectors) {
+		if (le32_to_cpu(sb->stripe_sectors) != mddev->new_chunk_sectors) {
 			DMERR("Reshaping raid sets not yet supported. (stripe sectors change)");
 			return -EINVAL;
 		}
@@ -2114,6 +2114,8 @@ static int super_init_validation(struct raid_set *rs, struct md_rdev *rdev)
 			      sb->num_devices, mddev->raid_disks);
 			return -EINVAL;
 		}
+
+		DMINFO("Discovered old metadata format; upgrading to extended metadata format");
 
 		/* Table line is checked vs. authoritative superblock */
 		rs_set_new(rs);
@@ -2258,7 +2260,8 @@ static int super_validate(struct raid_set *rs, struct md_rdev *rdev)
 	if (!mddev->events && super_init_validation(rs, rdev))
 		return -EINVAL;
 
-	if (le32_to_cpu(sb->compat_features) != FEATURE_FLAG_SUPPORTS_V190) {
+	if (le32_to_cpu(sb->compat_features) &&
+	    le32_to_cpu(sb->compat_features) != FEATURE_FLAG_SUPPORTS_V190) {
 		rs->ti->error = "Unable to assemble array: Unknown flag(s) in compatible feature flags";
 		return -EINVAL;
 	}
@@ -2991,6 +2994,9 @@ static int raid_ctr(struct dm_target *ti, unsigned int argc, char **argv)
 		}
 	}
 
+	/* Disable/enable discard support on raid set. */
+	configure_discard_support(rs);
+
 	mddev_unlock(&rs->md);
 	return 0;
 
@@ -3577,19 +3583,13 @@ static int raid_preresume(struct dm_target *ti)
 	if (test_bit(RT_FLAG_UPDATE_SBS, &rs->runtime_flags))
 		rs_update_sbs(rs);
 
-	/*
-	 * Disable/enable discard support on raid set after any
-	 * conversion, because devices can have been added
-	 */
-	configure_discard_support(rs);
-
 	/* Load the bitmap from disk unless raid0 */
 	r = __load_dirty_region_bitmap(rs);
 	if (r)
 		return r;
 
 	/* Resize bitmap to adjust to changed region size (aka MD bitmap chunksize) */
-	if (test_bit(RT_FLAG_RS_BITMAP_LOADED, &rs->runtime_flags) &&
+	if (test_bit(RT_FLAG_RS_BITMAP_LOADED, &rs->runtime_flags) && mddev->bitmap &&
 	    mddev->bitmap_info.chunksize != to_bytes(rs->requested_bitmap_chunk_sectors)) {
 		r = bitmap_resize(mddev->bitmap, mddev->dev_sectors,
 				  to_bytes(rs->requested_bitmap_chunk_sectors), 0);
@@ -3621,6 +3621,8 @@ static int raid_preresume(struct dm_target *ti)
 	return r;
 }
 
+#define RESUME_STAY_FROZEN_FLAGS (CTR_FLAG_DELTA_DISKS | CTR_FLAG_DATA_OFFSET)
+
 static void raid_resume(struct dm_target *ti)
 {
 	struct raid_set *rs = ti->private;
@@ -3638,7 +3640,15 @@ static void raid_resume(struct dm_target *ti)
 	mddev->ro = 0;
 	mddev->in_sync = 0;
 
-	clear_bit(MD_RECOVERY_FROZEN, &mddev->recovery);
+	/*
+	 * Keep the RAID set frozen if reshape/rebuild flags are set.
+	 * The RAID set is unfrozen once the next table load/resume,
+	 * which clears the reshape/rebuild flags, occurs.
+	 * This ensures that the constructor for the inactive table
+	 * retrieves an up-to-date reshape_position.
+	 */
+	if (!(rs->ctr_flags & RESUME_STAY_FROZEN_FLAGS))
+		clear_bit(MD_RECOVERY_FROZEN, &mddev->recovery);
 
 	if (mddev->suspended)
 		mddev_resume(mddev);
@@ -3646,7 +3656,7 @@ static void raid_resume(struct dm_target *ti)
 
 static struct target_type raid_target = {
 	.name = "raid",
-	.version = {1, 9, 0},
+	.version = {1, 9, 1},
 	.module = THIS_MODULE,
 	.ctr = raid_ctr,
 	.dtr = raid_dtr,

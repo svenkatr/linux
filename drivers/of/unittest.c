@@ -24,6 +24,9 @@
 
 #include <linux/bitops.h>
 
+#include <linux/timekeeping.h>
+#include <linux/random.h>
+
 #include "of_private.h"
 
 static struct unittest_results {
@@ -542,6 +545,59 @@ static void __init of_unittest_changeset(void)
 #endif
 }
 
+static void __init of_unittest_changeset_helper(void)
+{
+#ifdef CONFIG_OF_DYNAMIC
+	struct device_node *n1, *n2, *n21, *parent, *np;
+	struct of_changeset chgset;
+
+	of_changeset_init(&chgset);
+
+	parent = of_find_node_by_path("/testcase-data/changeset");
+
+	unittest(parent, "testcase setup failure\n");
+	n1 = of_changeset_create_device_node(&chgset,
+			parent, "/testcase-data/changeset/n1");
+	unittest(n1, "testcase setup failure\n");
+	n2 = of_changeset_create_device_node(&chgset,
+			parent, "/testcase-data/changeset/n2");
+	unittest(n2, "testcase setup failure\n");
+	n21 = of_changeset_create_device_node(&chgset, n2, "%s/%s",
+			"/testcase-data/changeset/n2", "n21");
+	unittest(n21, "testcase setup failure\n");
+
+	unittest(!of_changeset_add_property_string(&chgset, parent,
+				"prop-add", "foo"), "fail add prop\n");
+
+	unittest(!of_changeset_attach_node(&chgset, n1), "fail n1 attach\n");
+	unittest(!of_changeset_attach_node(&chgset, n2), "fail n2 attach\n");
+	unittest(!of_changeset_attach_node(&chgset, n21), "fail n21 attach\n");
+
+	unittest(!of_changeset_apply(&chgset), "apply failed\n");
+
+	/* Make sure node names are constructed correctly */
+	np = of_find_node_by_path("/testcase-data/changeset/n1");
+	unittest(np, "'%s' not added\n", n1->full_name);
+	of_node_put(np);
+
+	/* Make sure node names are constructed correctly */
+	np = of_find_node_by_path("/testcase-data/changeset/n2");
+	unittest(np, "'%s' not added\n", n2->full_name);
+	of_node_put(np);
+
+	np = of_find_node_by_path("/testcase-data/changeset/n2/n21");
+	unittest(np, "'%s' not added\n", n21->full_name);
+	of_node_put(np);
+
+	unittest(!of_changeset_revert(&chgset), "revert failed\n");
+
+	of_changeset_destroy(&chgset);
+
+	of_node_put(parent);
+#endif
+}
+
+
 static void __init of_unittest_parse_interrupts(void)
 {
 	struct device_node *np;
@@ -877,7 +933,7 @@ static int attach_node_and_children(struct device_node *np)
 	of_node_clear_flag(np, OF_DETACHED);
 	raw_spin_unlock_irqrestore(&devtree_lock, flags);
 
-	__of_attach_node_sysfs(np);
+	__of_attach_node_post(np);
 	mutex_unlock(&of_mutex);
 
 	while (child) {
@@ -935,7 +991,7 @@ static int __init unittest_data_add(void)
 	if (!of_root) {
 		of_root = unittest_data_node;
 		for_each_of_allnodes(np)
-			__of_attach_node_sysfs(np);
+			__of_attach_node_post(np);
 		of_aliases = of_find_node_by_path("/aliases");
 		of_chosen = of_find_node_by_path("/chosen");
 		return 0;
@@ -1854,6 +1910,273 @@ static inline void of_unittest_overlay_i2c_15(void) { }
 
 #endif
 
+static void of_unittest_overlay_16(void)
+{
+	int ret;
+	int overlay_nr = 16;
+	int unittest_nr = 16;
+	enum overlay_type ovtype = PDEV_OVERLAY;
+	int before = 0;
+	int after = 1;
+	struct device_node *np = NULL;
+	int id = -1;
+
+	/* unittest device must not be in before state */
+	if (of_unittest_device_exists(unittest_nr, ovtype) != before) {
+		unittest(0, "overlay @\"%s\" with device @\"%s\" %s\n",
+				overlay_path(overlay_nr),
+				unittest_path(unittest_nr, ovtype),
+				!before ? "enabled" : "disabled");
+		return;
+	}
+
+	np = of_find_node_by_path(overlay_path(overlay_nr));
+	if (np == NULL) {
+		unittest(0, "could not find overlay node @\"%s\"\n",
+				overlay_path(overlay_nr));
+		ret = -EINVAL;
+		goto out;
+	}
+
+	/* unittest16 is at index #1 */
+	ret = of_overlay_create_target_index(np, 1);
+	if (ret < 0) {
+		unittest(0, "could not create overlay from \"%s\"\n",
+				overlay_path(overlay_nr));
+		goto out;
+	}
+	id = ret;
+	of_unittest_track_overlay(id);
+
+	ret = 0;
+
+out:
+	of_node_put(np);
+
+	if (ret)
+		return;
+
+	/* unittest device must be to set to after state */
+	if (of_unittest_device_exists(unittest_nr, ovtype) != after) {
+		unittest(0, "overlay @\"%s\" failed to create @\"%s\" %s\n",
+				overlay_path(overlay_nr),
+				unittest_path(unittest_nr, ovtype),
+				!after ? "enabled" : "disabled");
+		return;
+	}
+
+	unittest(1, "overlay test %d passed\n", 16);
+}
+
+static void of_unittest_overlay_17(void)
+{
+	int ret;
+	int overlay_nr = 17;
+	int unittest_nr = 17;
+	enum overlay_type ovtype = PDEV_OVERLAY;
+	int before = 0;
+	int after = 1;
+	const char *root_path;
+	struct device_node *np = NULL, *target_root = NULL;
+	int id = -1;
+
+	/* unittest device must not be in before state */
+	if (of_unittest_device_exists(unittest_nr, ovtype) != before) {
+		unittest(0, "overlay @\"%s\" with device @\"%s\" %s\n",
+				overlay_path(overlay_nr),
+				unittest_path(unittest_nr, ovtype),
+				!before ? "enabled" : "disabled");
+		return;
+	}
+
+	np = of_find_node_by_path(overlay_path(overlay_nr));
+	if (np == NULL) {
+		unittest(0, "could not find overlay node @\"%s\"\n",
+				overlay_path(overlay_nr));
+		ret = -EINVAL;
+		goto out;
+	}
+
+	root_path = "/testcase-data/overlay-node/test-bus/test-unittest17";
+	target_root = of_find_node_by_path(root_path);
+	if (!target_root) {
+		unittest(0, "could not find target_root node @\"%s\"\n",
+				root_path);
+		ret = -EINVAL;
+		goto out;
+	}
+
+	ret = of_overlay_create_target_root(np, target_root);
+	of_node_put(target_root);
+
+	if (ret < 0) {
+		unittest(0, "could not create overlay from \"%s\"\n",
+				overlay_path(overlay_nr));
+		goto out;
+	}
+	id = ret;
+	of_unittest_track_overlay(id);
+
+	ret = 0;
+
+out:
+	of_node_put(np);
+
+	if (ret)
+		return;
+
+	/* unittest device must be to set to after state */
+	if (of_unittest_device_exists(unittest_nr, ovtype) != after) {
+		unittest(0, "overlay @\"%s\" failed to create @\"%s\" %s\n",
+				overlay_path(overlay_nr),
+				unittest_path(unittest_nr, ovtype),
+				!after ? "enabled" : "disabled");
+		return;
+	}
+
+	unittest(1, "overlay test %d passed\n", 17);
+}
+
+static void of_unittest_overlay_18(void)
+{
+	int ret;
+	int overlay_nr = 18;
+	int unittest_nr = 18;
+	enum overlay_type ovtype = PDEV_OVERLAY;
+	int before = 0;
+	int after = 1;
+	const char *root_path;
+	struct device_node *np = NULL, *target_root = NULL;
+	int id = -1;
+
+	/* unittest device must not be in before state */
+	if (of_unittest_device_exists(unittest_nr, ovtype) != before) {
+		unittest(0, "overlay @\"%s\" with device @\"%s\" %s\n",
+				overlay_path(overlay_nr),
+				unittest_path(unittest_nr, ovtype),
+				!before ? "enabled" : "disabled");
+		return;
+	}
+
+	np = of_find_node_by_path(overlay_path(overlay_nr));
+	if (np == NULL) {
+		unittest(0, "could not find overlay node @\"%s\"\n",
+				overlay_path(overlay_nr));
+		ret = -EINVAL;
+		goto out;
+	}
+
+	root_path = "/testcase-data/overlay-node/test-bus/test-unittest18";
+	target_root = of_find_node_by_path(root_path);
+	if (!target_root) {
+		unittest(0, "could not find target_root node @\"%s\"\n",
+				root_path);
+		ret = -EINVAL;
+		goto out;
+	}
+
+	ret = of_overlay_create_target_root(np, target_root);
+	of_node_put(target_root);
+
+	if (ret < 0) {
+		unittest(0, "could not create overlay from \"%s\"\n",
+				overlay_path(overlay_nr));
+		goto out;
+	}
+	id = ret;
+	of_unittest_track_overlay(id);
+
+	ret = 0;
+
+out:
+	of_node_put(np);
+
+	if (ret)
+		return;
+
+	/* unittest device must be to set to after state */
+	if (of_unittest_device_exists(unittest_nr, ovtype) != after) {
+		unittest(0, "overlay @\"%s\" failed to create @\"%s\" %s\n",
+				overlay_path(overlay_nr),
+				unittest_path(unittest_nr, ovtype),
+				!after ? "enabled" : "disabled");
+		return;
+	}
+
+	unittest(1, "overlay test %d passed\n", 18);
+}
+
+static void of_unittest_overlay_19(void)
+{
+	int ret;
+	int overlay_nr = 19;
+	int unittest_nr = 19;
+	enum overlay_type ovtype = PDEV_OVERLAY;
+	int before = 0;
+	int after = 0;
+	const char *root_path;
+	struct device_node *np = NULL, *target_root = NULL;
+	int id = -1;
+
+	/* unittest device must not be in before state */
+	if (of_unittest_device_exists(unittest_nr, ovtype) != before) {
+		unittest(0, "overlay @\"%s\" with device @\"%s\" %s\n",
+				overlay_path(overlay_nr),
+				unittest_path(unittest_nr, ovtype),
+				!before ? "enabled" : "disabled");
+		return;
+	}
+
+	np = of_find_node_by_path(overlay_path(overlay_nr));
+	if (np == NULL) {
+		unittest(0, "could not find overlay node @\"%s\"\n",
+				overlay_path(overlay_nr));
+		ret = -EINVAL;
+		goto out;
+	}
+
+	root_path = "/testcase-data/overlay-node/test-bus/test-unittest19";
+	target_root = of_find_node_by_path(root_path);
+	if (!target_root) {
+		unittest(0, "could not find target_root node @\"%s\"\n",
+				root_path);
+		ret = -EINVAL;
+		goto out;
+	}
+
+	ret = of_overlay_create_target_root(np, target_root);
+	of_node_put(target_root);
+
+	if (ret >= 0) {
+		unittest(0, "created overlay from \"%s\" while we shouldn't\n",
+				overlay_path(overlay_nr));
+		id = ret;
+		of_unittest_track_overlay(id);
+		ret = -EINVAL;
+		goto out;
+	}
+
+	ret = 0;
+
+out:
+	of_node_put(np);
+
+	if (ret)
+		return;
+
+	/* unittest device must be to set to after state */
+	if (of_unittest_device_exists(unittest_nr, ovtype) != after) {
+		unittest(0, "overlay @\"%s\" failed to create @\"%s\" %s\n",
+				overlay_path(overlay_nr),
+				unittest_path(unittest_nr, ovtype),
+				!after ? "enabled" : "disabled");
+		return;
+	}
+
+	unittest(1, "overlay test %d passed\n", 16);
+}
+
+
 static void __init of_unittest_overlay(void)
 {
 	struct device_node *bus_np = NULL;
@@ -1904,6 +2227,12 @@ static void __init of_unittest_overlay(void)
 	of_unittest_overlay_10();
 	of_unittest_overlay_11();
 
+	of_unittest_overlay_16();
+
+	of_unittest_overlay_17();
+	of_unittest_overlay_18();
+	of_unittest_overlay_19();
+
 #if IS_BUILTIN(CONFIG_I2C)
 	if (unittest(of_unittest_overlay_i2c_init() == 0, "i2c init failed\n"))
 		goto out;
@@ -1925,6 +2254,70 @@ out:
 #else
 static inline void __init of_unittest_overlay(void) { }
 #endif
+
+#define PHANDLE_LOOKUPS	1000
+
+static void __init of_unittest_phandle_hash(void)
+{
+	struct device_node *node;
+	phandle max_phandle;
+	u32 ph;
+	unsigned long flags;
+	int i, j, total;
+	ktime_t start, end;
+	s64 dur[2];
+	int dec, frac;
+
+	/* test only available when hashing is available */
+	if (!of_phandle_ht_available()) {
+		pr_warn("phandle hash test requires hash to be initialized\n");
+		return;
+	}
+
+	/* find the maximum phandle of the tree */
+	raw_spin_lock_irqsave(&devtree_lock, flags);
+	max_phandle = 0;
+	total = 0;
+	for_each_of_allnodes(node) {
+		if (node->phandle != (phandle)-1U &&
+				node->phandle > max_phandle)
+			max_phandle = node->phandle;
+		total++;
+	}
+	raw_spin_unlock_irqrestore(&devtree_lock, flags);
+	max_phandle++;
+
+	pr_debug("phandle: max-phandle #%u, #%d total nodes\n",
+			(u32)max_phandle, total);
+
+	/* perform random lookups using the hash */
+	for (j = 0; j < 2; j++) {
+
+		/* disabled for pass #0, enabled for pass #1 */
+		of_phandle_ht_is_disabled = j == 0;
+
+		start = ktime_get_raw();
+		for (i = 0; i < PHANDLE_LOOKUPS; i++) {
+			ph = prandom_u32() % max_phandle;
+			node = of_find_node_by_phandle(ph);
+			of_node_put(node);
+		}
+		end = ktime_get_raw();
+
+		dur[j] = ktime_to_us(end) - ktime_to_us(start);
+		pr_debug("#%d lookups in %lld us (%s)\n",
+				PHANDLE_LOOKUPS, dur[j],
+				j == 0 ? "original" : "hashed");
+	}
+
+	unittest(dur[0] > dur[1], "Non hashing phandles are faster!?");
+
+	dec = (int)div64_s64(dur[0] * 10 + 5, dur[1]);
+	frac = dec % 10;
+	dec /= 10;
+	pr_info("the hash method is %d.%d times faster than the original\n",
+			dec, frac);
+}
 
 static int __init of_unittest(void)
 {
@@ -1954,11 +2347,13 @@ static int __init of_unittest(void)
 	of_unittest_property_string();
 	of_unittest_property_copy();
 	of_unittest_changeset();
+	of_unittest_changeset_helper();
 	of_unittest_parse_interrupts();
 	of_unittest_parse_interrupts_extended();
 	of_unittest_match_node();
 	of_unittest_platform_populate();
 	of_unittest_overlay();
+	of_unittest_phandle_hash();
 
 	/* Double check linkage after removing testcase data */
 	of_unittest_check_tree_linkage();

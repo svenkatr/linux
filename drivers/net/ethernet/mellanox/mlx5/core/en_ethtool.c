@@ -331,7 +331,7 @@ static void mlx5e_get_ethtool_stats(struct net_device *dev,
 	if (mlx5e_query_global_pause_combined(priv)) {
 		for (i = 0; i < NUM_PPORT_PER_PRIO_PFC_COUNTERS; i++) {
 			data[idx++] = MLX5E_READ_CTR64_BE(&priv->stats.pport.per_prio_counters[0],
-							  pport_per_prio_pfc_stats_desc, 0);
+							  pport_per_prio_pfc_stats_desc, i);
 		}
 	}
 
@@ -659,9 +659,10 @@ out:
 static void ptys2ethtool_supported_link(unsigned long *supported_modes,
 					u32 eth_proto_cap)
 {
+	unsigned long proto_cap = eth_proto_cap;
 	int proto;
 
-	for_each_set_bit(proto, (unsigned long *)&eth_proto_cap, MLX5E_LINK_MODES_NUMBER)
+	for_each_set_bit(proto, &proto_cap, MLX5E_LINK_MODES_NUMBER)
 		bitmap_or(supported_modes, supported_modes,
 			  ptys2ethtool_table[proto].supported,
 			  __ETHTOOL_LINK_MODE_MASK_NBITS);
@@ -670,9 +671,10 @@ static void ptys2ethtool_supported_link(unsigned long *supported_modes,
 static void ptys2ethtool_adver_link(unsigned long *advertising_modes,
 				    u32 eth_proto_cap)
 {
+	unsigned long proto_cap = eth_proto_cap;
 	int proto;
 
-	for_each_set_bit(proto, (unsigned long *)&eth_proto_cap, MLX5E_LINK_MODES_NUMBER)
+	for_each_set_bit(proto, &proto_cap, MLX5E_LINK_MODES_NUMBER)
 		bitmap_or(advertising_modes, advertising_modes,
 			  ptys2ethtool_table[proto].advertised,
 			  __ETHTOOL_LINK_MODE_MASK_NBITS);
@@ -803,7 +805,7 @@ static int mlx5e_get_link_ksettings(struct net_device *netdev,
 {
 	struct mlx5e_priv *priv    = netdev_priv(netdev);
 	struct mlx5_core_dev *mdev = priv->mdev;
-	u32 out[MLX5_ST_SZ_DW(ptys_reg)];
+	u32 out[MLX5_ST_SZ_DW(ptys_reg)] = {0};
 	u32 eth_proto_cap;
 	u32 eth_proto_admin;
 	u32 eth_proto_lp;
@@ -813,7 +815,6 @@ static int mlx5e_get_link_ksettings(struct net_device *netdev,
 	int err;
 
 	err = mlx5_query_port_ptys(mdev, out, sizeof(out), MLX5_PTYS_EN, 1);
-
 	if (err) {
 		netdev_err(netdev, "%s: query port ptys failed: %d\n",
 			   __func__, err);
@@ -974,15 +975,18 @@ static int mlx5e_get_rxfh(struct net_device *netdev, u32 *indir, u8 *key,
 
 static void mlx5e_modify_tirs_hash(struct mlx5e_priv *priv, void *in, int inlen)
 {
-	struct mlx5_core_dev *mdev = priv->mdev;
 	void *tirc = MLX5_ADDR_OF(modify_tir_in, in, ctx);
-	int i;
+	struct mlx5_core_dev *mdev = priv->mdev;
+	int ctxlen = MLX5_ST_SZ_BYTES(tirc);
+	int tt;
 
 	MLX5_SET(modify_tir_in, in, bitmask.hash, 1);
-	mlx5e_build_tir_ctx_hash(tirc, priv);
 
-	for (i = 0; i < MLX5E_NUM_INDIR_TIRS; i++)
-		mlx5_core_modify_tir(mdev, priv->indir_tir[i].tirn, in, inlen);
+	for (tt = 0; tt < MLX5E_NUM_INDIR_TIRS; tt++) {
+		memset(tirc, 0, ctxlen);
+		mlx5e_build_indir_tir_ctx_hash(priv, tirc, tt);
+		mlx5_core_modify_tir(mdev, priv->indir_tir[tt].tirn, in, inlen);
+	}
 }
 
 static int mlx5e_set_rxfh(struct net_device *dev, const u32 *indir,
@@ -990,6 +994,7 @@ static int mlx5e_set_rxfh(struct net_device *dev, const u32 *indir,
 {
 	struct mlx5e_priv *priv = netdev_priv(dev);
 	int inlen = MLX5_ST_SZ_BYTES(modify_tir_in);
+	bool hash_changed = false;
 	void *in;
 
 	if ((hfunc != ETH_RSS_HASH_NO_CHANGE) &&
@@ -1011,14 +1016,21 @@ static int mlx5e_set_rxfh(struct net_device *dev, const u32 *indir,
 		mlx5e_redirect_rqt(priv, rqtn, MLX5E_INDIR_RQT_SIZE, 0);
 	}
 
-	if (key)
+	if (hfunc != ETH_RSS_HASH_NO_CHANGE &&
+	    hfunc != priv->params.rss_hfunc) {
+		priv->params.rss_hfunc = hfunc;
+		hash_changed = true;
+	}
+
+	if (key) {
 		memcpy(priv->params.toeplitz_hash_key, key,
 		       sizeof(priv->params.toeplitz_hash_key));
+		hash_changed = hash_changed ||
+			       priv->params.rss_hfunc == ETH_RSS_HASH_TOP;
+	}
 
-	if (hfunc != ETH_RSS_HASH_NO_CHANGE)
-		priv->params.rss_hfunc = hfunc;
-
-	mlx5e_modify_tirs_hash(priv, in, inlen);
+	if (hash_changed)
+		mlx5e_modify_tirs_hash(priv, in, inlen);
 
 	mutex_unlock(&priv->state_lock);
 

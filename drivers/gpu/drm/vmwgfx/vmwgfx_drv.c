@@ -199,9 +199,14 @@ static const struct drm_ioctl_desc vmw_ioctls[] = {
 	VMW_IOCTL_DEF(VMW_PRESENT_READBACK,
 		      vmw_present_readback_ioctl,
 		      DRM_MASTER | DRM_AUTH),
+	/*
+	 * The permissions of the below ioctl are overridden in
+	 * vmw_generic_ioctl(). We require either
+	 * DRM_MASTER or capable(CAP_SYS_ADMIN).
+	 */
 	VMW_IOCTL_DEF(VMW_UPDATE_LAYOUT,
 		      vmw_kms_update_layout_ioctl,
-		      DRM_MASTER | DRM_CONTROL_ALLOW),
+		      DRM_RENDER_ALLOW),
 	VMW_IOCTL_DEF(VMW_CREATE_SHADER,
 		      vmw_shader_define_ioctl,
 		      DRM_AUTH | DRM_RENDER_ALLOW),
@@ -241,15 +246,15 @@ static int vmwgfx_pm_notifier(struct notifier_block *nb, unsigned long val,
 			      void *ptr);
 
 MODULE_PARM_DESC(enable_fbdev, "Enable vmwgfx fbdev");
-module_param_named(enable_fbdev, enable_fbdev, int, 0600);
+module_param_named(enable_fbdev, enable_fbdev, int, S_IRUSR | S_IWUSR);
 MODULE_PARM_DESC(force_dma_api, "Force using the DMA API for TTM pages");
-module_param_named(force_dma_api, vmw_force_iommu, int, 0600);
+module_param_named(force_dma_api, vmw_force_iommu, int, S_IRUSR | S_IWUSR);
 MODULE_PARM_DESC(restrict_iommu, "Try to limit IOMMU usage for TTM pages");
-module_param_named(restrict_iommu, vmw_restrict_iommu, int, 0600);
+module_param_named(restrict_iommu, vmw_restrict_iommu, int, S_IRUSR | S_IWUSR);
 MODULE_PARM_DESC(force_coherent, "Force coherent TTM pages");
-module_param_named(force_coherent, vmw_force_coherent, int, 0600);
+module_param_named(force_coherent, vmw_force_coherent, int, S_IRUSR | S_IWUSR);
 MODULE_PARM_DESC(restrict_dma_mask, "Restrict DMA mask to 44 bits with IOMMU");
-module_param_named(restrict_dma_mask, vmw_restrict_dma_mask, int, 0600);
+module_param_named(restrict_dma_mask, vmw_restrict_dma_mask, int, S_IRUSR | S_IWUSR);
 MODULE_PARM_DESC(assume_16bpp, "Assume 16-bpp when filtering modes");
 module_param_named(assume_16bpp, vmw_assume_16bpp, int, 0600);
 
@@ -1125,6 +1130,10 @@ static long vmw_generic_ioctl(struct file *filp, unsigned int cmd,
 
 			return (long) vmw_execbuf_ioctl(dev, arg, file_priv,
 							_IOC_SIZE(cmd));
+		} else if (nr == DRM_COMMAND_BASE + DRM_VMW_UPDATE_LAYOUT) {
+			if (!drm_is_current_master(file_priv) &&
+			    !capable(CAP_SYS_ADMIN))
+				return -EACCES;
 		}
 
 		if (unlikely(ioctl->cmd != cmd))

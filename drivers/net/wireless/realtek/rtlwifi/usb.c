@@ -739,11 +739,8 @@ static int _rtl_usb_receive(struct ieee80211_hw *hw)
 	for (i = 0; i < rtlusb->rx_urb_num; i++) {
 		err = -ENOMEM;
 		urb = usb_alloc_urb(0, GFP_KERNEL);
-		if (!urb) {
-			RT_TRACE(rtlpriv, COMP_USB, DBG_EMERG,
-				 "Failed to alloc URB!!\n");
+		if (!urb)
 			goto err_out;
-		}
 
 		err = _rtl_prep_rx_urb(hw, rtlusb, urb, GFP_KERNEL);
 		if (err < 0) {
@@ -834,12 +831,30 @@ static void rtl_usb_stop(struct ieee80211_hw *hw)
 	struct rtl_priv *rtlpriv = rtl_priv(hw);
 	struct rtl_hal *rtlhal = rtl_hal(rtl_priv(hw));
 	struct rtl_usb *rtlusb = rtl_usbdev(rtl_usbpriv(hw));
+	struct urb *urb;
 
 	/* should after adapter start and interrupt enable. */
 	set_hal_stop(rtlhal);
 	cancel_work_sync(&rtlpriv->works.fill_h2c_cmd);
 	/* Enable software */
 	SET_USB_STOP(rtlusb);
+
+	/* free pre-allocated URBs from rtl_usb_start() */
+	usb_kill_anchored_urbs(&rtlusb->rx_submitted);
+
+	tasklet_kill(&rtlusb->rx_work_tasklet);
+	cancel_work_sync(&rtlpriv->works.lps_change_work);
+
+	flush_workqueue(rtlpriv->works.rtl_wq);
+
+	skb_queue_purge(&rtlusb->rx_queue);
+
+	while ((urb = usb_get_from_anchor(&rtlusb->rx_cleanup_urbs))) {
+		usb_free_coherent(urb->dev, urb->transfer_buffer_length,
+				urb->transfer_buffer, urb->transfer_dma);
+		usb_free_urb(urb);
+	}
+
 	rtlpriv->cfg->ops->hw_disable(hw);
 }
 
@@ -907,15 +922,12 @@ static void _rtl_tx_complete(struct urb *urb)
 static struct urb *_rtl_usb_tx_urb_setup(struct ieee80211_hw *hw,
 				struct sk_buff *skb, u32 ep_num)
 {
-	struct rtl_priv *rtlpriv = rtl_priv(hw);
 	struct rtl_usb *rtlusb = rtl_usbdev(rtl_usbpriv(hw));
 	struct urb *_urb;
 
 	WARN_ON(NULL == skb);
 	_urb = usb_alloc_urb(0, GFP_ATOMIC);
 	if (!_urb) {
-		RT_TRACE(rtlpriv, COMP_USB, DBG_EMERG,
-			 "Can't allocate URB for bulk out!\n");
 		kfree_skb(skb);
 		return NULL;
 	}
@@ -1073,6 +1085,7 @@ int rtl_usb_probe(struct usb_interface *intf,
 		return -ENOMEM;
 	}
 	rtlpriv = hw->priv;
+	rtlpriv->hw = hw;
 	rtlpriv->usb_data = kzalloc(RTL_USB_MAX_RX_COUNT * sizeof(u32),
 				    GFP_KERNEL);
 	if (!rtlpriv->usb_data)

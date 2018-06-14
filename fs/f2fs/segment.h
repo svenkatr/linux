@@ -479,7 +479,8 @@ static inline bool need_SSR(struct f2fs_sb_info *sbi)
 						reserved_sections(sbi) + 1);
 }
 
-static inline bool has_not_enough_free_secs(struct f2fs_sb_info *sbi, int freed)
+static inline bool has_not_enough_free_secs(struct f2fs_sb_info *sbi,
+					int freed, int needed)
 {
 	int node_secs = get_blocktype_secs(sbi, F2FS_DIRTY_NODES);
 	int dent_secs = get_blocktype_secs(sbi, F2FS_DIRTY_DENTS);
@@ -489,8 +490,8 @@ static inline bool has_not_enough_free_secs(struct f2fs_sb_info *sbi, int freed)
 	if (unlikely(is_sbi_flag_set(sbi, SBI_POR_DOING)))
 		return false;
 
-	return (free_sections(sbi) + freed) <= (node_secs + 2 * dent_secs +
-						reserved_sections(sbi));
+	return (free_sections(sbi) + freed) <=
+		(node_secs + 2 * dent_secs + reserved_sections(sbi) + needed);
 }
 
 static inline bool excess_prefree_segs(struct f2fs_sb_info *sbi)
@@ -587,8 +588,8 @@ static inline void check_seg_range(struct f2fs_sb_info *sbi, unsigned int segno)
 
 static inline void verify_block_addr(struct f2fs_sb_info *sbi, block_t blk_addr)
 {
-	f2fs_bug_on(sbi, blk_addr < SEG0_BLKADDR(sbi)
-					|| blk_addr >= MAX_BLKADDR(sbi));
+	BUG_ON(blk_addr < SEG0_BLKADDR(sbi)
+			|| blk_addr >= MAX_BLKADDR(sbi));
 }
 
 /*
@@ -685,6 +686,15 @@ static inline block_t sum_blk_addr(struct f2fs_sb_info *sbi, int base, int type)
 	return __start_cp_addr(sbi) +
 		le32_to_cpu(F2FS_CKPT(sbi)->cp_pack_total_block_count)
 				- (base + 1) + type;
+}
+
+static inline bool no_fggc_candidate(struct f2fs_sb_info *sbi,
+						unsigned int secno)
+{
+	if (get_valid_blocks(sbi, secno, sbi->segs_per_sec) >=
+						sbi->fggc_threshold)
+		return true;
+	return false;
 }
 
 static inline bool sec_usage_check(struct f2fs_sb_info *sbi, unsigned int secno)

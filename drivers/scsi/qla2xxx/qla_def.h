@@ -279,16 +279,6 @@ struct req_que;
 struct qla_tgt_sess;
 
 /*
- * (sd.h is not exported, hence local inclusion)
- * Data Integrity Field tuple.
- */
-struct sd_dif_tuple {
-	__be16 guard_tag;	/* Checksum */
-	__be16 app_tag;		/* Opaque storage */
-	__be32 ref_tag;		/* Target LBA or indirect LBA */
-};
-
-/*
  * SCSI Request Block
  */
 struct srb_cmd {
@@ -3752,6 +3742,7 @@ typedef struct scsi_qla_host {
 	struct qla8044_reset_template reset_tmplt;
 	struct qla_tgt_counters tgt_counters;
 	uint16_t	bbcr;
+	wait_queue_head_t vref_waitq;
 } scsi_qla_host_t;
 
 struct qla27xx_image_status {
@@ -3790,6 +3781,7 @@ struct qla_tgt_vp_map {
 	mb();						     \
 	if (__vha->flags.delete_progress) {		     \
 		atomic_dec(&__vha->vref_count);		     \
+		wake_up(&__vha->vref_waitq);		\
 		__bail = 1;				     \
 	} else {					     \
 		__bail = 0;				     \
@@ -3798,6 +3790,7 @@ struct qla_tgt_vp_map {
 
 #define QLA_VHA_MARK_NOT_BUSY(__vha) do {		     \
 	atomic_dec(&__vha->vref_count);			     \
+	wake_up(&__vha->vref_waitq);			\
 } while (0)
 
 /*

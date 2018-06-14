@@ -447,6 +447,9 @@ static void raid10_end_write_request(struct bio *bio)
 	struct r10conf *conf = r10_bio->mddev->private;
 	int slot, repl;
 	struct md_rdev *rdev = NULL;
+	bool discard_error;
+
+	discard_error = bio->bi_error && bio_op(bio) == REQ_OP_DISCARD;
 
 	dev = find_bio_disk(conf, r10_bio, bio, &slot, &repl);
 
@@ -460,7 +463,7 @@ static void raid10_end_write_request(struct bio *bio)
 	/*
 	 * this branch is our 'one mirror IO has finished' event handler:
 	 */
-	if (bio->bi_error) {
+	if (bio->bi_error && !discard_error) {
 		if (repl)
 			/* Never record new bad blocks to replacement,
 			 * just fail it.
@@ -503,7 +506,7 @@ static void raid10_end_write_request(struct bio *bio)
 		if (is_badblock(rdev,
 				r10_bio->devs[slot].addr,
 				r10_bio->sectors,
-				&first_bad, &bad_sectors)) {
+				&first_bad, &bad_sectors) && !discard_error) {
 			bio_put(bio);
 			if (repl)
 				r10_bio->devs[slot].repl_bio = IO_MADE_GOOD;
@@ -938,7 +941,8 @@ static void wait_barrier(struct r10conf *conf)
 				    !conf->barrier ||
 				    (atomic_read(&conf->nr_pending) &&
 				     current->bio_list &&
-				     !bio_list_empty(current->bio_list)),
+				     (!bio_list_empty(&current->bio_list[0]) ||
+				      !bio_list_empty(&current->bio_list[1]))),
 				    conf->resync_lock);
 		conf->nr_waiting--;
 		if (!conf->nr_waiting)
@@ -1467,7 +1471,25 @@ static void raid10_make_request(struct mddev *mddev, struct bio *bio)
 			split = bio;
 		}
 
+		/*
+		 * If a bio is splitted, the first part of bio will pass
+		 * barrier but the bio is queued in current->bio_list (see
+		 * generic_make_request). If there is a raise_barrier() called
+		 * here, the second part of bio can't pass barrier. But since
+		 * the first part bio isn't dispatched to underlaying disks
+		 * yet, the barrier is never released, hence raise_barrier will
+		 * alays wait. We have a deadlock.
+		 * Note, this only happens in read path. For write path, the
+		 * first part of bio is dispatched in a schedule() call
+		 * (because of blk plug) or offloaded to raid10d.
+		 * Quitting from the function immediately can change the bio
+		 * order queued in bio_list and avoid the deadlock.
+		 */
 		__make_request(mddev, split);
+		if (split != bio && bio_data_dir(bio) == READ) {
+			generic_make_request(bio);
+			break;
+		}
 	} while (split != bio);
 
 	/* In case raid10d snuck in to freeze_array */

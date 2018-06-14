@@ -1,0 +1,33 @@
+/*
+ * Copyright 2012 Freescale Semiconductor, Inc.
+ *
+ * Author: Fabio Estevam <fabio.estevam@freescale.com>
+ *
+ * The code contained herein is licensed under the GNU General Public
+ * License. You may obtain a copy of the GNU General Public License
+ * Version 2 or later at the following locations:
+ *
+ * http://www.opensource.org/licenses/gpl-license.html
+ * http://www.gnu.org/copyleft/gpl.html
+ */
+
+#include "imx23-wirenboard41.dts"
+
+/ {
+
+	model = "Wiren Board rev. 4.1 with RS-232 ext. (i.MX23)";
+
+	compatible = "contactless,imx23-wirenboard41-rs232", "contactless,imx23-wirenboard41", "contactless,imx23-wirenboard32", "olimex,imx23-olinuxino", "fsl,imx23";
+
+
+	apb@80000000 {
+		apbh@80000000 {
+			ssp1: ssp@80034000 {
+				sc16is7x2_0: sc16is7x2@0 {
+					rs485-enabled-at-boot-time-b = <0>;
+				};
+			};
+		};
+	};
+
+};

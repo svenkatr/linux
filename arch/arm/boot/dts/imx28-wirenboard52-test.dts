@@ -1,0 +1,9 @@
+
+#include <dt-bindings/interrupt-controller/irq.h>
+#include "imx28-wirenboard52.dts"
+#include "imx28-wirenboard52-mod-w1-m2.dtsi"
+#include "imx28-wirenboard52-mod-kimaip-m1.dtsi"
+
+/ {
+    model = "Wiren Board rev. 5.2 (mod test) (i.MX28)";
+};

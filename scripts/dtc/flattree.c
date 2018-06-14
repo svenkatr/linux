@@ -335,6 +335,7 @@ static struct data flatten_reserve_list(struct reserve_info *reservelist,
 }
 
 static void make_fdt_header(struct fdt_header *fdt,
+			    fdt32_t magic,
 			    struct version_info *vi,
 			    int reservesize, int dtsize, int strsize,
 			    int boot_cpuid_phys)
@@ -345,7 +346,7 @@ static void make_fdt_header(struct fdt_header *fdt,
 
 	memset(fdt, 0xff, sizeof(*fdt));
 
-	fdt->magic = cpu_to_fdt32(FDT_MAGIC);
+	fdt->magic = cpu_to_fdt32(magic);
 	fdt->version = cpu_to_fdt32(vi->version);
 	fdt->last_comp_version = cpu_to_fdt32(vi->last_comp_version);
 
@@ -366,7 +367,7 @@ static void make_fdt_header(struct fdt_header *fdt,
 		fdt->size_dt_struct = cpu_to_fdt32(dtsize);
 }
 
-void dt_to_blob(FILE *f, struct boot_info *bi, int version)
+void dt_to_blob(FILE *f, struct boot_info *bi, fdt32_t magic, int version)
 {
 	struct version_info *vi = NULL;
 	int i;
@@ -390,7 +391,7 @@ void dt_to_blob(FILE *f, struct boot_info *bi, int version)
 	reservebuf = flatten_reserve_list(bi->reservelist, vi);
 
 	/* Make header */
-	make_fdt_header(&fdt, vi, reservebuf.len, dtbuf.len, strbuf.len,
+	make_fdt_header(&fdt, magic, vi, reservebuf.len, dtbuf.len, strbuf.len,
 			bi->boot_cpuid_phys);
 
 	/*
@@ -398,14 +399,21 @@ void dt_to_blob(FILE *f, struct boot_info *bi, int version)
 	 */
 	if (minsize > 0) {
 		padlen = minsize - fdt32_to_cpu(fdt.totalsize);
-		if ((padlen < 0) && (quiet < 1))
-			fprintf(stderr,
-				"Warning: blob size %d >= minimum size %d\n",
-				fdt32_to_cpu(fdt.totalsize), minsize);
+		if (padlen < 0) {
+			padlen = 0;
+			if (quiet < 1)
+				fprintf(stderr,
+					"Warning: blob size %d >= minimum size %d\n",
+					fdt32_to_cpu(fdt.totalsize), minsize);
+		}
 	}
 
 	if (padsize > 0)
 		padlen = padsize;
+
+	if (alignsize > 0)
+		padlen = ALIGN(fdt32_to_cpu(fdt.totalsize) + padlen, alignsize)
+			- fdt32_to_cpu(fdt.totalsize);
 
 	if (padlen > 0) {
 		int tsize = fdt32_to_cpu(fdt.totalsize);
@@ -460,7 +468,7 @@ static void dump_stringtable_asm(FILE *f, struct data strbuf)
 	}
 }
 
-void dt_to_asm(FILE *f, struct boot_info *bi, int version)
+void dt_to_asm(FILE *f, struct boot_info *bi, fdt32_t magic, int version)
 {
 	struct version_info *vi = NULL;
 	int i;
@@ -572,6 +580,8 @@ void dt_to_asm(FILE *f, struct boot_info *bi, int version)
 	if (padsize > 0) {
 		fprintf(f, "\t.space\t%d, 0\n", padsize);
 	}
+	if (alignsize > 0)
+		asm_emit_align(f, alignsize);
 	emit_label(f, symprefix, "blob_abs_end");
 
 	data_free(strbuf);
@@ -797,6 +807,10 @@ static struct node *unflatten_tree(struct inbuf *dtbuf,
 		}
 	} while (val != FDT_END_NODE);
 
+	if (node->name != flatname) {
+		free(flatname);
+	}
+
 	return node;
 }
 
@@ -817,6 +831,7 @@ struct boot_info *dt_from_blob(const char *fname)
 	struct node *tree;
 	uint32_t val;
 	int flags = 0;
+	unsigned int dtsversionflags = DTSVF_V1;
 
 	f = srcfile_relative_open(fname, NULL);
 
@@ -832,8 +847,11 @@ struct boot_info *dt_from_blob(const char *fname)
 	}
 
 	magic = fdt32_to_cpu(magic);
-	if (magic != FDT_MAGIC)
+	if (magic != FDT_MAGIC && magic != FDT_MAGIC_DTBO)
 		die("Blob has incorrect magic number\n");
+
+	if (magic == FDT_MAGIC_DTBO)
+		dtsversionflags |= DTSVF_PLUGIN;
 
 	rc = fread(&totalsize, sizeof(totalsize), 1, f);
 	if (ferror(f))
@@ -929,5 +947,6 @@ struct boot_info *dt_from_blob(const char *fname)
 
 	fclose(f);
 
-	return build_boot_info(reservelist, tree, boot_cpuid_phys);
+	return build_boot_info(dtsversionflags, reservelist, tree,
+			       boot_cpuid_phys);
 }

@@ -13,6 +13,7 @@
 #include <linux/slab.h>
 #include <linux/string.h>
 #include <linux/proc_fs.h>
+#include <linux/rhashtable.h>
 
 #include "of_private.h"
 
@@ -43,9 +44,16 @@ void of_node_put(struct device_node *node)
 }
 EXPORT_SYMBOL(of_node_put);
 
-void __of_detach_node_sysfs(struct device_node *np)
+void __of_detach_node_post(struct device_node *np)
 {
 	struct property *pp;
+	int rc;
+
+	if (of_phandle_ht_available()) {
+		rc = of_phandle_ht_remove(np);
+		WARN(rc, "remove from phandle hash fail @%s\n",
+				of_node_full_name(np));
+	}
 
 	if (!IS_ENABLED(CONFIG_SYSFS))
 		return;
@@ -253,7 +261,7 @@ int of_attach_node(struct device_node *np)
 	__of_attach_node(np);
 	raw_spin_unlock_irqrestore(&devtree_lock, flags);
 
-	__of_attach_node_sysfs(np);
+	__of_attach_node_post(np);
 	mutex_unlock(&of_mutex);
 
 	of_reconfig_notify(OF_RECONFIG_ATTACH_NODE, &rd);
@@ -306,7 +314,7 @@ int of_detach_node(struct device_node *np)
 	__of_detach_node(np);
 	raw_spin_unlock_irqrestore(&devtree_lock, flags);
 
-	__of_detach_node_sysfs(np);
+	__of_detach_node_post(np);
 	mutex_unlock(&of_mutex);
 
 	of_reconfig_notify(OF_RECONFIG_DETACH_NODE, &rd);
@@ -397,8 +405,9 @@ struct property *__of_prop_dup(const struct property *prop, gfp_t allocflags)
 }
 
 /**
- * __of_node_dup() - Duplicate or create an empty device node dynamically.
- * @fmt: Format string (plus vargs) for new full name of the device node
+ * __of_node_dupv() - Duplicate or create an empty device node dynamically.
+ * @fmt: Format string for new full name of the device node
+ * @vargs: va_list containing the arugments for the node full name
  *
  * Create an device tree node, either by duplicating an empty node or by allocating
  * an empty one suitable for further modification.  The node data are
@@ -406,17 +415,15 @@ struct property *__of_prop_dup(const struct property *prop, gfp_t allocflags)
  * OF_DETACHED bits set. Returns the newly allocated node or NULL on out of
  * memory error.
  */
-struct device_node *__of_node_dup(const struct device_node *np, const char *fmt, ...)
+struct device_node *__of_node_dupv(const struct device_node *np,
+		const char *fmt, va_list vargs)
 {
-	va_list vargs;
 	struct device_node *node;
 
 	node = kzalloc(sizeof(*node), GFP_KERNEL);
 	if (!node)
 		return NULL;
-	va_start(vargs, fmt);
 	node->full_name = kvasprintf(GFP_KERNEL, fmt, vargs);
-	va_end(vargs);
 	if (!node->full_name) {
 		kfree(node);
 		return NULL;
@@ -446,6 +453,24 @@ struct device_node *__of_node_dup(const struct device_node *np, const char *fmt,
  err_prop:
 	of_node_put(node); /* Frees the node and properties */
 	return NULL;
+}
+
+/**
+ * __of_node_dup() - Duplicate or create an empty device node dynamically.
+ * @fmt: Format string (plus vargs) for new full name of the device node
+ *
+ * See: __of_node_dupv()
+ */
+struct device_node *__of_node_dup(const struct device_node *np,
+		const char *fmt, ...)
+{
+	va_list vargs;
+	struct device_node *node;
+
+	va_start(vargs, fmt);
+	node = __of_node_dupv(np, fmt, vargs);
+	va_end(vargs);
+	return node;
 }
 
 static void __of_changeset_entry_destroy(struct of_changeset_entry *ce)
@@ -614,10 +639,10 @@ static int __of_changeset_entry_apply(struct of_changeset_entry *ce)
 
 	switch (ce->action) {
 	case OF_RECONFIG_ATTACH_NODE:
-		__of_attach_node_sysfs(ce->np);
+		__of_attach_node_post(ce->np);
 		break;
 	case OF_RECONFIG_DETACH_NODE:
-		__of_detach_node_sysfs(ce->np);
+		__of_detach_node_post(ce->np);
 		break;
 	case OF_RECONFIG_ADD_PROPERTY:
 		/* ignore duplicate names */
@@ -813,3 +838,295 @@ int of_changeset_action(struct of_changeset *ocs, unsigned long action,
 	return 0;
 }
 EXPORT_SYMBOL_GPL(of_changeset_action);
+
+/* changeset helpers */
+
+/**
+ * of_changeset_create_device_node - Create an empty device node
+ *
+ * @ocs:	changeset pointer
+ * @parent:	parent device node
+ * @fmt:	format string for the node's full_name
+ * @args:	argument list for the format string
+ *
+ * Create an empty device node, marking it as detached and allocated.
+ *
+ * Returns a device node on success, an error encoded pointer otherwise
+ */
+struct device_node *of_changeset_create_device_nodev(
+	struct of_changeset *ocs, struct device_node *parent,
+	const char *fmt, va_list vargs)
+{
+	struct device_node *node;
+
+	node = __of_node_dupv(NULL, fmt, vargs);
+	if (!node)
+		return ERR_PTR(-ENOMEM);
+
+	node->parent = parent;
+	return node;
+}
+EXPORT_SYMBOL_GPL(of_changeset_create_device_nodev);
+
+/**
+ * of_changeset_create_device_node - Create an empty device node
+ *
+ * @ocs:	changeset pointer
+ * @parent:	parent device node
+ * @fmt:	Format string for the node's full_name
+ * ...		Arguments
+ *
+ * Create an empty device node, marking it as detached and allocated.
+ *
+ * Returns a device node on success, an error encoded pointer otherwise
+ */
+__printf(3, 4) struct device_node *
+of_changeset_create_device_node(struct of_changeset *ocs,
+	struct device_node *parent, const char *fmt, ...)
+{
+	va_list vargs;
+	struct device_node *node;
+
+	va_start(vargs, fmt);
+	node = of_changeset_create_device_nodev(ocs, parent, fmt, vargs);
+	va_end(vargs);
+	return node;
+}
+EXPORT_SYMBOL_GPL(of_changeset_create_device_node);
+
+/**
+ * __of_changeset_add_property_copy - Create/update a new property copying
+ *                                    name & value
+ *
+ * @ocs:	changeset pointer
+ * @np:		device node pointer
+ * @name:	name of the property
+ * @value:	pointer to the value data
+ * @length:	length of the value in bytes
+ * @update:	True on update operation
+ *
+ * Adds/updates a property to the changeset by making copies of the name & value
+ * entries. The @update parameter controls whether an add or update takes place.
+ *
+ * Returns zero on success, a negative error value otherwise.
+ */
+int __of_changeset_add_update_property_copy(struct of_changeset *ocs,
+		struct device_node *np, const char *name, const void *value,
+		int length, bool update)
+{
+	struct property *prop;
+	char *new_name;
+	void *new_value;
+	int ret = -ENOMEM;
+
+	prop = kzalloc(sizeof(*prop), GFP_KERNEL);
+	if (!prop)
+		return -ENOMEM;
+
+	new_name = kstrdup(name, GFP_KERNEL);
+	if (!new_name)
+		goto out_err;
+
+	/*
+	 * NOTE: There is no check for zero length value.
+	 * In case of a boolean property, this will allocate a value
+	 * of zero bytes. We do this to work around the use
+	 * of of_get_property() calls on boolean values.
+	 */
+	new_value = kmemdup(value, length, GFP_KERNEL);
+	if (!new_value)
+		goto out_err;
+
+	of_property_set_flag(prop, OF_DYNAMIC);
+
+	prop->name = new_name;
+	prop->value = new_value;
+	prop->length = length;
+
+	if (!update)
+		ret = of_changeset_add_property(ocs, np, prop);
+	else
+		ret = of_changeset_update_property(ocs, np, prop);
+
+	if (!ret)
+		return 0;
+
+out_err:
+	kfree(prop->value);
+	kfree(prop->name);
+	kfree(prop);
+	return ret;
+}
+EXPORT_SYMBOL_GPL(__of_changeset_add_update_property_copy);
+
+/**
+ * of_changeset_add_property_stringf - Create a new formatted string property
+ *
+ * @ocs:	changeset pointer
+ * @np:		device node pointer
+ * @name:	name of the property
+ * @fmt:	format of string property
+ * ...		arguments of the format string
+ *
+ * Adds a string property to the changeset by making copies of the name
+ * and the formatted value.
+ *
+ * Returns zero on success, a negative error value otherwise.
+ */
+__printf(4, 5) int of_changeset_add_property_stringf(
+		struct of_changeset *ocs, struct device_node *np,
+		const char *name, const char *fmt, ...)
+{
+	va_list vargs;
+	int ret;
+
+	va_start(vargs, fmt);
+	ret = __of_changeset_add_update_property_stringv(ocs, np, name, fmt,
+			vargs, false);
+	va_end(vargs);
+	return ret;
+}
+EXPORT_SYMBOL_GPL(of_changeset_add_property_stringf);
+
+/**
+ * of_changeset_update_property_stringf - Update formatted string property
+ *
+ * @ocs:	changeset pointer
+ * @np:		device node pointer
+ * @name:	name of the property
+ * @fmt:	format of string property
+ * ...		arguments of the format string
+ *
+ * Updates a string property to the changeset by making copies of the name
+ * and the formatted value.
+ *
+ * Returns zero on success, a negative error value otherwise.
+ */
+int of_changeset_update_property_stringf(
+	struct of_changeset *ocs, struct device_node *np,
+	const char *name, const char *fmt, ...)
+{
+	va_list vargs;
+	int ret;
+
+	va_start(vargs, fmt);
+	ret = __of_changeset_add_update_property_stringv(ocs, np, name, fmt,
+			vargs, true);
+	va_end(vargs);
+	return ret;
+}
+EXPORT_SYMBOL_GPL(of_changeset_update_property_stringf);
+
+/**
+ * __of_changeset_add_update_property_string_list - Create/update a string
+ *                                                  list property
+ *
+ * @ocs:	changeset pointer
+ * @np:		device node pointer
+ * @name:	name of the property
+ * @strs:	pointer to the string list
+ * @count:	string count
+ * @update:	True on update operation
+ *
+ * Adds a string list property to the changeset.
+ *
+ * Returns zero on success, a negative error value otherwise.
+ */
+int __of_changeset_add_update_property_string_list(
+		struct of_changeset *ocs, struct device_node *np,
+		const char *name, const char **strs, int count, bool update)
+{
+	int total = 0, i, ret;
+	char *value, *s;
+
+	for (i = 0; i < count; i++) {
+		/* check if  it's NULL */
+		if (!strs[i])
+			return -EINVAL;
+		total += strlen(strs[i]) + 1;
+	}
+
+	value = kmalloc(total, GFP_KERNEL);
+	if (!value)
+		return -ENOMEM;
+
+	for (i = 0, s = value; i < count; i++) {
+		/* no need to check for NULL, check above */
+		strcpy(s, strs[i]);
+		s += strlen(strs[i]) + 1;
+	}
+
+	ret = __of_changeset_add_update_property_copy(ocs, np, name, value,
+			total, update);
+
+	kfree(value);
+
+	return ret;
+}
+EXPORT_SYMBOL_GPL(__of_changeset_add_update_property_string_list);
+
+static struct device_node *
+__of_changeset_node_move_one(struct of_changeset *ocs,
+		struct device_node *np, struct device_node *new_parent)
+{
+	struct device_node *np2;
+	const char *unitname;
+	int err;
+
+	err = of_changeset_detach_node(ocs, np);
+	if (err)
+		return ERR_PTR(err);
+
+	unitname = strrchr(np->full_name, '/');
+	if (!unitname)
+		unitname = np->full_name;
+
+	np2 = __of_node_dup(np, "%s/%s",
+			new_parent->full_name, unitname);
+	if (!np2)
+		return ERR_PTR(-ENOMEM);
+	np2->parent = new_parent;
+
+	err = of_changeset_attach_node(ocs, np2);
+	if (err)
+		return ERR_PTR(err);
+
+	return np2;
+}
+
+/**
+ * of_changeset_node_move_to - Moves a subtree to a new place in
+ *                             the tree
+ *
+ * @ocs:	changeset pointer
+ * @np:		device node pointer to be moved
+ * @to:		device node of the new parent
+ *
+ * Moves a subtree to a new place in the tree.
+ * Note that a move is a safe operation because the phandles
+ * remain valid.
+ *
+ * Returns zero on success, a negative error value otherwise.
+ */
+int of_changeset_node_move(struct of_changeset *ocs,
+		struct device_node *np, struct device_node *new_parent)
+{
+	struct device_node *npc, *nppc;
+
+	/* move the root first */
+	nppc = __of_changeset_node_move_one(ocs, np, new_parent);
+	if (IS_ERR(nppc))
+		return PTR_ERR(nppc);
+
+	/* move the subtrees next */
+	for_each_child_of_node(np, npc) {
+		nppc = __of_changeset_node_move_one(ocs, npc, nppc);
+		if (IS_ERR(nppc)) {
+			of_node_put(npc);
+			return PTR_ERR(nppc);
+		}
+	}
+
+	return 0;
+}
+EXPORT_SYMBOL_GPL(of_changeset_node_move);

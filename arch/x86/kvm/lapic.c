@@ -138,7 +138,7 @@ static inline bool kvm_apic_map_get_logical_dest(struct kvm_apic_map *map,
 		*mask = dest_id & 0xff;
 		return true;
 	case KVM_APIC_MODE_XAPIC_CLUSTER:
-		*cluster = map->xapic_cluster_map[dest_id >> 4];
+		*cluster = map->xapic_cluster_map[(dest_id >> 4) & 0xf];
 		*mask = dest_id & 0xf;
 		return true;
 	default:
@@ -1761,9 +1761,10 @@ void kvm_lapic_set_base(struct kvm_vcpu *vcpu, u64 value)
 		if (value & MSR_IA32_APICBASE_ENABLE) {
 			kvm_apic_set_xapic_id(apic, vcpu->vcpu_id);
 			static_key_slow_dec_deferred(&apic_hw_disabled);
-		} else
+		} else {
 			static_key_slow_inc(&apic_hw_disabled.key);
-		recalculate_apic_map(vcpu->kvm);
+			recalculate_apic_map(vcpu->kvm);
+		}
 	}
 
 	if ((old_value ^ value) & X2APIC_ENABLE) {
@@ -2358,4 +2359,10 @@ void kvm_lapic_init(void)
 	/* do not patch jump label more than once per second */
 	jump_label_rate_limit(&apic_hw_disabled, HZ);
 	jump_label_rate_limit(&apic_sw_disabled, HZ);
+}
+
+void kvm_lapic_exit(void)
+{
+	static_key_deferred_flush(&apic_hw_disabled);
+	static_key_deferred_flush(&apic_sw_disabled);
 }

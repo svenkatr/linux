@@ -119,10 +119,6 @@
 
 #define MPT_MAX_CALLBACKS		32
 
-
-#define	 CAN_SLEEP			1
-#define  NO_SLEEP			0
-
 #define INTERNAL_CMDS_COUNT		10	/* reserved cmds */
 /* reserved for issuing internally framed scsi io cmds */
 #define INTERNAL_SCSIIO_CMDS_COUNT	3
@@ -397,6 +393,7 @@ struct MPT3SAS_TARGET {
  * @eedp_enable: eedp support enable bit
  * @eedp_type: 0(type_1), 1(type_2), 2(type_3)
  * @eedp_block_length: block size
+ * @ata_command_pending: SATL passthrough outstanding for device
  */
 struct MPT3SAS_DEVICE {
 	struct MPT3SAS_TARGET *sas_target;
@@ -406,6 +403,17 @@ struct MPT3SAS_DEVICE {
 	u8	block;
 	u8	tlr_snoop_check;
 	u8	ignore_delay_remove;
+	/*
+	 * Bug workaround for SATL handling: the mpt2/3sas firmware
+	 * doesn't return BUSY or TASK_SET_FULL for subsequent
+	 * commands while a SATL pass through is in operation as the
+	 * spec requires, it simply does nothing with them until the
+	 * pass through completes, causing them possibly to timeout if
+	 * the passthrough is a long executing command (like format or
+	 * secure erase).  This variable allows us to do the right
+	 * thing while a SATL command is pending.
+	 */
+	unsigned long ata_command_pending;
 };
 
 #define MPT3_CMD_NOT_USED	0x8000	/* free */
@@ -478,7 +486,7 @@ struct _sas_device {
 	u8	pfa_led_on;
 	u8	pend_sas_rphy_add;
 	u8	enclosure_level;
-	u8	connector_name[4];
+	u8	connector_name[5];
 	struct kref refcount;
 };
 
@@ -792,16 +800,6 @@ struct mpt3sas_port_facts {
 struct reply_post_struct {
 	Mpi2ReplyDescriptorsUnion_t	*reply_post_free;
 	dma_addr_t			reply_post_free_dma;
-};
-
-/**
- * enum mutex_type - task management mutex type
- * @TM_MUTEX_OFF: mutex is not required becuase calling function is acquiring it
- * @TM_MUTEX_ON: mutex is required
- */
-enum mutex_type {
-	TM_MUTEX_OFF = 0,
-	TM_MUTEX_ON = 1,
 };
 
 typedef void (*MPT3SAS_FLUSH_RUNNING_CMDS)(struct MPT3SAS_ADAPTER *ioc);
@@ -1229,7 +1227,7 @@ int mpt3sas_base_attach(struct MPT3SAS_ADAPTER *ioc);
 void mpt3sas_base_detach(struct MPT3SAS_ADAPTER *ioc);
 int mpt3sas_base_map_resources(struct MPT3SAS_ADAPTER *ioc);
 void mpt3sas_base_free_resources(struct MPT3SAS_ADAPTER *ioc);
-int mpt3sas_base_hard_reset_handler(struct MPT3SAS_ADAPTER *ioc, int sleep_flag,
+int mpt3sas_base_hard_reset_handler(struct MPT3SAS_ADAPTER *ioc,
 	enum reset_type type);
 
 void *mpt3sas_base_get_msg_frame(struct MPT3SAS_ADAPTER *ioc, u16 smid);
@@ -1291,7 +1289,11 @@ void mpt3sas_scsih_reset_handler(struct MPT3SAS_ADAPTER *ioc, int reset_phase);
 
 int mpt3sas_scsih_issue_tm(struct MPT3SAS_ADAPTER *ioc, u16 handle,
 	uint channel, uint id, uint lun, u8 type, u16 smid_task,
-	ulong timeout, enum mutex_type m_type);
+	ulong timeout);
+int mpt3sas_scsih_issue_locked_tm(struct MPT3SAS_ADAPTER *ioc, u16 handle,
+	uint channel, uint id, uint lun, u8 type, u16 smid_task,
+	ulong timeout);
+
 void mpt3sas_scsih_set_tm_flag(struct MPT3SAS_ADAPTER *ioc, u16 handle);
 void mpt3sas_scsih_clear_tm_flag(struct MPT3SAS_ADAPTER *ioc, u16 handle);
 void mpt3sas_expander_remove(struct MPT3SAS_ADAPTER *ioc, u64 sas_address);

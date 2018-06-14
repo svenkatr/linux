@@ -80,7 +80,7 @@ endif
 # Power Management
 omap-4-5-pm-common			= omap-mpuss-lowpower.o
 obj-$(CONFIG_ARCH_OMAP4)		+= $(omap-4-5-pm-common)
-obj-$(CONFIG_ARCH_OMAP5)		+= $(omap-4-5-pm-common)
+obj-$(CONFIG_SOC_OMAP5)			+= $(omap-4-5-pm-common)
 obj-$(CONFIG_OMAP_PM_NOOP)		+= omap-pm-noop.o
 
 ifeq ($(CONFIG_PM),y)
@@ -231,11 +231,7 @@ obj-$(CONFIG_SOC_OMAP2420)		+= msdi.o
 
 # Specific board support
 obj-$(CONFIG_MACH_OMAP_GENERIC)		+= board-generic.o pdata-quirks.o
-obj-$(CONFIG_MACH_OMAP_LDP)		+= board-ldp.o
 obj-$(CONFIG_MACH_NOKIA_N8X0)		+= board-n8x0.o
-obj-$(CONFIG_MACH_NOKIA_RX51)		+= board-rx51.o sdram-nokia.o
-obj-$(CONFIG_MACH_NOKIA_RX51)		+= board-rx51-peripherals.o
-obj-$(CONFIG_MACH_NOKIA_RX51)		+= board-rx51-video.o
 
 # Platform specific device init code
 

@@ -479,8 +479,8 @@ static ssize_t _extract_entropy(struct entropy_store *r, void *buf,
 
 static void crng_reseed(struct crng_state *crng, struct entropy_store *r);
 static void push_to_pool(struct work_struct *work);
-static __u32 input_pool_data[INPUT_POOL_WORDS];
-static __u32 blocking_pool_data[OUTPUT_POOL_WORDS];
+static __u32 input_pool_data[INPUT_POOL_WORDS] __latent_entropy;
+static __u32 blocking_pool_data[OUTPUT_POOL_WORDS] __latent_entropy;
 
 static struct entropy_store input_pool = {
 	.poolinfo = &poolinfo_table[0],
@@ -2042,81 +2042,97 @@ struct ctl_table random_table[] = {
 };
 #endif 	/* CONFIG_SYSCTL */
 
-static u32 random_int_secret[MD5_MESSAGE_BYTES / 4] ____cacheline_aligned;
-
-int random_int_secret_init(void)
-{
-	get_random_bytes(random_int_secret, sizeof(random_int_secret));
-	return 0;
-}
-
-static DEFINE_PER_CPU(__u32 [MD5_DIGEST_WORDS], get_random_int_hash)
-		__aligned(sizeof(unsigned long));
+struct batched_entropy {
+	union {
+		unsigned long entropy_long[CHACHA20_BLOCK_SIZE / sizeof(unsigned long)];
+		unsigned int entropy_int[CHACHA20_BLOCK_SIZE / sizeof(unsigned int)];
+	};
+	unsigned int position;
+};
 
 /*
- * Get a random word for internal kernel use only. Similar to urandom but
- * with the goal of minimal entropy pool depletion. As a result, the random
- * value is not cryptographically secure but for several uses the cost of
- * depleting entropy is too high
+ * Get a random word for internal kernel use only. The quality of the random
+ * number is either as good as RDRAND or as good as /dev/urandom, with the
+ * goal of being quite fast and not depleting entropy.
  */
-unsigned int get_random_int(void)
-{
-	__u32 *hash;
-	unsigned int ret;
-
-	if (arch_get_random_int(&ret))
-		return ret;
-
-	hash = get_cpu_var(get_random_int_hash);
-
-	hash[0] += current->pid + jiffies + random_get_entropy();
-	md5_transform(hash, random_int_secret);
-	ret = hash[0];
-	put_cpu_var(get_random_int_hash);
-
-	return ret;
-}
-EXPORT_SYMBOL(get_random_int);
-
-/*
- * Same as get_random_int(), but returns unsigned long.
- */
+static DEFINE_PER_CPU(struct batched_entropy, batched_entropy_long);
 unsigned long get_random_long(void)
 {
-	__u32 *hash;
 	unsigned long ret;
+	struct batched_entropy *batch;
 
 	if (arch_get_random_long(&ret))
 		return ret;
 
-	hash = get_cpu_var(get_random_int_hash);
-
-	hash[0] += current->pid + jiffies + random_get_entropy();
-	md5_transform(hash, random_int_secret);
-	ret = *(unsigned long *)hash;
-	put_cpu_var(get_random_int_hash);
-
+	batch = &get_cpu_var(batched_entropy_long);
+	if (batch->position % ARRAY_SIZE(batch->entropy_long) == 0) {
+		extract_crng((u8 *)batch->entropy_long);
+		batch->position = 0;
+	}
+	ret = batch->entropy_long[batch->position++];
+	put_cpu_var(batched_entropy_long);
 	return ret;
 }
 EXPORT_SYMBOL(get_random_long);
 
-/*
- * randomize_range() returns a start address such that
+#if BITS_PER_LONG == 32
+unsigned int get_random_int(void)
+{
+	return get_random_long();
+}
+#else
+static DEFINE_PER_CPU(struct batched_entropy, batched_entropy_int);
+unsigned int get_random_int(void)
+{
+	unsigned int ret;
+	struct batched_entropy *batch;
+
+	if (arch_get_random_int(&ret))
+		return ret;
+
+	batch = &get_cpu_var(batched_entropy_int);
+	if (batch->position % ARRAY_SIZE(batch->entropy_int) == 0) {
+		extract_crng((u8 *)batch->entropy_int);
+		batch->position = 0;
+	}
+	ret = batch->entropy_int[batch->position++];
+	put_cpu_var(batched_entropy_int);
+	return ret;
+}
+#endif
+EXPORT_SYMBOL(get_random_int);
+
+/**
+ * randomize_page - Generate a random, page aligned address
+ * @start:	The smallest acceptable address the caller will take.
+ * @range:	The size of the area, starting at @start, within which the
+ *		random address must fall.
  *
- *    [...... <range> .....]
- *  start                  end
+ * If @start + @range would overflow, @range is capped.
  *
- * a <range> with size "len" starting at the return value is inside in the
- * area defined by [start, end], but is otherwise randomized.
+ * NOTE: Historical use of randomize_range, which this replaces, presumed that
+ * @start was already page aligned.  We now align it regardless.
+ *
+ * Return: A page aligned address within [start, start + range).  On error,
+ * @start is returned.
  */
 unsigned long
-randomize_range(unsigned long start, unsigned long end, unsigned long len)
+randomize_page(unsigned long start, unsigned long range)
 {
-	unsigned long range = end - len - start;
+	if (!PAGE_ALIGNED(start)) {
+		range -= PAGE_ALIGN(start) - start;
+		start = PAGE_ALIGN(start);
+	}
 
-	if (end <= start + len)
-		return 0;
-	return PAGE_ALIGN(get_random_int() % range + start);
+	if (start > ULONG_MAX - range)
+		range = ULONG_MAX - start;
+
+	range >>= PAGE_SHIFT;
+
+	if (range == 0)
+		return start;
+
+	return start + (get_random_long() % range << PAGE_SHIFT);
 }
 
 /* Interface for in-kernel drivers of true hardware RNGs.

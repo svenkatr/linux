@@ -66,14 +66,14 @@
 		timer@20200 {
 			compatible = "arm,cortex-a9-global-timer";
 			reg = <0x20200 0x100>;
-			interrupts = <GIC_PPI 11 IRQ_TYPE_LEVEL_HIGH>;
+			interrupts = <GIC_PPI 11 IRQ_TYPE_EDGE_RISING>;
 			clocks = <&periph_clk>;
 		};
 
 		local-timer@20600 {
 			compatible = "arm,cortex-a9-twd-timer";
 			reg = <0x20600 0x100>;
-			interrupts = <GIC_PPI 13 IRQ_TYPE_LEVEL_HIGH>;
+			interrupts = <GIC_PPI 13 IRQ_TYPE_EDGE_RISING>;
 			clocks = <&periph_clk>;
 		};
 
@@ -138,6 +138,15 @@
 			clock-div = <2>;
 			clock-mult = <1>;
 		};
+	};
+
+	usb2_phy: usb2-phy {
+		compatible = "brcm,ns-usb2-phy";
+		reg = <0x1800c000 0x1000>;
+		reg-names = "dmu";
+		#phy-cells = <0>;
+		clocks = <&genpll BCM_NSP_GENPLL_USB_PHY_REF_CLK>;
+		clock-names = "phy-ref-clk";
 	};
 
 	axi@18000000 {
@@ -232,6 +241,8 @@
 
 			#address-cells = <1>;
 			#size-cells = <1>;
+
+			phys = <&usb2_phy>;
 		};
 
 		usb3: usb3@23000 {

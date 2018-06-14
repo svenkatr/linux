@@ -33,6 +33,15 @@
 #endif
 #endif
 
+/* ARCH_NR_GPIOS_DYNALLOC is the number of GPIOs used for dynamic
+ * GPIO base allocation. It may be lower than ARCH_NR_GPIOS for
+ * backward compatibility
+ */
+
+#ifndef ARCH_NR_GPIOS_DYNALLOC
+#define ARCH_NR_GPIOS_DYNALLOC		256
+#endif
+
 /*
  * "valid" GPIO numbers are nonnegative and may be passed to
  * setup routines like gpio_request().  only some valid numbers

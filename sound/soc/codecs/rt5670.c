@@ -2777,12 +2777,14 @@ static struct snd_soc_codec_driver soc_codec_dev_rt5670 = {
 	.resume = rt5670_resume,
 	.set_bias_level = rt5670_set_bias_level,
 	.idle_bias_off = true,
-	.controls = rt5670_snd_controls,
-	.num_controls = ARRAY_SIZE(rt5670_snd_controls),
-	.dapm_widgets = rt5670_dapm_widgets,
-	.num_dapm_widgets = ARRAY_SIZE(rt5670_dapm_widgets),
-	.dapm_routes = rt5670_dapm_routes,
-	.num_dapm_routes = ARRAY_SIZE(rt5670_dapm_routes),
+	.component_driver = {
+		.controls		= rt5670_snd_controls,
+		.num_controls		= ARRAY_SIZE(rt5670_snd_controls),
+		.dapm_widgets		= rt5670_dapm_widgets,
+		.num_dapm_widgets	= ARRAY_SIZE(rt5670_dapm_widgets),
+		.dapm_routes		= rt5670_dapm_routes,
+		.num_dapm_routes	= ARRAY_SIZE(rt5670_dapm_routes),
+	},
 };
 
 static const struct regmap_config rt5670_regmap = {
@@ -2811,6 +2813,8 @@ MODULE_DEVICE_TABLE(i2c, rt5670_i2c_id);
 #ifdef CONFIG_ACPI
 static const struct acpi_device_id rt5670_acpi_match[] = {
 	{ "10EC5670", 0},
+	{ "10EC5672", 0},
+	{ "10EC5640", 0}, /* quirk */
 	{ },
 };
 MODULE_DEVICE_TABLE(acpi, rt5670_acpi_match);

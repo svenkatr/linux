@@ -309,8 +309,14 @@ validate_uniform_address_write(struct vc4_validated_shader_info *validated_shade
 	 * of uniforms on each side.  However, this scheme is easy to
 	 * validate so it's all we allow for now.
 	 */
-
-	if (QPU_GET_FIELD(inst, QPU_SIG) != QPU_SIG_NONE) {
+	switch (QPU_GET_FIELD(inst, QPU_SIG)) {
+	case QPU_SIG_NONE:
+	case QPU_SIG_SCOREBOARD_UNLOCK:
+	case QPU_SIG_COLOR_LOAD:
+	case QPU_SIG_LOAD_TMU0:
+	case QPU_SIG_LOAD_TMU1:
+		break;
+	default:
 		DRM_ERROR("uniforms address change must be "
 			  "normal math\n");
 		return false;
@@ -602,9 +608,7 @@ static bool
 vc4_validate_branches(struct vc4_shader_validation_state *validation_state)
 {
 	uint32_t max_branch_target = 0;
-	bool found_shader_end = false;
 	int ip;
-	int shader_end_ip = 0;
 	int last_branch = -2;
 
 	for (ip = 0; ip < validation_state->max_ip; ip++) {
@@ -615,8 +619,13 @@ vc4_validate_branches(struct vc4_shader_validation_state *validation_state)
 		uint32_t branch_target_ip;
 
 		if (sig == QPU_SIG_PROG_END) {
-			shader_end_ip = ip;
-			found_shader_end = true;
+			/* There are two delay slots after program end is
+			 * signaled that are still executed, then we're
+			 * finished.  validation_state->max_ip is the
+			 * instruction after the last valid instruction in the
+			 * program.
+			 */
+			validation_state->max_ip = ip + 3;
 			continue;
 		}
 
@@ -670,15 +679,9 @@ vc4_validate_branches(struct vc4_shader_validation_state *validation_state)
 		}
 		set_bit(after_delay_ip, validation_state->branch_targets);
 		max_branch_target = max(max_branch_target, after_delay_ip);
-
-		/* There are two delay slots after program end is signaled
-		 * that are still executed, then we're finished.
-		 */
-		if (found_shader_end && ip == shader_end_ip + 2)
-			break;
 	}
 
-	if (max_branch_target > shader_end_ip) {
+	if (max_branch_target > validation_state->max_ip - 3) {
 		DRM_ERROR("Branch landed after QPU_SIG_PROG_END");
 		return false;
 	}

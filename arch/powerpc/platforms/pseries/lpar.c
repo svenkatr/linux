@@ -145,7 +145,7 @@ static long pSeries_lpar_hpte_insert(unsigned long hpte_group,
 			 hpte_group, vpn,  pa, rflags, vflags, psize);
 
 	hpte_v = hpte_encode_v(vpn, psize, apsize, ssize) | vflags | HPTE_V_VALID;
-	hpte_r = hpte_encode_r(pa, psize, apsize, ssize) | rflags;
+	hpte_r = hpte_encode_r(pa, psize, apsize) | rflags;
 
 	if (!(vflags & HPTE_V_BOLTED))
 		pr_devel(" hpte_v=%016lx, hpte_r=%016lx\n", hpte_v, hpte_r);
@@ -393,7 +393,7 @@ static void __pSeries_lpar_hugepage_invalidate(unsigned long *slot,
 					     unsigned long *vpn, int count,
 					     int psize, int ssize)
 {
-	unsigned long param[8];
+	unsigned long param[PLPAR_HCALL9_BUFSIZE];
 	int i = 0, pix = 0, rc;
 	unsigned long flags = 0;
 	int lock_tlbie = !mmu_has_feature(MMU_FTR_LOCKLESS_TLBIE);
@@ -522,7 +522,7 @@ static void pSeries_lpar_flush_hash_range(unsigned long number, int local)
 	unsigned long flags = 0;
 	struct ppc64_tlb_batch *batch = this_cpu_ptr(&ppc64_tlb_batch);
 	int lock_tlbie = !mmu_has_feature(MMU_FTR_LOCKLESS_TLBIE);
-	unsigned long param[9];
+	unsigned long param[PLPAR_HCALL9_BUFSIZE];
 	unsigned long hash, index, shift, hidx, slot;
 	real_pte_t pte;
 	int psize, ssize;

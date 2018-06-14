@@ -794,6 +794,9 @@ static int mrfld_config_set(struct pinctrl_dev *pctldev, unsigned int pin,
 	unsigned int i;
 	int ret;
 
+	if (!mrfld_buf_available(mp, pin))
+		return -ENOTSUPP;
+
 	for (i = 0; i < nconfigs; i++) {
 		switch (pinconf_to_config_param(configs[i])) {
 		case PIN_CONFIG_BIAS_DISABLE:
@@ -854,7 +857,7 @@ static int mrfld_pinctrl_probe(struct platform_device *pdev)
 	 */
 	nfamilies = ARRAY_SIZE(mrfld_families),
 	families = devm_kmemdup(&pdev->dev, mrfld_families,
-					    nfamilies * sizeof(mrfld_families),
+					    sizeof(mrfld_families),
 					    GFP_KERNEL);
 	if (!families)
 		return -ENOMEM;
